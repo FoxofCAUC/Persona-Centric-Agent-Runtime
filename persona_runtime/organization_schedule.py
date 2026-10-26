@@ -113,7 +113,7 @@ class OrganizationSchedule:
         state, payload = row["status"], row["progress"]
         if state == "awaiting_review":
             with self.store.connection() as conn:
-                pending = conn.execute("SELECT count(*) FROM candidates c JOIN organization_tasks t ON t.id=c.task_id WHERE c.status='pending' AND t.automatic=2 AND t.persona_id=?", (row["persona_id"],)).fetchone()[0]
+                pending = conn.execute("SELECT count(*) FROM candidates WHERE status='pending' AND conflicts_json!='[]' AND persona_id=?", (row["persona_id"],)).fetchone()[0]
             if pending:
                 return
             self._save("scheduled", payload)
@@ -180,7 +180,7 @@ class OrganizationSchedule:
             self._save('running', payload)
             return
         with self.store.connection() as conn:
-            pending = conn.execute("SELECT 1 FROM candidates c JOIN organization_tasks t ON t.id=c.task_id WHERE c.status='pending' AND t.automatic=2 AND c.persona_id=? LIMIT 1", (row["persona_id"],)).fetchone()
+            pending = conn.execute("SELECT 1 FROM candidates WHERE status='pending' AND conflicts_json!='[]' AND persona_id=? LIMIT 1", (row["persona_id"],)).fetchone()
         self._save('awaiting_review' if pending else 'scheduled', payload)
 
     def incremental_tick(self):

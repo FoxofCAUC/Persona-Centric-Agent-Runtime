@@ -279,6 +279,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.org.schedule.status()['status'], 'awaiting_review')
         self.assertEqual(self.org.candidates.list()[0]['status'], 'pending')
         self.assertEqual([m['id'] for m in self.service.search_memories()], [old['id']])
+        self.assertEqual(self.org.summaries.list(), [])
 
     async def test_daily_freezes_persona_and_resumes_after_quota(self):
         turn = (await self.seed(12))[0]
@@ -459,6 +460,30 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(db.execute('SELECT next_epoch FROM daily_updates').fetchone()[0],self.org.schedule.status()['next_epoch'])
         finally:
             db.close()
+
+    async def test_daily_can_approve_previously_manual_pending_candidate(self):
+        turn=(await self.seed())[0]
+        await self.organize(turn['session_id'],'candidates')
+        candidate=self.org.candidates.list()[0]
+        self.org.schedule.run_daily_now()
+        await self.org.run_next()
+        self.org.schedule.daily_tick()
+        self.assertEqual(self.org.candidates.show(candidate['id'])['status'],'accepted')
+        self.assertEqual(len(self.service.search_memories()),1)
+
+    async def test_daily_existing_conflict_stays_pending_across_regeneration(self):
+        turn=(await self.seed())[0]
+        old=self.service.add_memory('preference','虚构偏好：不再喜欢乌龙茶',turn['user_event_id'])
+        def conflict(data):
+            data['candidates'][0]['conflicts']=[old['id']]
+            return data
+        self.model.transform=conflict
+        await self.organize(turn['session_id'],'candidates')
+        self.org.schedule.run_daily_now()
+        await self.org.run_next()
+        self.org.schedule.daily_tick()
+        self.assertEqual(len(self.org.candidates.list()),1)
+        self.assertEqual(self.org.schedule.status()['status'],'awaiting_review')
 
 
 if __name__ == '__main__':

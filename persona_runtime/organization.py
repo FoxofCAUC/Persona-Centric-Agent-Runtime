@@ -254,7 +254,7 @@ class OrganizationEngine:
                 raise RuntimeErrorBase("source_expired")
             if conn.execute("SELECT count(*) FROM organization_tasks WHERE status IN ('queued','waiting_quota')").fetchone()[0] >= 10:
                 raise RuntimeErrorBase("organization_queue_full")
-            old = conn.execute("SELECT * FROM organization_tasks WHERE fingerprint=? AND status IN ('queued','waiting_quota','running')", (fresh["fingerprint"],)).fetchone()
+            old = conn.execute("SELECT * FROM organization_tasks WHERE fingerprint=? AND status IN ('queued','waiting_quota','running','completed')", (fresh["fingerprint"],)).fetchone()
             if old:
                 return self._view(old)
             task_id, now = identifier(), timestamp()
@@ -370,7 +370,10 @@ class OrganizationEngine:
 
     def _publish(self, conn, task, payload, summary, candidates):
         now = timestamp()
-        if payload["mode"] != "candidates":
+        conflict_batch = task['automatic'] == 2 and any(item['conflicts'] for item in candidates)
+        if conflict_batch:
+            conn.execute("UPDATE organization_tasks SET error_code='summary_withheld_conflict' WHERE id=?", (task['id'],))
+        if payload["mode"] != "candidates" and not conflict_batch:
             previous = payload["previous"]
             sources = sorted({s["event_id"] for item in summary for s in item["sources"]})
             if previous:
@@ -384,7 +387,12 @@ class OrganizationEngine:
                 previous["revision"]+1 if previous else 1, covered[0], covered[-1], encoded(summary), encoded(sources), encoded(covered), "active", None, now))
         for item in candidates:
             fingerprint = digest({"category": item["category"], "text": normalized(item["text"]), "sources": sorted(s["event_id"] for s in item["sources"])})
-            if conn.execute("SELECT 1 FROM candidates WHERE persona_id=? AND fingerprint=?", (task["persona_id"], fingerprint)).fetchone():
+            existing = conn.execute("SELECT * FROM candidates WHERE persona_id=? AND fingerprint=?", (task["persona_id"], fingerprint)).fetchone()
+            if existing:
+                if task['automatic'] == 2 and existing['status'] == 'pending':
+                    conn.execute('UPDATE candidates SET conflicts_json=? WHERE id=?', (encoded(item['conflicts']), existing['id']))
+                    if not item['conflicts']:
+                        self.candidates._accept(conn, dict(existing), 'daily-'+existing['id'])
                 continue
             candidate_id = identifier()
             conn.execute("INSERT INTO candidates VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (candidate_id, task["persona_id"], LOCAL_USER_ID, task["id"], item["category"], item["text"], encoded(item["sources"]), encoded(item["conflicts"]), fingerprint, "pending", None, now))
