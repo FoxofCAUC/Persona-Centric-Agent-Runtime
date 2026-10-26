@@ -82,6 +82,40 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(window.qq_wait_notice.get())
         self.assertTrue(any(w.winfo_class() == "TButton" and w.cget("text") == "保存私聊设置" for w in self.widgets(window)))
 
+    def test_m4_daily_schedule_and_review_controls_are_accessible(self):
+        window = self.window()
+        self.assertIn('organization',window.pages)
+        self.assertTrue(window.daily_enabled.get())
+        self.assertFalse(window.org_reuse.get())
+        labels={w.cget('text') for w in self.widgets(window) if w.winfo_class()=='TButton'}
+        for label in ('立即执行一次全量更新','继续受阻的每日更新','编辑后确认新记忆','保存整理配置','预览整理范围'):
+            self.assertIn(label,labels)
+
+    def test_m4_failed_candidate_save_keeps_text_and_target_version(self):
+        window=self.window()
+        window.org_records['candidates']=[{'id':'candidate','status':'pending'}]
+        window.org_lists['candidates'].insert('end','待审候选')
+        window.org_lists['candidates'].selection_set(0)
+        candidate={'id':'candidate','text':'虚构待审偏好'}
+        with patch.object(window,'run_task') as run, patch.object(window,'text_dialog') as editor:
+            window.review_candidate()
+            callback=run.call_args.kwargs.get('success') or run.call_args.args[3]
+            callback(candidate)
+            self.assertEqual(editor.call_args.args[1],candidate['text'])
+            self.assertEqual(editor.call_args.kwargs['save_label'],'确认生效')
+
+    def test_m4_preview_response_does_not_replace_new_selection(self):
+        window=self.window()
+        window.org_session_rows=[{'id':'session'}]
+        window.org_session_box['values']=['session']
+        window.org_session_box.current(0)
+        with patch.object(window,'run_task') as run:
+            window.preview_organization()
+            callback=run.call_args.args[3]
+            window.org_mode.set('仅候选')
+            callback({'rows':[1]})
+        self.assertIsNone(window.org_preview)
+
     def window(self):
         window = Workbench(self.paths)
         self.windows.append(window)

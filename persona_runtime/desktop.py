@@ -15,6 +15,7 @@ from .lifecycle import ServiceController
 from .models import identifier
 from .reused.logs import LogTail
 from .reused.tasks import TaskHub
+from .desktop_organization import OrganizationUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -55,11 +56,12 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(tk.Tk):
+class Workbench(OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
-                     ("model", "模型", "build_model"), ("diagnostics", "故障排查", "build_diagnostics"))
+                     ("model", "模型", "build_model"), ("organization", "记忆整理", "build_organization"),
+                     ("diagnostics", "故障排查", "build_diagnostics"))
 
     def __init__(self, paths):
         super().__init__()
@@ -95,7 +97,8 @@ class Workbench(tk.Tk):
         self.qq_wait_seconds = tk.StringVar(value="15")
         self.log_source = tk.StringVar(value="service")
         self.log_search = tk.StringVar()
-        self.title("人格工作台 · M3")
+        self.init_organization_vars()
+        self.title("人格工作台 · M4")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -104,6 +107,7 @@ class Workbench(tk.Tk):
         self.after(100, self.tick)
         self.after(300, self.poll)
         self.after(450, self.refresh_conversation)
+        self.after(900, self.poll_organization)
 
     def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None):
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
@@ -189,6 +193,8 @@ class Workbench(tk.Tk):
             self.refresh_personas()
         if key == "diagnostics":
             self.read_logs()
+        if key == "organization":
+            self.refresh_organization()
 
     def build_home(self, parent):
         self.heading(parent, "让人格持续陪伴", "先启动人格服务，即可在窗口聊天。QQ 私聊还需准备组件并填写账号。")
@@ -231,6 +237,7 @@ class Workbench(tk.Tk):
         self.button(bar, "重试最后失败请求", self.retry_chat, {"send"})
         self.button(bar, "找回未确认消息", self.recover_submissions, {"submission-recovery"})
         self.button(bar, "请求队列与详情", self.request_queue, {"request-list"})
+        self.button(bar, "查看本轮记忆使用", self.explain_chat_context, {"org-details"})
 
     def build_persona(self, parent):
         self.heading(parent, "人格与记忆", "正式设定作为全新人格导入，不继承模板期数据。记忆需要明确来源。")
@@ -303,6 +310,7 @@ class Workbench(tk.Tk):
         bar.pack(fill="x")
         self.button(bar, "保存私聊设置", self.save_interaction, {"config"})
         ttk.Label(group, text="连续消息逐条有序处理；窗口继续显示完整回复。取消只作用于未开始的请求，不中断远端模型。", wraplength=650).pack(anchor="w", pady=6)
+        self.build_organization_model(parent)
 
     def build_diagnostics(self, parent):
         self.heading(parent, "故障排查", "正常停止核对归属；强制停止会退出全部 QQ 与相关服务，不核对托管来源。日志仅含元数据。")
@@ -345,6 +353,7 @@ class Workbench(tk.Tk):
         self.allow_queue_cancel.set(settings["cancel_queued"])
         self.qq_wait_notice.set(settings["qq_wait_notice"])
         self.qq_wait_seconds.set(str(settings["qq_wait_seconds"]))
+        self.load_organization_fields(value)
 
     def save_interaction(self):
         try:
@@ -640,6 +649,11 @@ class Workbench(tk.Tk):
                     self.transcript.insert("end", turn["recovery"] + "\n")
                 self.transcript.insert("end", "\n")
             timing = turn.get("timings", {})
+            context = turn.get('context') or {}
+            if context.get('coverage_gap_turns'):
+                self.transcript.insert('end', f"上下文提示：{context['coverage_gap_turns']}轮较早对话未被本次摘要或近期窗口覆盖。\n")
+            if context.get('summary_partial'):
+                self.transcript.insert('end', '上下文提示：摘要因输入预算仅使用部分条目。\n')
             measured = [(label, timing.get(key)) for key, label in (
                 ("queue_seconds", "排队"), ("provider_seconds", "模型"), ("delivery_seconds", "投递"))]
             if any(value is not None for _, value in measured):
