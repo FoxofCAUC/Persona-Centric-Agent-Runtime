@@ -91,11 +91,15 @@ class Workbench(tk.Tk):
         self.after(100, self.tick)
         self.after(300, self.poll)
 
-    def run_task(self, name, resources, action, success=None, quiet=False):
+    def run_task(self, name, resources, action, success=None, quiet=False, urgent=False):
+        if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
+            if not quiet:
+                self.notice.set("强制停止正在执行，请等待完成。")
+            return None
         def failure(error):
             text = ERRORS.get(str(error), str(error))
             self.notice.set(text)
-        operation = self.hub.start(name, resources, lambda cancel: action(cancel), success=success, failure=failure, quiet=quiet)
+        operation = self.hub.start(name, resources, lambda cancel: action(cancel), success=success, failure=failure, quiet=quiet, urgent=urgent)
         if not operation and not quiet:
             self.notice.set("相关操作仍在进行，请等待完成。")
         return operation
@@ -177,6 +181,7 @@ class Workbench(tk.Tk):
         bar.pack(fill="x")
         self.button(bar, "启动服务", lambda: self.run_task("启动服务", {"lifecycle", "config"}, self.controller.start_all), {"lifecycle", "config"}, True)
         self.button(bar, "停止服务", lambda: self.run_task("停止服务", {"lifecycle", "config"}, lambda _: self.controller.stop_all()), {"lifecycle", "config"})
+        self.button(bar, "强制停止全部相关程序", self.force_stop_everything, {"emergency"})
         bar = self.bar(parent)
         bar.pack(fill="x")
         self.button(bar, "只启动人格服务", lambda: self.start_one("service"), {"lifecycle"})
@@ -270,7 +275,7 @@ class Workbench(tk.Tk):
         ttk.Label(parent, text="保存不调用模型；测试会产生一次真实请求并计入限额。默认失败不自动重试。用量缺失时显示未知，不估算费用。", wraplength=700).pack(anchor="w", pady=10)
 
     def build_diagnostics(self, parent):
-        self.heading(parent, "故障排查", "只操作归属已验证的本项目服务。日志仅含元数据。")
+        self.heading(parent, "故障排查", "正常停止核对归属；强制停止会退出全部 QQ 与相关服务，不核对托管来源。日志仅含元数据。")
         for role, label in LABELS.items():
             row = ttk.Frame(parent)
             row.pack(fill="x")
@@ -282,6 +287,7 @@ class Workbench(tk.Tk):
         bar = self.bar(parent)
         bar.pack(fill="x", pady=8)
         self.button(bar, "全部停止（含 QQ）", self.stop_everything, {"lifecycle", "config"})
+        self.button(bar, "强制停止全部相关程序", self.force_stop_everything, {"emergency"})
         self.button(bar, "备份数据库", lambda: self.api_action("data.backup"), {"backup"})
         self.button(bar, "导出当前人格", lambda: self.api_action("data.export"), {"backup"})
         self.button(bar, "备份加密配置", self.backup_config, {"config"})
@@ -320,6 +326,22 @@ class Workbench(tk.Tk):
     def stop_everything(self):
         if messagebox.askyesno("停止本项目 QQ", "正常停止本项目全部服务，包括 QQ 登录进程？"):
             self.run_task("全部停止", {"lifecycle", "config"}, lambda _: self.controller.stop_all(True))
+
+    def force_stop_everything(self):
+        if not messagebox.askyesno("强制停止全部相关程序", "将直接结束全部 QQ（包括普通 QQ）、NapCat，以及人格/TRPG/AstrBot 的相关服务、宿主和其他管理窗口。\n\n不校验由谁启动，不等待请求完成；未保存的工作可能丢失。当前工作台保留。确定执行？"):
+            return
+        for operation in self.hub.active.values():
+            operation.cancel.set()
+        def done(report):
+            self.session_id = None
+            self.last_ready = False
+            if report["success"]:
+                self.status_text.set("相关程序已强制停止。")
+                self.notice.set("强制停止完成；普通 QQ 也已退出。记录：" + report["report_file"])
+            else:
+                remaining = ", ".join(f"{p['name']} (PID {p['pid']})" for p in report["remaining"])
+                self.notice.set("仍有程序未结束：" + remaining + "。查看停止报告；可能需要管理员权限。")
+        self.run_task("强制停止全部相关程序", {"emergency"}, lambda _: self.controller.force_stop_all(), done, urgent=True)
 
     def save_connection(self):
         values = {k: v.get().strip() for k, v in self.qq_vars.items()}
@@ -711,7 +733,7 @@ class Workbench(tk.Tk):
         resources = set().union(*(op.resources for op in active)) if active else set()
         for button, required in self.buttons:
             if button.winfo_exists():
-                button.configure(state="disabled" if required & resources else "normal")
+                button.configure(state="disabled" if required & resources or "emergency" in resources else "normal")
         if any(op.name != "检查状态" for op in active):
             self.progress.start(15)
         else:
@@ -721,6 +743,8 @@ class Workbench(tk.Tk):
     def close_window(self):
         self.closed = True
         self.hub.close()
+        for timer in self.tk.splitlist(self.tk.call("after", "info")):
+            self.tk.call("after", "cancel", timer)
         self.destroy()
 
 

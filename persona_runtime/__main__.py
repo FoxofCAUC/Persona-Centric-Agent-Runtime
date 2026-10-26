@@ -20,7 +20,7 @@ def parser() -> argparse.ArgumentParser:
     groups = root.add_subparsers(dest="group", required=True)
     groups.add_parser("paths")
     groups.add_parser("init-storage")
-    for name in ("serve", "prepare", "gui"):
+    for name in ("serve", "prepare", "gui", "force-stop"):
         groups.add_parser(name)
     commands = {
         "db": ("init", "status"),
@@ -69,6 +69,12 @@ def parser() -> argparse.ArgumentParser:
 
 
 def dispatch(args, paths: RuntimePaths):
+    if args.group == "force-stop":
+        from .emergency import force_stop_related
+        report = force_stop_related(paths)
+        if not report["success"]:
+            raise RuntimeErrorBase("相关进程未完全停止，报告：" + report["report_file"])
+        return report
     if args.group == "serve":
         import asyncio
         from .server import serve

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import threading
 import time
 from typing import Protocol
 
@@ -83,6 +84,8 @@ class ServiceController:
         self.client = LocalClient(self.config)
         self.notify = notify
         self.processes = {}
+        self.stop_generation = 0
+        self.force_stopping = threading.Event()
         self.adapters = {role: ManagedService(self, role) for role in ("service", "astrbot", "napcat")}
 
     def record_path(self, role):
@@ -137,6 +140,9 @@ class ServiceController:
         return result | {"state": "等待验证"}
 
     def start(self, role):
+        if self.force_stopping.is_set():
+            raise RuntimeErrorBase("强制停止正在执行，不能同时启动服务。")
+        generation = self.stop_generation
         if role not in self.adapters:
             raise RuntimeErrorBase("Unknown service role")
         health = self.health(role)
@@ -165,11 +171,15 @@ class ServiceController:
         if not python.exists():
             raise RuntimeErrorBase("独立运行环境未准备，请先准备组件。")
         self.notify("正在启动：" + role)
+        if generation != self.stop_generation or self.force_stopping.is_set():
+            raise RuntimeErrorBase("启动已被强制停止操作取消。")
         self.processes[role] = subprocess.Popen([str(python), "-B", "-m", "persona_runtime.host", "--role", role,
                           "--instance", cfg["instance_id"]], cwd=REPO, env=child_environment(self.paths),
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
         deadline = time.monotonic()+60
         while time.monotonic() < deadline:
+            if generation != self.stop_generation:
+                raise RuntimeErrorBase("启动已被强制停止操作取消。")
             time.sleep(.5)
             state = self.health(role)
             if state["state"] == "运行":
@@ -177,7 +187,10 @@ class ServiceController:
         raise RuntimeErrorBase("启动未完成；请检查组件、端口或 QQ 登录，已启动的进程保留供诊断。")
 
     def start_all(self, cancel=None):
+        generation = self.stop_generation
         for role in ("service", "astrbot", "napcat"):
+            if generation != self.stop_generation:
+                raise RuntimeErrorBase("后续启动步骤已被强制停止操作取消。")
             if cancel and cancel.is_set():
                 return
             self.start(role)
@@ -228,3 +241,12 @@ class ServiceController:
 
     def snapshot(self):
         return {role: self.health(role) for role in self.adapters}
+
+    def force_stop_all(self):
+        from .emergency import force_stop_related
+        self.force_stopping.set()
+        self.stop_generation += 1
+        try:
+            return force_stop_related(self.paths, self.notify)
+        finally:
+            self.force_stopping.clear()

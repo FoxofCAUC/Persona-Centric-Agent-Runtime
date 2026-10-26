@@ -24,7 +24,7 @@ class TaskHub:
         self.local = threading.local()
         self.closed = False
 
-    def start(self, name, resources, action, success=None, failure=None, quiet=False):
+    def start(self, name, resources, action, success=None, failure=None, quiet=False, urgent=False):
         resources = frozenset(resources)
         if self.closed: return None
         if any(resources & op.resources for op in self.active.values()): return None
@@ -34,7 +34,10 @@ class TaskHub:
             try: self.events.put((op, "success", action(op.cancel), success, quiet))
             except Exception as error: self.events.put((op, "error", error, failure, quiet))
             finally: self.local.operation = None
-        self.pool.submit(work)
+        if urgent:
+            threading.Thread(target=work, daemon=False, name="manager-emergency").start()
+        else:
+            self.pool.submit(work)
         return op
 
     def progress(self, text):

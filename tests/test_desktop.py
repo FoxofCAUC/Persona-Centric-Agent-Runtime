@@ -57,6 +57,19 @@ class DesktopTests(unittest.TestCase):
         with patch.object(controller, "record", return_value=saved), patch("persona_runtime.lifecycle.process_info", return_value={"ProcessId": 123, "Created": "new", "ExecutablePath": "python.exe"}):
             self.assertFalse(controller.owned("service"))
 
+    def test_force_stop_is_available_on_both_pages_and_uses_urgent_lane(self):
+        window = Workbench(self.paths)
+        self.addCleanup(lambda: window.close_window() if not window.closed else None)
+        force_buttons = [button for button, _ in window.buttons if button.cget("text") == "强制停止全部相关程序"]
+        self.assertEqual(len(force_buttons), 2)
+        with patch("persona_runtime.desktop.messagebox.askyesno", return_value=True), patch.object(window, "run_task") as task:
+            window.force_stop_everything()
+            self.assertTrue(task.call_args.kwargs["urgent"])
+            self.assertEqual(task.call_args.args[1], {"emergency"})
+            with patch.object(window.controller, "force_stop_all", return_value={"success": True}) as force:
+                task.call_args.args[2](None)
+                force.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
