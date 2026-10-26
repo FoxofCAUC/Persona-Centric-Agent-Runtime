@@ -663,16 +663,15 @@ class Workbench(tk.Tk):
 
     def open_panel(self, role):
         def action(_):
-            state = self.controller.health(role)
-            if state["state"] != "运行" or not state["owned"]:
-                raise ValueError("尚未验证此页面属于本项目，请先启动并检查状态。")
-            cfg = self.config.load()
-            if role == "napcat":
-                from urllib.parse import quote
-                web_config = json.loads((self.paths.home / "components/napcat/config/webui.json").read_text(encoding="utf-8-sig"))
-                return f"http://127.0.0.1:{cfg['napcat_port']}/webui/?token=" + quote(web_config["token"], safe="")
-            return f"http://127.0.0.1:{cfg['astrbot_port']}"
-        self.run_task("核对管理页面", {"panel"}, action, lambda url: webbrowser.open(url))
+            url = self.controller.management_url(role)
+            try:
+                opened = webbrowser.open(url)
+            except Exception:
+                raise ValueError("无法启动默认浏览器，请检查 Windows 的默认浏览器设置。") from None
+            if not opened:
+                raise ValueError("默认浏览器未接受打开请求，请检查 Windows 的默认浏览器设置。")
+        self.run_task("打开管理页面", {"panel"}, action,
+                      lambda _: self.notice.set("已请求默认浏览器打开管理页。"))
 
     def read_logs(self):
         source, query = self.log_source.get(), self.log_search.get()

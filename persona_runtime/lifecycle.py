@@ -139,6 +139,34 @@ class ServiceController:
                 return result | {"state": "运行", "web_ready": True}
         return result | {"state": "等待验证"}
 
+    def management_url(self, role):
+        """Dashboard access does not depend on QQ/plugin heartbeat health."""
+        if role not in ("astrbot", "napcat"):
+            raise ValueError("此服务没有管理页面。")
+        if not self.owned(role):
+            raise ValueError("尚未验证此页面属于本项目，请先启动对应服务。")
+        cfg = self.config.load()
+        saved = self.record(role) or {}
+        expected = saved.get("host" if role == "astrbot" else "qq_listener")
+        actual = listener(cfg[role + "_port"])
+        if not actual:
+            raise ValueError("管理页面尚未监听，请等待启动完成后重试。")
+        if not expected or any(actual.get(key) != expected.get(key)
+                               for key in ("ProcessId", "Created", "ExecutablePath")):
+            raise ValueError("管理页面端口由其他进程占用，拒绝打开。")
+        url = f"http://127.0.0.1:{cfg[role + '_port']}"
+        if role == "napcat":
+            from urllib.parse import quote
+            try:
+                web_config = json.loads((self.paths.home / "components/napcat/config/webui.json").read_text(encoding="utf-8-sig"))
+                token = web_config["token"]
+                if not isinstance(token, str) or not token:
+                    raise ValueError
+            except (OSError, ValueError, KeyError, TypeError):
+                raise ValueError("无法读取本项目 QQ 管理页凭据，请检查连接配置。") from None
+            url += "/webui/?token=" + quote(token, safe="")
+        return url
+
     def start(self, role):
         if self.force_stopping.is_set():
             raise RuntimeErrorBase("强制停止正在执行，不能同时启动服务。")

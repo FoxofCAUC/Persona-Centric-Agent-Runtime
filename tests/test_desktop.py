@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from persona_runtime.desktop import Workbench
 from persona_runtime.paths import RuntimePaths
@@ -56,6 +56,45 @@ class DesktopTests(unittest.TestCase):
         saved = {"instance_id": controller.config.load()["instance_id"], "host": {"ProcessId": 123, "Created": "old", "ExecutablePath": "python.exe"}}
         with patch.object(controller, "record", return_value=saved), patch("persona_runtime.lifecycle.process_info", return_value={"ProcessId": 123, "Created": "new", "ExecutablePath": "python.exe"}):
             self.assertFalse(controller.owned("service"))
+
+    def test_dashboard_opens_with_stale_bridge_heartbeat_but_checks_listener(self):
+        from persona_runtime.config import ConfigStore
+        ConfigStore(self.paths).initialize()
+        controller = ServiceController(self.paths)
+        identity = {"ProcessId": 123, "Created": "current", "ExecutablePath": "python.exe"}
+        with patch.object(controller, "owned", return_value=True), \
+             patch.object(controller, "record", return_value={"host": identity}), \
+             patch.object(controller, "health", return_value={"state": "等待验证", "owned": True}) as health, \
+             patch("persona_runtime.lifecycle.listener", return_value=identity) as listening:
+            self.assertEqual(controller.management_url("astrbot"), "http://127.0.0.1:6285")
+            health.assert_not_called()
+            listening.return_value = identity | {"Created": "reused-pid"}
+            with self.assertRaisesRegex(ValueError, "其他进程"):
+                controller.management_url("astrbot")
+            listening.return_value = None
+            with self.assertRaisesRegex(ValueError, "尚未监听"):
+                controller.management_url("astrbot")
+        with patch.object(controller, "owned", return_value=False), \
+             patch("persona_runtime.lifecycle.listener") as listening:
+            with self.assertRaisesRegex(ValueError, "属于本项目"):
+                controller.management_url("astrbot")
+            listening.assert_not_called()
+
+    def test_management_button_reports_browser_failure_and_runs_in_worker(self):
+        window = Mock()
+        window.controller.management_url.return_value = "http://127.0.0.1:6285"
+        Workbench.open_panel(window, "astrbot")
+        action = window.run_task.call_args.args[2]
+        with patch("persona_runtime.desktop.webbrowser.open", return_value=True) as browser:
+            action(None)
+            browser.assert_called_once_with("http://127.0.0.1:6285")
+        with patch("persona_runtime.desktop.webbrowser.open", return_value=False):
+            with self.assertRaisesRegex(ValueError, "未接受"):
+                action(None)
+        with patch("persona_runtime.desktop.webbrowser.open", side_effect=OSError("sensitive detail")):
+            with self.assertRaisesRegex(ValueError, "无法启动默认浏览器") as error:
+                action(None)
+            self.assertNotIn("sensitive", str(error.exception))
 
     def test_force_stop_is_available_on_both_pages_and_uses_urgent_lane(self):
         window = Workbench(self.paths)
