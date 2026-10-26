@@ -15,6 +15,7 @@ from .models import PersonaSpec, RuntimeErrorBase, generic_persona, identifier
 from .paths import RuntimePaths
 from .storage import SCHEMA_VERSION, Store
 from .submissions import SubmissionJournal
+from .organization import OrganizationEngine
 
 
 def create_app(paths, client=None):
@@ -24,6 +25,8 @@ def create_app(paths, client=None):
     store.initialize()
     engine = ChatEngine(store, config, client)
     engine.recover()
+    organization = OrganizationEngine(store, config, engine.client, engine)
+    organization.recover()
     admin, bridge = config.token(), config.token("bridge")
 
     @web.middleware
@@ -52,6 +55,7 @@ def create_app(paths, client=None):
 
     app = web.Application(middlewares=[guard], client_max_size=256*1024)
     app["engine"], app["config"], app["store"] = engine, config, store
+    app["organization"] = organization
     app["stop"] = asyncio.Event()
 
     async def body(request):
@@ -71,7 +75,8 @@ def create_app(paths, client=None):
     async def health(request):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
-                                  "pending": len(engine.tasks)})
+                                  "pending": len(engine.tasks), "background_running": organization.running,
+                                  "version": "0.4.0"})
 
     async def chat(request):
         value = await body(request)
@@ -144,7 +149,9 @@ def create_app(paths, client=None):
         old = config.load()
         if any(k in value and value[k] != old[k] for k in ("service_port", "astrbot_port", "onebot_port", "napcat_port", "owner_qq", "bot_qq")):
             raise RuntimeErrorBase("Stop services before changing QQ or port configuration")
-        return web.json_response(config.update(value))
+        result = config.update(value)
+        organization.schedule.pause_changed_models()
+        return web.json_response(result)
 
     async def model_test(request):
         # Only saved configuration is tested. All calls are durable and quota counted.
@@ -154,6 +161,27 @@ def create_app(paths, client=None):
         value = await body(request)
         action, args = value["action"], value.get("args", {})
         service = engine.service
+        if not isinstance(args, dict):
+            raise RuntimeErrorBase("JSON object required")
+        organization_handlers = {
+            "organization.preview": organization.preview,
+            "organization.submit": lambda preview, request_id: organization.submit(preview, request_id),
+            "organization.list": organization.list, "organization.show": organization.show,
+            "organization.sessions": organization.sessions,
+            "organization.retry": organization.retry, "organization.cancel": organization.cancel,
+            "organization.skip": organization.skip, "organization.status": organization.schedule.status,
+            "organization.automatic": organization.schedule.set_automatic,
+            "organization.daily-resume": organization.schedule.resume_daily,
+            "organization.daily-run-now": organization.schedule.run_daily_now,
+            "organization.model-test": organization.test_model,
+            "summary.list": organization.summaries.list, "summary.show": organization.summaries.show,
+            "summary.disable": organization.summaries.disable,
+            "candidate.list": organization.candidates.list, "candidate.show": organization.candidates.show,
+            "candidate.accept": organization.candidates.accept, "candidate.reject": organization.candidates.reject,
+            "recall.explain": organization.explain,
+        }
+        if action in organization_handlers:
+            return web.json_response(organization_handlers[action](**args))
         if action in ("inbox.check", "inbox.submit"):
             journal = SubmissionJournal(paths, "qq")
             cfg = config.load()
@@ -204,7 +232,10 @@ def create_app(paths, client=None):
         if operation not in ("drain", "stop", "resume"):
             raise web.HTTPNotFound()
         engine.draining = operation != "resume"
+        if operation == "resume":
+            organization.draining = False
         if operation == "stop":
+            await organization.drain()
             await engine.wait()
             app["stop"].set()
         return web.json_response({"draining": engine.draining, "pending": len(engine.tasks)})
@@ -224,8 +255,17 @@ def create_app(paths, client=None):
     app.router.add_post("/v1/manage", manage)
     app.router.add_post("/v1/control/{operation}", control)
 
+    async def startup(_):
+        app["organization_worker"] = asyncio.create_task(organization.worker())
+    app.on_startup.append(startup)
+
     async def cleanup(_):
         engine.draining = True
+        await organization.drain()
+        worker = app.get("organization_worker")
+        if worker:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
         await engine.wait()
     app.on_cleanup.append(cleanup)
     return app

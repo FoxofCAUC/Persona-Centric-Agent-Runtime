@@ -249,7 +249,7 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("cancelled_at", [r[1] for r in failed.execute("PRAGMA table_info(turns)")])
         failed.close()
         legacy.initialize()
-        self.assertEqual(legacy.status()["schema_version"], 4)
+        self.assertEqual(legacy.status()["schema_version"], 5)
         with legacy.connection() as migrated:
             self.assertEqual(migrated.execute("SELECT value FROM settings").fetchone()[0], "legacy-persona")
         self.assertTrue(list((legacy.paths.home / "backups").glob("before-m3-*.sqlite3")))
