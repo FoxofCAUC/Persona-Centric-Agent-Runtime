@@ -15,6 +15,10 @@ DEFAULTS = {
     "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
               "max_tokens": 1024, "hourly_limit": 30, "max_input_chars": 24000},
     "interaction": {"cancel_queued": False, "qq_wait_notice": False, "qq_wait_seconds": 15},
+    "organization": {"reuse_chat": False, "hourly_limit": 6, "daily_limit": 20,
+                     "daily_enabled": True,
+                     "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
+                               "max_tokens": 2048, "hourly_limit": 6, "max_input_chars": 24000}},
 }
 
 
@@ -45,6 +49,7 @@ class ConfigStore:
     def load(self):
         value = json.loads(self.file.read_text(encoding="utf-8"))
         value.setdefault("interaction", copy.deepcopy(DEFAULTS["interaction"]))
+        value.setdefault("organization", copy.deepcopy(DEFAULTS["organization"]))
         self.validate(value)
         return value
 
@@ -82,17 +87,37 @@ class ConfigStore:
             raise RuntimeErrorBase("Interaction flags must be boolean")
         if type(interaction["qq_wait_seconds"]) is not int or not 5 <= interaction["qq_wait_seconds"] <= 120:
             raise RuntimeErrorBase("QQ wait notice interval must be 5 to 120 seconds")
+        org = value["organization"]
+        if not isinstance(org, dict) or set(org) != set(DEFAULTS["organization"]) or any(type(org[k]) is not bool for k in ("reuse_chat", "daily_enabled")):
+            raise RuntimeErrorBase("Invalid organization configuration")
+        for field in ("hourly_limit", "daily_limit"):
+            if type(org[field]) is not int or not 1 <= org[field] <= 10000:
+                raise RuntimeErrorBase("Invalid organization budget")
+        # Reuse the endpoint and numeric validation without recursive organization validation.
+        background = org["model"]
+        if not isinstance(background, dict) or set(background) != set(DEFAULTS["model"]):
+            raise RuntimeErrorBase("Invalid organization model")
+        url = urlsplit(background["base_url"])
+        if background["base_url"] and (url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.query or url.fragment
+                or (url.scheme == "http" and url.hostname not in ("localhost", "127.0.0.1", "::1"))):
+            raise RuntimeErrorBase("Invalid organization endpoint")
+        if not isinstance(background["name"], str) or not isinstance(background["encrypted_key"], str):
+            raise RuntimeErrorBase("Invalid organization model text")
+        for field, low, high in (("timeout", 1, 300), ("max_tokens", 1, 32768), ("hourly_limit", 1, 10000), ("max_input_chars", 1000, 200000)):
+            if type(background[field]) is not int or not low <= background[field] <= high:
+                raise RuntimeErrorBase("Invalid organization model limit")
 
     def public(self):
         value = self.load()
         value.pop("admin_token")
         value.pop("bridge_token")
         value["model"]["has_key"] = bool(value["model"].pop("encrypted_key"))
+        value["organization"]["model"]["has_key"] = bool(value["organization"]["model"].pop("encrypted_key"))
         return value
 
     def update(self, changes):
         value = self.load()
-        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction"}
+        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization"}
         if not isinstance(changes, dict) or not set(changes) <= allowed:
             raise RuntimeErrorBase("Unknown configuration field")
         for key, change in changes.items():
@@ -108,6 +133,21 @@ class ConfigStore:
                         raise RuntimeErrorBase("API key must be text")
                     value["model"]["encrypted_key"] = protect(key_value) if key_value else ""
                 value["model"].update(change)
+            elif key == "organization":
+                if not isinstance(change, dict) or not set(change) <= set(DEFAULTS["organization"]):
+                    raise RuntimeErrorBase("Unknown organization field")
+                change = copy.deepcopy(change)
+                model = change.pop("model", None)
+                value[key].update(change)
+                if model is not None:
+                    if not isinstance(model, dict) or not set(model) <= (set(DEFAULTS["model"])-{"encrypted_key"}) | {"api_key"}:
+                        raise RuntimeErrorBase("Unknown organization model field")
+                    if "api_key" in model:
+                        secret = model.pop("api_key")
+                        if not isinstance(secret, str):
+                            raise RuntimeErrorBase("API key must be text")
+                        value[key]["model"]["encrypted_key"] = protect(secret) if secret else ""
+                    value[key]["model"].update(model)
             elif key == "interaction":
                 if not isinstance(change, dict) or not set(change) <= set(DEFAULTS["interaction"]):
                     raise RuntimeErrorBase("Unknown interaction configuration field")

@@ -7,6 +7,7 @@ import sqlite3
 from .models import (CATEGORIES, LOCAL_USER_ID, ROLES, PersonaSpec, RuntimeErrorBase,
                      identifier, require_text, timestamp)
 from .storage import Store
+from .memory_policy import exclude_memory
 
 
 class RuntimeService:
@@ -146,6 +147,7 @@ class RuntimeService:
             persona_id = self._persona(conn)["id"]
             result = self._owned(conn, "memories", memory_id, persona_id)
             result["source"] = self._owned(conn, "events", result["source_event_id"], persona_id)
+            result["sources"] = [dict(r) for r in conn.execute("SELECT * FROM memory_sources WHERE memory_id=?", (memory_id,))]
             result["history"] = []
             for row in conn.execute(
                 "SELECT * FROM memories WHERE root_id=? AND persona_id=? AND user_id=? ORDER BY revision",
@@ -164,12 +166,15 @@ class RuntimeService:
                 raise RuntimeErrorBase("Only the active memory revision can be revised")
             source = old["source_event_id"] if source_event_id is None else source_event_id
             self._owned(conn, "events", source, persona_id)
+            exclude_memory(conn, old, "memory_revised")
             now = timestamp()
             conn.execute("UPDATE memories SET status='superseded', updated_at=? WHERE id=?", (now, memory_id))
             new_id = identifier()
             conn.execute("INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                          (new_id, persona_id, LOCAL_USER_ID, old["category"], text, source,
                           old["root_id"], old["id"], old["revision"] + 1, "active", now, now))
+            if source_event_id is None:
+                conn.execute("INSERT INTO memory_sources SELECT ?,event_id,quote FROM memory_sources WHERE memory_id=?", (new_id, old["id"]))
             return self._owned(conn, "memories", new_id, persona_id)
 
     def retract_memory(self, memory_id: str) -> dict:
@@ -178,6 +183,7 @@ class RuntimeService:
             old = self._owned(conn, "memories", memory_id, persona_id)
             if old["status"] != "active":
                 raise RuntimeErrorBase("Only the active memory revision can be retracted")
+            exclude_memory(conn, old, "memory_retracted")
             conn.execute("UPDATE memories SET status='retracted', updated_at=? WHERE id=?",
                          (timestamp(), memory_id))
             return self._owned(conn, "memories", memory_id, persona_id)
@@ -194,13 +200,16 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 1, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 2, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
                 payload[table] = [dict(r) for r in conn.execute(
                     f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY {order}",
                     (persona["id"], LOCAL_USER_ID))]
+            for table in ("summaries", "candidates", "candidate_reviews", "source_exclusions", "organization_progress", "automation", "context_uses"):
+                payload[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid", (persona["id"], LOCAL_USER_ID))]
+            payload["memory_sources"] = [dict(r) for r in conn.execute("SELECT s.* FROM memory_sources s JOIN memories m ON m.id=s.memory_id WHERE m.persona_id=? AND m.user_id=?", (persona["id"], LOCAL_USER_ID))]
         path = self._output_path("exports", name, ".json")
         created = False
         try:
