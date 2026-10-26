@@ -91,15 +91,17 @@ class Workbench(tk.Tk):
         self.after(100, self.tick)
         self.after(300, self.poll)
 
-    def run_task(self, name, resources, action, success=None, quiet=False, urgent=False):
+    def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None):
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
             if not quiet:
                 self.notice.set("强制停止正在执行，请等待完成。")
             return None
-        def failure(error):
+        def report_failure(error):
             text = ERRORS.get(str(error), str(error))
             self.notice.set(text)
-        operation = self.hub.start(name, resources, lambda cancel: action(cancel), success=success, failure=failure, quiet=quiet, urgent=urgent)
+            if failure:
+                failure(error)
+        operation = self.hub.start(name, resources, lambda cancel: action(cancel), success=success, failure=report_failure, quiet=quiet, urgent=urgent)
         if not operation and not quiet:
             self.notice.set("相关操作仍在进行，请等待完成。")
         return operation
@@ -427,38 +429,121 @@ class Workbench(tk.Tk):
             self.search_memory()
         self.run_task("切换人格", {"persona", "chat"}, lambda _: self.client.manage("persona.use", persona_id=persona_id), done)
 
-    def show_json(self, title, value):
+    def dialog_shell(self, title, size=(620, 330), minimum=(420, 240)):
+        """Reserve a non-shrinking action row; only the content row expands."""
         dialog = tk.Toplevel(self)
         dialog.title(title)
-        dialog.geometry("760x540")
-        box = scrolledtext.ScrolledText(dialog, wrap="word")
-        box.pack(fill="both", expand=True, padx=12, pady=12)
+        dialog.transient(self)
+        width = min(size[0], max(minimum[0], self.winfo_screenwidth()-80))
+        height = min(size[1], max(minimum[1], self.winfo_screenheight()-140))
+        dialog.geometry(f"{width}x{height}")
+        dialog.minsize(minimum[0], minimum[1])
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(0, weight=1)
+        body = ttk.Frame(dialog, padding=(12, 12, 12, 0))
+        body.grid(row=0, column=0, sticky="nsew")
+        body.columnconfigure(0, weight=1)
+        footer = ttk.Frame(dialog, padding=12)
+        footer.grid(row=1, column=0, sticky="ew")
+        footer.columnconfigure(0, weight=1)
+        return dialog, body, footer
+
+    def show_json(self, title, value):
+        dialog, body, footer = self.dialog_shell(title, (760, 540))
+        body.rowconfigure(0, weight=1)
+        box = scrolledtext.ScrolledText(body, wrap="word", width=1, height=1)
+        box.grid(row=0, column=0, sticky="nsew")
         box.insert("1.0", json.dumps(value, ensure_ascii=False, indent=2))
         box.configure(state="disabled")
+        ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=1)
 
     def show_persona(self):
         row = self.selected_persona()
         if row:
             self.run_task("读取设定", {"persona-read"}, lambda _: self.client.manage("persona.show", persona_id=row["id"]), lambda value: self.show_json("人格设定", value))
 
-    def text_dialog(self, title, initial, callback):
-        dialog = tk.Toplevel(self)
-        dialog.title(title)
-        dialog.geometry("620x330")
-        box = scrolledtext.ScrolledText(dialog, wrap="word")
-        box.pack(fill="both", expand=True, padx=12, pady=12)
+    def text_dialog(self, title, initial, action, *, resources=("management",), on_saved=None,
+                    save_label="保存", categories=None):
+        """Keep edits until a confirmed backend success, including after a failed save."""
+        dialog, body, footer = self.dialog_shell(title)
+        category = None
+        text_row = 0
+        if categories:
+            category = ttk.Combobox(body, values=categories, state="readonly", width=1)
+            category.current(0)
+            category.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+            text_row = 1
+        body.rowconfigure(text_row, weight=1)
+        box = scrolledtext.ScrolledText(body, wrap="word", width=1, height=1)
+        box.grid(row=text_row, column=0, sticky="nsew")
         box.insert("1.0", initial)
-        def save():
-            value = box.get("1.0", "end-1c")
-            if value.strip():
-                callback(value)
+        status = tk.StringVar(value="点击保存才会写入；Ctrl+Enter 也可保存。")
+        status_label = ttk.Label(footer, textvariable=status, wraplength=380)
+        status_label.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        footer.bind("<Configure>", lambda event: status_label.configure(wraplength=max(180, event.width-24)))
+        saving = False
+
+        def close():
+            if saving:
+                status.set("正在保存，请等待结果后再关闭。")
+                return
+            if box.get("1.0", "end-1c") != initial and not messagebox.askyesno(
+                    "放弃未保存内容", "内容尚未保存。确定放弃并关闭？", parent=dialog):
+                return
+            dialog.destroy()
+
+        def set_busy(busy):
+            nonlocal saving
+            saving = busy
+            box.configure(state="disabled" if busy else "normal")
+            save_button.configure(state="disabled" if busy else "normal")
+            cancel_button.configure(state="disabled" if busy else "normal")
+            if category:
+                category.configure(state="disabled" if busy else "readonly")
+
+        def failed(error):
+            if dialog.winfo_exists():
+                set_busy(False)
+                status.set("保存失败，内容已保留：" + ERRORS.get(str(error), str(error)))
+
+        def completed(result):
+            if dialog.winfo_exists():
                 dialog.destroy()
-        ttk.Button(dialog, text="保存", command=save).pack(pady=8)
+            self.notice.set(title + "：已保存。")
+            if on_saved:
+                on_saved(result)
+
+        def save(_=None):
+            if saving:
+                return "break"
+            value = box.get("1.0", "end-1c")
+            if not value.strip():
+                status.set("内容不能为空，请填写后保存。")
+                return "break"
+            selected_category = category.get() if category else None
+            set_busy(True)
+            status.set("正在保存…")
+            operation = self.run_task("保存" + title, set(resources),
+                lambda _: action(value, selected_category) if category else action(value),
+                completed, failure=failed)
+            if operation is None:
+                set_busy(False)
+                status.set("相关操作仍在进行，内容已保留，请稍后再保存。")
+            return "break"
+
+        cancel_button = ttk.Button(footer, text="取消", command=close)
+        cancel_button.grid(row=1, column=1, padx=(0, 8))
+        save_button = ttk.Button(footer, text=save_label, command=save, style="Primary.TButton")
+        save_button.grid(row=1, column=2)
+        dialog.protocol("WM_DELETE_WINDOW", close)
+        dialog.bind("<Control-Return>", save)
+        box.focus_set()
+        return dialog
 
     def edit_relationship(self):
         self.run_task("读取关系", {"persona-read"}, lambda _: self.client.manage("relationship.show"),
                       lambda value: self.text_dialog("关系说明", value["description"] if value else "",
-                          lambda text: self.api_action("relationship.set", description=text)))
+                          lambda text: self.client.manage("relationship.set", description=text)))
 
     def load_chat(self, fresh=False, session_id=None):
         if fresh or (session_id and session_id != self.session_id):
@@ -477,17 +562,18 @@ class Workbench(tk.Tk):
 
     def choose_session(self):
         def done(rows):
-            dialog = tk.Toplevel(self)
-            dialog.title("选择已有私聊会话")
-            listing = tk.Listbox(dialog, width=80, height=12)
-            listing.pack(padx=12, pady=12)
+            dialog, body, footer = self.dialog_shell("选择已有私聊会话", (780, 420))
+            body.rowconfigure(0, weight=1)
+            listing = tk.Listbox(body, width=1, height=1)
+            listing.grid(row=0, column=0, sticky="nsew")
             for row in rows:
                 listing.insert("end", row["created_at"] + " · " + row["id"])
             def select():
                 if listing.curselection():
                     self.load_chat(session_id=rows[listing.curselection()[0]]["id"])
                     dialog.destroy()
-            ttk.Button(dialog, text="载入窗口会话", command=select).pack(pady=8)
+            ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=1, padx=(0, 8))
+            ttk.Button(footer, text="载入窗口会话", command=select).grid(row=0, column=2)
         self.run_task("读取会话列表", {"chat"}, lambda _: self.client.manage("chat.sessions"), done)
 
     def render_chat(self):
@@ -539,10 +625,10 @@ class Workbench(tk.Tk):
 
     def pending_requests(self):
         def done(rows):
-            dialog = tk.Toplevel(self)
-            dialog.title("QQ 待处理请求")
-            listing = tk.Listbox(dialog, width=100, height=12)
-            listing.pack(padx=12, pady=12)
+            dialog, body, footer = self.dialog_shell("QQ 待处理请求", (860, 430), (560, 240))
+            body.rowconfigure(0, weight=1)
+            listing = tk.Listbox(body, width=1, height=1)
+            listing.grid(row=0, column=0, sticky="nsew")
             for row in rows:
                 listing.insert("end", row["turn_id"] + " · " + row["status"] + " · 投递 " + row["state"])
             def selected():
@@ -558,8 +644,9 @@ class Workbench(tk.Tk):
                     self.run_task("手动重试 QQ 请求", {"send"}, lambda _: self.client.call("POST", f"/v1/requests/{row['turn_id']}/retry", {}),
                                   lambda _: self.notice.set("已提交重试。插件会投递生成完成且尚未发送的回复；不确定投递不会自动补发。"))
                     dialog.destroy()
-            ttk.Button(dialog, text="查看详情", command=details).pack(pady=5)
-            ttk.Button(dialog, text="重试失败生成（可能计费）", command=retry).pack(pady=5)
+            ttk.Button(footer, text="查看详情", command=details).grid(row=0, column=1, padx=(0, 8))
+            ttk.Button(footer, text="重试失败生成（可能计费）", command=retry).grid(row=1, column=1, pady=(8, 0))
+            ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=2)
         self.run_task("读取 QQ 待处理", {"delivery-read"}, lambda _: self.client.manage("delivery.pending"), done)
 
     def search_memory(self):
@@ -582,21 +669,32 @@ class Workbench(tk.Tk):
 
     def source_dialog(self, callback):
         def done(sessions):
-            dialog = tk.Toplevel(self)
-            dialog.title("选择来源事件")
-            dialog.geometry("780x470")
-            choices = ttk.Combobox(dialog, state="readonly", values=[s["id"] for s in sessions])
-            choices.pack(fill="x", padx=12, pady=8)
-            tree = ttk.Treeview(dialog, columns=("role", "text"), show="headings")
+            dialog, body, footer = self.dialog_shell("选择来源事件", (780, 470), (480, 260))
+            body.rowconfigure(1, weight=1)
+            choices = ttk.Combobox(body, state="readonly", width=1, values=[s["id"] for s in sessions])
+            choices.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+            tree_frame = ttk.Frame(body)
+            tree_frame.grid(row=1, column=0, sticky="nsew")
+            tree_frame.columnconfigure(0, weight=1)
+            tree_frame.rowconfigure(0, weight=1)
+            tree = ttk.Treeview(tree_frame, columns=("role", "text"), show="headings", height=1)
             tree.heading("role", text="发言者")
             tree.heading("text", text="原始文本")
             tree.column("role", width=80, stretch=False)
-            tree.pack(fill="both", expand=True, padx=12)
+            tree.column("text", width=250, minwidth=80)
+            tree.grid(row=0, column=0, sticky="nsew")
+            scroll = ttk.Scrollbar(tree_frame, command=tree.yview)
+            scroll.grid(row=0, column=1, sticky="ns")
+            tree.configure(yscrollcommand=scroll.set)
             def loaded(value):
+                if not dialog.winfo_exists():
+                    return
                 tree.delete(*tree.get_children())
                 for row in value["events"]:
                     tree.insert("", "end", iid=row["id"], values=(row["role"], row["text"]))
             def load(_=None):
+                if not dialog.winfo_exists():
+                    return
                 session_id = choices.get()
                 if session_id:
                     self.run_task("读取来源", {"sources"}, lambda _: self.client.manage("session.show", session_id=session_id), loaded)
@@ -605,15 +703,17 @@ class Workbench(tk.Tk):
                 if tree.selection():
                     callback(tree.selection()[0])
                     dialog.destroy()
-            ttk.Button(dialog, text="选择事件", command=selected).pack(pady=8)
+            ttk.Button(footer, text="选择事件", command=selected).grid(row=0, column=1, padx=(0, 8))
+            ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=2)
             def note():
                 session_id = choices.get()
                 if session_id:
                     self.text_dialog("人工笔记（外部知识请注明出处与获知时间）", "",
-                        lambda text: self.run_task("记录笔记", {"sources"}, lambda _: self.client.manage("event.append", session_id=session_id, role="note", text=text), loaded_note))
+                        lambda text: self.client.manage("event.append", session_id=session_id, role="note", text=text),
+                        resources=("sources",), on_saved=loaded_note)
             def loaded_note(_):
                 load()
-            ttk.Button(dialog, text="在此会话添加人工笔记", command=note).pack(pady=5)
+            ttk.Button(footer, text="在此会话添加人工笔记", command=note).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
             if sessions:
                 choices.current(0)
                 load()
@@ -622,17 +722,10 @@ class Workbench(tk.Tk):
     def add_memory(self):
         from .models import CATEGORIES
         def source_selected(event_id):
-            dialog = tk.Toplevel(self)
-            dialog.title("显式录入记忆")
-            category = ttk.Combobox(dialog, values=CATEGORIES, state="readonly")
-            category.current(0)
-            category.pack(fill="x", padx=12, pady=8)
-            box = scrolledtext.ScrolledText(dialog, width=65, height=9, wrap="word")
-            box.pack(padx=12, pady=8)
-            def save():
-                self.api_action("memory.add", category=category.get(), text=box.get("1.0", "end-1c"), source_event_id=event_id)
-                dialog.destroy()
-            ttk.Button(dialog, text="保存记忆", command=save).pack(pady=8)
+            self.text_dialog("显式录入记忆", "",
+                lambda text, category: self.client.manage("memory.add", category=category, text=text, source_event_id=event_id),
+                resources=("memory",), on_saved=lambda _: self.search_memory(),
+                save_label="保存记忆", categories=CATEGORIES)
         self.source_dialog(source_selected)
 
     def revise_memory(self):
@@ -640,7 +733,8 @@ class Workbench(tk.Tk):
         row = next((m for m in self.memory_rows if m["id"] == memory_id), None)
         if row:
             self.source_dialog(lambda event_id: self.text_dialog("修订记忆（产生新版本）", row["text"],
-                lambda text: self.api_action("memory.revise", memory_id=memory_id, text=text, source_event_id=event_id)))
+                lambda text: self.client.manage("memory.revise", memory_id=memory_id, text=text, source_event_id=event_id),
+                resources=("memory",), on_saved=lambda _: self.search_memory()))
 
     def retract_memory(self):
         memory_id = self.memory_id()
