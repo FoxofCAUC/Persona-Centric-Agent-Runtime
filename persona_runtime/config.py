@@ -14,6 +14,7 @@ DEFAULTS = {
     "astrbot_port": 6285, "onebot_port": 6299, "bot_qq": "", "owner_qq": "",
     "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
               "max_tokens": 1024, "hourly_limit": 30, "max_input_chars": 24000},
+    "interaction": {"cancel_queued": False, "qq_wait_notice": False, "qq_wait_seconds": 15},
 }
 
 
@@ -43,6 +44,7 @@ class ConfigStore:
 
     def load(self):
         value = json.loads(self.file.read_text(encoding="utf-8"))
+        value.setdefault("interaction", copy.deepcopy(DEFAULTS["interaction"]))
         self.validate(value)
         return value
 
@@ -73,6 +75,13 @@ class ConfigStore:
                 raise RuntimeErrorBase(f"Invalid model limit: {key}")
         if not isinstance(model.get("name"), str):
             raise RuntimeErrorBase("Model name must be a string")
+        interaction = value.get("interaction", DEFAULTS["interaction"])
+        if not isinstance(interaction, dict) or set(interaction) != set(DEFAULTS["interaction"]):
+            raise RuntimeErrorBase("Unknown interaction configuration field")
+        if any(type(interaction[key]) is not bool for key in ("cancel_queued", "qq_wait_notice")):
+            raise RuntimeErrorBase("Interaction flags must be boolean")
+        if type(interaction["qq_wait_seconds"]) is not int or not 5 <= interaction["qq_wait_seconds"] <= 120:
+            raise RuntimeErrorBase("QQ wait notice interval must be 5 to 120 seconds")
 
     def public(self):
         value = self.load()
@@ -83,7 +92,7 @@ class ConfigStore:
 
     def update(self, changes):
         value = self.load()
-        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model"}
+        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction"}
         if not isinstance(changes, dict) or not set(changes) <= allowed:
             raise RuntimeErrorBase("Unknown configuration field")
         for key, change in changes.items():
@@ -99,6 +108,10 @@ class ConfigStore:
                         raise RuntimeErrorBase("API key must be text")
                     value["model"]["encrypted_key"] = protect(key_value) if key_value else ""
                 value["model"].update(change)
+            elif key == "interaction":
+                if not isinstance(change, dict) or not set(change) <= set(DEFAULTS["interaction"]):
+                    raise RuntimeErrorBase("Unknown interaction configuration field")
+                value["interaction"].update(change)
             else:
                 value[key] = change
         self.validate(value)

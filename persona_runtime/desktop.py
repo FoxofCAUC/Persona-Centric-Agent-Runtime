@@ -22,6 +22,14 @@ ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重�
           "provider_http_429": "模型提供商限流，请稍后手动重试。", "queue_full": "等待队列已满，请稍后再试。",
           "provider_network_error": "模型网络连接失败。", "context_limit_exceeded": "人格、关系与消息超过输入长度限制。",
           "service_restarted": "请求因服务重启而中断，未自动重试。"}
+ERRORS.update({"only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
+               "queue_cancellation_disabled": "排队取消尚未开启，可在模型页的私聊交互设置中显式开启。",
+               "submission_conflict": "此请求标识已用于其他内容；请先找回原消息，不能覆盖。",
+               "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
+               "request_failed": "本机处理失败，请查看请求详情和诊断记录。"})
+PHASES = {"queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
+          "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
+          "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
 
 
 class ScrollPage(ttk.Frame):
@@ -65,6 +73,8 @@ class Workbench(tk.Tk):
         self.buttons = []
         self.personas = []
         self.session_id = None
+        self.persona_id = None
+        self.chat_version = None
         self.turns = []
         self.selected_request = None
         self.view_epoch = 0
@@ -80,9 +90,12 @@ class Workbench(tk.Tk):
         self.qq_vars = {key: tk.StringVar() for key in ("bot_qq", "owner_qq", "service_port", "napcat_port", "astrbot_port", "onebot_port")}
         self.model_vars = {key: tk.StringVar() for key in ("base_url", "name", "api_key", "timeout", "max_tokens", "hourly_limit", "max_input_chars")}
         self.clear_key = tk.BooleanVar(value=False)
+        self.allow_queue_cancel = tk.BooleanVar(value=False)
+        self.qq_wait_notice = tk.BooleanVar(value=False)
+        self.qq_wait_seconds = tk.StringVar(value="15")
         self.log_source = tk.StringVar(value="service")
         self.log_search = tk.StringVar()
-        self.title("人格工作台 · M2")
+        self.title("人格工作台 · M3")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -90,6 +103,7 @@ class Workbench(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.close_window)
         self.after(100, self.tick)
         self.after(300, self.poll)
+        self.after(450, self.refresh_conversation)
 
     def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None):
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
@@ -215,6 +229,8 @@ class Workbench(tk.Tk):
         bar.pack(fill="x")
         self.button(bar, "发送", self.send_chat, {"send"}, True)
         self.button(bar, "重试最后失败请求", self.retry_chat, {"send"})
+        self.button(bar, "找回未确认消息", self.recover_submissions, {"submission-recovery"})
+        self.button(bar, "请求队列与详情", self.request_queue, {"request-list"})
 
     def build_persona(self, parent):
         self.heading(parent, "人格与记忆", "正式设定作为全新人格导入，不继承模板期数据。记忆需要明确来源。")
@@ -275,6 +291,18 @@ class Workbench(tk.Tk):
         self.button(bar, "保存配置", self.save_model, {"config"}, True)
         self.button(bar, "测试已保存配置", self.test_model, {"model-test"})
         ttk.Label(parent, text="保存不调用模型；测试会产生一次真实请求并计入限额。默认失败不自动重试。用量缺失时显示未知，不估算费用。", wraplength=700).pack(anchor="w", pady=10)
+        group = ttk.LabelFrame(parent, text="私聊交互（默认保持原有行为）", padding=12)
+        group.pack(fill="x", pady=12)
+        ttk.Checkbutton(group, text="允许取消尚未开始生成的排队消息", variable=self.allow_queue_cancel).pack(anchor="w", pady=4)
+        ttk.Checkbutton(group, text="QQ 等待时发送一次服务提示（不调用模型）", variable=self.qq_wait_notice).pack(anchor="w", pady=4)
+        row = ttk.Frame(group)
+        row.pack(fill="x", pady=5)
+        ttk.Label(row, text="等待阈值（5–120 秒）：").pack(side="left")
+        ttk.Entry(row, textvariable=self.qq_wait_seconds, width=8).pack(side="left")
+        bar = self.bar(group)
+        bar.pack(fill="x")
+        self.button(bar, "保存私聊设置", self.save_interaction, {"config"})
+        ttk.Label(group, text="连续消息逐条有序处理；窗口继续显示完整回复。取消只作用于未开始的请求，不中断远端模型。", wraplength=650).pack(anchor="w", pady=6)
 
     def build_diagnostics(self, parent):
         self.heading(parent, "故障排查", "正常停止核对归属；强制停止会退出全部 QQ 与相关服务，不核对托管来源。日志仅含元数据。")
@@ -294,6 +322,7 @@ class Workbench(tk.Tk):
         self.button(bar, "导出当前人格", lambda: self.api_action("data.export"), {"backup"})
         self.button(bar, "备份加密配置", self.backup_config, {"config"})
         self.button(bar, "查看 QQ 待处理请求", self.pending_requests, {"delivery-read"})
+        self.button(bar, "QQ 未确认接收", self.recover_qq_inbox, {"inbox-read"})
         row = ttk.Frame(parent)
         row.pack(fill="x")
         ttk.Combobox(row, textvariable=self.log_source, values=list(LABELS), state="readonly", width=12).pack(side="left")
@@ -312,6 +341,20 @@ class Workbench(tk.Tk):
             if key != "api_key":
                 var.set(str(value["model"][key]))
         self.key_status.set("已保存密钥（Windows 加密保护）" if value["model"]["has_key"] else "尚未保存密钥")
+        settings = value["interaction"]
+        self.allow_queue_cancel.set(settings["cancel_queued"])
+        self.qq_wait_notice.set(settings["qq_wait_notice"])
+        self.qq_wait_seconds.set(str(settings["qq_wait_seconds"]))
+
+    def save_interaction(self):
+        try:
+            seconds = int(self.qq_wait_seconds.get())
+        except ValueError:
+            self.notice.set("等待阈值须为 5–120 的整数秒。")
+            return
+        value = {"cancel_queued": self.allow_queue_cancel.get(), "qq_wait_notice": self.qq_wait_notice.get(), "qq_wait_seconds": seconds}
+        self.run_task("保存私聊设置", {"config"}, lambda _: self.config.update({"interaction": value}),
+                      lambda _: self.notice.set("私聊设置已保存；未调用模型。"))
 
     def start_one(self, role):
         self.run_task("启动" + LABELS[role], {"lifecycle", "config"}, lambda _: self.controller.start(role))
@@ -556,6 +599,8 @@ class Workbench(tk.Tk):
             if epoch != self.view_epoch:
                 return
             self.session_id = result[0]["session_id"]
+            self.persona_id = result[0]["persona_id"]
+            self.chat_version = None
             self.turns = result[1]
             self.render_chat()
         self.run_task("读取会话", {"chat"}, action, done)
@@ -577,6 +622,7 @@ class Workbench(tk.Tk):
         self.run_task("读取会话列表", {"chat"}, lambda _: self.client.manage("chat.sessions"), done)
 
     def render_chat(self):
+        at_bottom = self.transcript.yview()[1] >= .98
         self.transcript.configure(state="normal")
         self.transcript.delete("1.0", "end")
         for turn in self.turns:
@@ -585,37 +631,151 @@ class Workbench(tk.Tk):
                 self.transcript.insert("end", "人格：" + (turn["reply"] or "") + "\n\n")
                 self.transcript.insert("end", "用量：" + (json.dumps(turn["usage"], ensure_ascii=False) if turn["usage"] else "未知") + "\n\n")
             else:
-                self.transcript.insert("end", "[" + turn["status"] + "] " + ERRORS.get(turn["error_code"], turn["error_code"] or "处理中") + "\n\n")
+                phase = turn.get("phase", turn["status"])
+                label = PHASES.get(phase, phase)
+                if turn.get("queue_position"):
+                    label += " · 当前顺位 " + str(turn["queue_position"])
+                self.transcript.insert("end", "[" + label + "] " + ERRORS.get(turn["error_code"], turn["error_code"] or "") + "\n")
+                if turn.get("recovery"):
+                    self.transcript.insert("end", turn["recovery"] + "\n")
+                self.transcript.insert("end", "\n")
+            timing = turn.get("timings", {})
+            measured = [(label, timing.get(key)) for key, label in (
+                ("queue_seconds", "排队"), ("provider_seconds", "模型"), ("delivery_seconds", "投递"))]
+            if any(value is not None for _, value in measured):
+                self.transcript.insert("end", "耗时：" + " / ".join(f"{label} {value:.2f}s" for label, value in measured if value is not None) + "\n\n")
         self.transcript.configure(state="disabled")
-        self.transcript.see("end")
+        if at_bottom:
+            self.transcript.see("end")
 
     def send_chat(self):
         text = self.chat_input.get("1.0", "end-1c")
         if not text.strip():
             return
         payload = {"channel": "desktop", "text": text, "request_id": identifier()}
+        persona_id = self.persona_id or next((p["id"] for p in self.personas if p["selected"]), None)
+        if not persona_id:
+            self.notice.set("请先选中人格并恢复或新建会话。")
+            return
+        payload["persona_id"] = persona_id
         if self.session_id:
             payload["session_id"] = self.session_id
         epoch = self.view_epoch
         def done(turn):
-            self.chat_input.delete("1.0", "end")
             if epoch != self.view_epoch:
                 self.notice.set("消息已提交给原人格；切回该人格可查看结果。")
                 return
+            # A user may already be typing the next message while HTTP is in flight.
+            if self.chat_input.get("1.0", "end-1c") == text:
+                self.chat_input.delete("1.0", "end")
             self.session_id = turn["session_id"]
             self.selected_request = turn["id"]
             self.load_chat(session_id=self.session_id)
             self.watch_turn(turn, epoch)
-        self.run_task("提交消息", {"send"}, lambda _: self.client.call("POST", "/v1/chat", payload), done)
+        self.run_task("提交消息", {"send"}, lambda _: self.client.submit(payload), done)
+
+    def refresh_conversation(self):
+        """Fast conversation refresh is independent of slow OS/service polling."""
+        if self.closed:
+            return
+        session_id, epoch = self.session_id, self.view_epoch
+        if session_id and self.current_page == "chat":
+            version = self.chat_version
+            def done(snapshot):
+                if epoch == self.view_epoch and session_id == self.session_id:
+                    self.chat_version = snapshot["version"]
+                    if snapshot["turns"] is not None and snapshot["turns"] != self.turns:
+                        self.turns = snapshot["turns"]
+                        self.render_chat()
+            self.run_task("更新对话", {"conversation-refresh"}, lambda _: self.client.manage("chat.snapshot", session_id=session_id, version=version), done, quiet=True)
+        self.after(500, self.refresh_conversation)
+
+    def recover_submissions(self):
+        def done(rows):
+            dialog, body, footer = self.dialog_shell("本机未确认消息", (800, 440))
+            body.rowconfigure(0, weight=1)
+            listing = tk.Listbox(body, width=1, height=1)
+            listing.grid(row=0, column=0, sticky="nsew")
+            for row in rows:
+                turn = row["turn"]
+                listing.insert("end", ("已受理：" + PHASES.get(turn.get("phase"), turn["status"]) if turn else "未查到受理记录") + " · " + row["payload"]["text"][:70])
+            def select():
+                return rows[listing.curselection()[0]] if listing.curselection() else None
+            def details():
+                row = select()
+                if row:
+                    self.show_json("本机消息与受理结果", row)
+            def resubmit():
+                row = select()
+                if row and row["turn"] is None:
+                    self.run_task("按原标识重新提交", {"send"}, lambda _: self.client.submit(row["payload"]),
+                                  lambda value: self.notice.set("原消息已受理，未创建新请求标识：" + value["id"]))
+                    dialog.destroy()
+            ttk.Button(footer, text="查看详情", command=details).grid(row=0, column=0, padx=5)
+            ttk.Button(footer, text="提交选中未受理消息", command=resubmit).grid(row=0, column=1, padx=5)
+            ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=2)
+            self.notice.set(f"检查 {len(rows)} 条本机记录；已受理消息不会重复调用，未受理需显式提交。")
+        self.run_task("找回未确认消息", {"submission-recovery"}, lambda _: self.client.reconcile(), done)
+
+    def recover_qq_inbox(self):
+        def done(rows):
+            dialog, body, footer = self.dialog_shell("QQ 未确认接收（不会自动重放）", (820, 450))
+            body.rowconfigure(0, weight=1)
+            listing = tk.Listbox(body, width=1, height=1)
+            listing.grid(row=0, column=0, sticky="nsew")
+            for row in rows:
+                listing.insert("end", ("已找回受理" if row["turn"] else "未查到受理记录") + " · " + row["payload"]["text"][:70])
+            def selected():
+                return rows[listing.curselection()[0]] if listing.curselection() else None
+            def details():
+                row = selected()
+                if row:
+                    self.show_json("QQ 接收与受理状态", row)
+            def submit():
+                row = selected()
+                if row and row["turn"] is None and messagebox.askyesno("重新提交原 QQ 消息", "将按当前选中人格提交这条尚未受理的原消息；可能调用模型并计费。继续？", parent=dialog):
+                    request_id = row["payload"]["request_id"]
+                    self.run_task("提交未受理 QQ 消息", {"send"}, lambda _: self.client.manage("inbox.submit", request_id=request_id),
+                                  lambda _: self.notice.set("已按原消息标识提交；账号目标未改变。"))
+                    dialog.destroy()
+            ttk.Button(footer, text="查看详情", command=details).grid(row=0, column=0, padx=5)
+            ttk.Button(footer, text="按当前人格提交未受理消息", command=submit).grid(row=0, column=1, padx=5)
+            ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=2)
+        self.run_task("核对 QQ 未确认接收", {"inbox-read"}, lambda _: self.client.manage("inbox.check"), done)
+
+    def request_queue(self):
+        def done(rows):
+            dialog, body, footer = self.dialog_shell("请求队列与详情", (820, 470))
+            body.rowconfigure(0, weight=1)
+            listing = tk.Listbox(body, width=1, height=1)
+            listing.grid(row=0, column=0, sticky="nsew")
+            for row in rows:
+                listing.insert("end", PHASES.get(row.get("phase"), row["status"]) + " · " + row["channel"] + " · " + row["id"][:8])
+            def selected():
+                return rows[listing.curselection()[0]] if listing.curselection() else None
+            def details():
+                row = selected()
+                if row:
+                    self.run_task("读取请求详情", {"request-details"}, lambda _: self.client.call("GET", "/v1/requests/"+row["id"]),
+                                  lambda value: self.show_json("请求阶段、耗时与恢复建议", value))
+            def cancel():
+                row = selected()
+                if row:
+                    self.run_task("取消排队消息", {"request-cancel"}, lambda _: self.client.call("POST", f"/v1/requests/{row['id']}/cancel", {}),
+                                  lambda _: self.notice.set("排队消息已取消；正在生成的请求不会被此操作中断。"))
+                    dialog.destroy()
+            ttk.Button(footer, text="查看详情", command=details).grid(row=0, column=0, padx=5)
+            ttk.Button(footer, text="取消选中排队消息", command=cancel).grid(row=0, column=1, padx=5)
+            ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=2)
+        self.run_task("读取请求队列", {"request-list"}, lambda _: self.client.manage("chat.requests"), done)
 
     def watch_turn(self, turn, epoch):
         if self.closed or epoch != self.view_epoch:
             return
-        self.load_chat(session_id=turn["session_id"])
-        if turn["status"] in ("queued", "running"):
-            self.after(650, lambda: self.run_task("等待回复", {"chat-watch"},
-                lambda _: self.client.call("GET", "/v1/requests/" + turn["id"]),
-                lambda value: self.watch_turn(value, epoch), quiet=True) if not self.closed else None)
+        # One session-level refresh loop covers all in-flight requests, without
+        # repeatedly rewriting session selection or loading the whole transcript.
+        self.chat_version = None
+        self.notice.set("消息已受理：" + PHASES.get(turn.get("phase"), turn["status"]))
 
     def retry_chat(self):
         failed = next((t for t in reversed(self.turns) if t["status"] in ("failed", "interrupted")), None)
@@ -793,8 +953,6 @@ class Workbench(tk.Tk):
             if ready and not self.last_ready:
                 self.refresh_personas()
             self.last_ready = ready
-            if ready and self.session_id:
-                self.load_chat(session_id=self.session_id)
             if ready:
                 self.run_task("检查待投递", {"delivery-read"}, lambda _: self.client.manage("delivery.pending"),
                     lambda rows: self.delivery_note.set("QQ 待处理投递：" + str(len(rows)) + " 条（不会自动补发不确定消息）"), quiet=True)

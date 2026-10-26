@@ -14,6 +14,7 @@ from .logging_safe import setup
 from .models import PersonaSpec, RuntimeErrorBase, generic_persona, identifier
 from .paths import RuntimePaths
 from .storage import SCHEMA_VERSION, Store
+from .submissions import SubmissionJournal
 
 
 def create_app(paths, client=None):
@@ -38,7 +39,7 @@ def create_app(paths, client=None):
         else:
             return web.json_response({"error": "unauthorized"}, status=401)
         if request["role"] == "bridge" and not (
-            request.path in ("/v1/health", "/v1/chat", "/v1/qq-pending") or request.path.startswith("/v1/requests/")):
+            request.path in ("/v1/health", "/v1/chat", "/v1/qq-pending") or request.path.startswith(("/v1/requests/", "/v1/submissions/"))):
             return web.json_response({"error": "forbidden"}, status=403)
         try:
             return await handler(request)
@@ -83,13 +84,29 @@ def create_app(paths, client=None):
         elif value.get("channel", "desktop") != "desktop":
             raise RuntimeErrorBase("Desktop clients must use desktop channel")
         origin = {"sender": value["sender"], "bot": value["bot"]} if request["role"] == "bridge" else None
-        result = await engine.submit(value.get("channel", "desktop"), value["text"], value["request_id"], value.get("session_id"), origin=origin)
+        result = await engine.submit(value.get("channel", "desktop"), value["text"], value["request_id"], value.get("session_id"), origin=origin, persona_id=value.get("persona_id"))
         return web.json_response(result)
 
     async def get_request(request):
         turn = engine.get(request.match_info["id"])
         bridge_turn(request, turn)
         return web.json_response(turn)
+
+    async def submission(request):
+        if request["role"] == "bridge" and request.match_info["channel"] != "qq":
+            raise web.HTTPForbidden()
+        turn = engine.lookup(request.match_info["channel"], request.match_info["request_id"])
+        if turn is None:
+            return web.json_response({"error": "submission_not_found"}, status=404)
+        bridge_turn(request, turn)
+        return web.json_response(turn)
+
+    async def cancel(request):
+        if request["role"] != "admin":
+            raise web.HTTPForbidden()
+        if not config.load()["interaction"]["cancel_queued"]:
+            raise RuntimeErrorBase("queue_cancellation_disabled")
+        return web.json_response(engine.cancel_queued(request.match_info["id"]))
 
     async def retry(request):
         turn = engine.get(request.match_info["id"])
@@ -103,6 +120,11 @@ def create_app(paths, client=None):
         bridge_turn(request, engine.get(request.match_info["id"]))
         value = await body(request)
         return web.json_response(engine.delivery(request.match_info["id"], value["action"]))
+
+    async def notice(request):
+        bridge_turn(request, engine.get(request.match_info["id"]))
+        value = await body(request)
+        return web.json_response(engine.claim_notice(request.match_info["id"], value["kind"]))
 
     async def qq_pending(request):
         cfg = config.load()
@@ -132,6 +154,31 @@ def create_app(paths, client=None):
         value = await body(request)
         action, args = value["action"], value.get("args", {})
         service = engine.service
+        if action in ("inbox.check", "inbox.submit"):
+            journal = SubmissionJournal(paths, "qq")
+            cfg = config.load()
+            rows = journal.pending()
+            if action == "inbox.submit":
+                selected = next((row for row in rows if row["payload"]["request_id"] == args.get("request_id")), None)
+                if not selected:
+                    raise RuntimeErrorBase("Inbox record not found")
+                payload = selected["payload"]
+                origin = {"sender": payload["sender"], "bot": payload["bot"]}
+                if origin != {"sender": cfg["owner_qq"], "bot": cfg["bot_qq"]}:
+                    raise RuntimeErrorBase("Inbox target changed; automatic redirection is forbidden")
+                turn = engine.lookup("qq", payload["request_id"])
+                if turn is None:
+                    turn = await engine.submit("qq", payload["text"], payload["request_id"], origin=origin)
+                journal.forget(payload["request_id"])
+                return web.json_response(turn)
+            checked = []
+            for row in rows:
+                payload = row["payload"]
+                turn = engine.lookup("qq", payload["request_id"])
+                if turn:
+                    journal.forget(payload["request_id"])
+                checked.append(row | {"turn": turn})
+            return web.json_response(checked)
         handlers = {
             "db.status": store.status,
             "persona.create": lambda spec=None: service.create_persona(PersonaSpec.from_dict(spec) if spec is not None else generic_persona()),
@@ -145,6 +192,7 @@ def create_app(paths, client=None):
             "memory.retract": service.retract_memory, "data.export": service.export_persona,
             "data.backup": service.backup, "chat.history": engine.history,
             "chat.sessions": engine.desktop_sessions,
+            "chat.snapshot": engine.history_snapshot, "chat.requests": engine.requests,
             "delivery.pending": lambda: pending_deliveries(store),
         }
         if action not in handlers or not isinstance(args, dict):
@@ -165,8 +213,11 @@ def create_app(paths, client=None):
     app.router.add_post("/v1/chat", chat)
     app.router.add_get("/v1/qq-pending", qq_pending)
     app.router.add_get("/v1/requests/{id}", get_request)
+    app.router.add_get("/v1/submissions/{channel}/{request_id:.+}", submission)
+    app.router.add_post("/v1/requests/{id}/cancel", cancel)
     app.router.add_post("/v1/requests/{id}/retry", retry)
     app.router.add_post("/v1/requests/{id}/delivery", delivery)
+    app.router.add_post("/v1/requests/{id}/notice", notice)
     app.router.add_get("/v1/config", configuration)
     app.router.add_post("/v1/config", configuration)
     app.router.add_post("/v1/model-test", model_test)

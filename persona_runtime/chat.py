@@ -11,6 +11,7 @@ import aiohttp
 from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, require_text, timestamp
 from .security import unprotect
 from .service import RuntimeService
+from .progress import record as record_progress, progress
 
 
 class ModelError(RuntimeErrorBase):
@@ -96,6 +97,10 @@ class ChatEngine:
 
     def recover(self):
         with self.store.connection(write=True) as conn:
+            for row in conn.execute("SELECT id FROM turns WHERE status IN ('queued','running')").fetchall():
+                record_progress(conn, row[0], "interrupted")
+            for row in conn.execute("SELECT turn_id FROM deliveries WHERE state='sending'").fetchall():
+                record_progress(conn, row[0], "delivery_uncertain")
             conn.execute("UPDATE turns SET status='interrupted', error_code='service_restarted', updated_at=? "
                          "WHERE status IN ('queued','running')", (timestamp(),))
             conn.execute("UPDATE attempts SET status='interrupted', error_code='service_restarted' WHERE status='running'")
@@ -140,7 +145,7 @@ class ChatEngine:
                 "AND NOT EXISTS (SELECT 1 FROM channel_sessions c WHERE c.session_id=s.id AND c.channel='qq') "
                 "ORDER BY s.created_at", (persona_id, LOCAL_USER_ID))]
 
-    async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None):
+    async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None):
         if self.draining:
             raise RuntimeErrorBase("service_draining")
         require_text(text, "text")
@@ -153,8 +158,13 @@ class ChatEngine:
         with self.store.connection(write=True) as conn:
             old = conn.execute("SELECT id FROM turns WHERE source_key=?", (source_key,)).fetchone()
             if old:
-                return self._view(conn, old[0])
-            persona_id = None if test else self.service._persona(conn)["id"]
+                previous = self._view(conn, old[0])
+                if not test and (previous["text"] != text or (persona_id and previous["persona_id"] != persona_id)
+                                 or (session_id and previous["session_id"] != session_id)
+                                 or (origin is not None and previous["origin"] != origin)):
+                    raise RuntimeErrorBase("submission_conflict")
+                return previous
+            persona_id = None if test else self.service._persona(conn, persona_id)["id"]
             waiting = conn.execute("SELECT count(*) FROM turns WHERE persona_id IS ? AND status='queued'",
                                    (persona_id,)).fetchone()[0]
             if waiting >= 10:
@@ -176,6 +186,8 @@ class ChatEngine:
                 identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
                 conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
                 conn.execute("INSERT INTO deliveries VALUES (?, 'pending', ?)", (turn_id, timestamp()))
+            record_progress(conn, turn_id, "accepted")
+            record_progress(conn, turn_id, "queued")
         self._schedule(turn_id)
         return self.get(turn_id)
 
@@ -202,11 +214,25 @@ class ChatEngine:
         delivery = conn.execute("SELECT state FROM deliveries WHERE turn_id=?", (turn_id,)).fetchone()
         value["delivery"] = delivery[0] if delivery else None
         value["attempt_count"] = conn.execute("SELECT count(*) FROM attempts WHERE turn_id=?", (turn_id,)).fetchone()[0]
+        value.update(progress(conn, value))
+        value["queue_position"] = conn.execute(
+            "SELECT count(*) FROM turns t WHERE t.persona_id IS ? AND (t.status='running' OR "
+            "(t.status='queued' AND (SELECT max(a.seq) FROM request_activity a WHERE a.turn_id=t.id "
+            "AND a.event IN ('queued','retry_queued')) <= (SELECT max(a.seq) FROM request_activity a "
+            "WHERE a.turn_id=? AND a.event IN ('queued','retry_queued'))))",
+            (value["persona_id"], turn_id)).fetchone()[0] if value["status"] == "queued" else 0
         return value
 
     def get(self, turn_id):
         with self.store.connection() as conn:
             return self._view(conn, turn_id)
+
+    def lookup(self, channel, request_id):
+        if channel not in ("desktop", "qq"):
+            raise RuntimeErrorBase("Unsupported channel")
+        with self.store.connection() as conn:
+            row = conn.execute("SELECT id FROM turns WHERE source_key=?", (channel + ":" + request_id,)).fetchone()
+            return self._view(conn, row[0]) if row else None
 
     def history(self, session_id):
         with self.store.connection() as conn:
@@ -214,6 +240,21 @@ class ChatEngine:
             self.service._owned(conn, "sessions", session_id, persona_id)
             return [self._view(conn, row[0]) for row in conn.execute(
                 "SELECT id FROM turns WHERE session_id=? ORDER BY rowid", (session_id,))]
+
+    def history_snapshot(self, session_id, version=None):
+        with self.store.connection() as conn:
+            persona_id = self.service._persona(conn)["id"]
+            self.service._owned(conn, "sessions", session_id, persona_id)
+            latest = conn.execute("SELECT coalesce(max(a.seq),0) FROM request_activity a "
+                                  "JOIN turns t ON t.id=a.turn_id WHERE t.session_id=?", (session_id,)).fetchone()[0]
+            return {"version": latest, "turns": None if version == latest else [self._view(conn, row[0]) for row in conn.execute(
+                "SELECT id FROM turns WHERE session_id=? ORDER BY rowid", (session_id,))]}
+
+    def requests(self):
+        with self.store.connection() as conn:
+            persona_id = self.service._persona(conn)["id"]
+            return [self._view(conn, row[0]) for row in conn.execute(
+                "SELECT id FROM turns WHERE persona_id=? ORDER BY rowid DESC LIMIT 100", (persona_id,))]
 
     def _context(self, conn, turn):
         if turn["channel"] == "test":
@@ -257,6 +298,8 @@ class ChatEngine:
             try:
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
+                    if turn["status"] != "queued" or turn["cancelled_at"]:
+                        return
                     model = json.loads(turn["model_snapshot"])
                     messages = self._context(conn, turn)
                     if not model["base_url"] or not model["name"]:
@@ -268,9 +311,11 @@ class ChatEngine:
                     conn.execute("INSERT INTO attempts VALUES (?,?,?,'running',NULL,NULL,?)",
                                  (attempt_id, turn_id, time.time(), turn["model_snapshot"]))
                     conn.execute("UPDATE turns SET status='running', updated_at=? WHERE id=?", (timestamp(), turn_id))
+                    record_progress(conn, turn_id, "provider_started", attempt_id)
                 reply, usage = await self.client.complete(model, messages)
                 require_text(reply, "model reply")
                 with self.store.connection(write=True) as conn:
+                    record_progress(conn, turn_id, "generated", attempt_id)
                     event_id = identifier() if turn["channel"] != "test" else None
                     if event_id:
                         conn.execute("INSERT INTO events (id,session_id,persona_id,user_id,role,text,created_at) "
@@ -280,10 +325,14 @@ class ChatEngine:
                     conn.execute("UPDATE turns SET status='completed',reply_event_id=?,error_code=NULL,usage_json=?,updated_at=? WHERE id=?",
                                  (event_id, encoded, timestamp(), turn_id))
                     conn.execute("UPDATE attempts SET status='completed',usage_json=? WHERE id=?", (encoded, attempt_id))
+                    record_progress(conn, turn_id, "persisted", attempt_id)
             except BaseException as error:
                 interrupted = isinstance(error, asyncio.CancelledError)
                 code = str(error) if isinstance(error, ModelError) else ("request_interrupted" if interrupted else "request_failed")
                 with self.store.connection(write=True) as conn:
+                    if attempt_id and not conn.execute("SELECT 1 FROM attempts WHERE id=?", (attempt_id,)).fetchone():
+                        attempt_id = None
+                    record_progress(conn, turn_id, "interrupted" if interrupted else "failed", attempt_id)
                     conn.execute("UPDATE turns SET status=?,error_code=?,updated_at=? WHERE id=?",
                                  ("interrupted" if interrupted else "failed", code, timestamp(), turn_id))
                     if attempt_id:
@@ -302,10 +351,42 @@ class ChatEngine:
                                    (turn["persona_id"],)).fetchone()[0]
             if waiting >= 10:
                 raise RuntimeErrorBase("queue_full")
-            conn.execute("UPDATE turns SET status='queued',error_code=NULL,model_snapshot=?,updated_at=? WHERE id=?",
+            conn.execute("UPDATE turns SET status='queued',cancelled_at=NULL,error_code=NULL,model_snapshot=?,updated_at=? WHERE id=?",
                          (json.dumps(self.config.load()["model"]), timestamp(), turn_id))
+            record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
         return self.get(turn_id)
+
+    def cancel_queued(self, turn_id):
+        with self.store.connection(write=True) as conn:
+            turn = self._view(conn, turn_id)
+            if turn["cancelled_at"]:
+                return turn
+            if turn["status"] != "queued":
+                raise RuntimeErrorBase("only_queued_can_cancel")
+            now = timestamp()
+            conn.execute("UPDATE turns SET status='interrupted',cancelled_at=?,error_code='cancelled_by_user',updated_at=? WHERE id=?",
+                         (now, now, turn_id))
+            record_progress(conn, turn_id, "cancelled")
+            result = self._view(conn, turn_id)
+        task = self.tasks.get(turn_id)
+        if task:
+            task.cancel()
+        return result
+
+    def claim_notice(self, turn_id, kind):
+        if kind not in ("waiting", "failure"):
+            raise RuntimeErrorBase("Unknown service notice")
+        with self.store.connection(write=True) as conn:
+            turn = self._view(conn, turn_id)
+            valid = turn["channel"] == "qq" and not turn["cancelled_at"] and (
+                turn["status"] in (("queued", "running") if kind == "waiting" else ("failed", "interrupted")))
+            if kind == "waiting" and not self.config.load()["interaction"]["qq_wait_notice"]:
+                valid = False
+            if not valid:
+                return {"claimed": False}
+            inserted = conn.execute("INSERT OR IGNORE INTO service_notices VALUES (?,?,?)", (turn_id, kind, timestamp()))
+            return {"claimed": inserted.rowcount == 1}
 
     def delivery(self, turn_id, action):
         with self.store.connection(write=True) as conn:
@@ -315,13 +396,22 @@ class ChatEngine:
             row = conn.execute("SELECT state FROM deliveries WHERE turn_id=?", (turn_id,)).fetchone()
             state = row[0]
             if action == "claim":
-                allowed = state == "pending"
+                origin = conn.execute("SELECT origin_json FROM turns WHERE id=?", (turn_id,)).fetchone()[0]
+                previous = conn.execute(
+                    "SELECT 1 FROM turns t LEFT JOIN deliveries d ON d.turn_id=t.id "
+                    "WHERE t.channel='qq' AND t.origin_json=? "
+                    "AND t.rowid < (SELECT rowid FROM turns WHERE id=?) "
+                    "AND (t.status IN ('queued','running') OR (t.status='completed' AND d.state IN ('pending','sending'))) LIMIT 1",
+                    (origin, turn_id)).fetchone()
+                allowed = state == "pending" and not previous
                 if allowed:
                     conn.execute("UPDATE deliveries SET state='sending',updated_at=? WHERE turn_id=?", (timestamp(), turn_id))
+                    record_progress(conn, turn_id, "delivery_started")
                 return {"claimed": allowed, "state": "sending" if allowed else state}
             if action not in ("sent", "uncertain", "failed") or state != "sending":
                 raise RuntimeErrorBase("Invalid delivery transition")
             conn.execute("UPDATE deliveries SET state=?,updated_at=? WHERE turn_id=?", (action, timestamp(), turn_id))
+            record_progress(conn, turn_id, {"sent": "delivery_confirmed", "uncertain": "delivery_uncertain", "failed": "delivery_failed"}[action])
             return {"state": action}
 
     async def wait(self):

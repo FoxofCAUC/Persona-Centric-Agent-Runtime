@@ -1,10 +1,18 @@
 """SDK-independent strict QQ ingress gate and durable delivery client."""
 import asyncio
 import hashlib
+from urllib.parse import quote
 
 import aiohttp
 
 from .config import ConfigStore
+from .submissions import SubmissionJournal
+
+
+class BridgeAPIError(RuntimeError):
+    def __init__(self, code, status):
+        super().__init__(code)
+        self.status = status
 
 
 def allowed_message(event, cfg):
@@ -40,6 +48,7 @@ def allowed_message(event, cfg):
 class QQBridge:
     def __init__(self, paths):
         self.config = ConfigStore(paths)
+        self.journal = SubmissionJournal(paths, "qq")
 
     async def request(self, method, path, value=None):
         cfg = self.config.load()
@@ -48,20 +57,80 @@ class QQBridge:
             async with client.request(method, f"http://127.0.0.1:{cfg['service_port']}" + path,
                                       json=value, headers=headers, allow_redirects=False) as response:
                 if response.status != 200:
-                    raise RuntimeError("bridge_api_error")
+                    try:
+                        code = (await response.json()).get("error", "bridge_api_error")
+                    except (ValueError, aiohttp.ClientError):
+                        code = "bridge_api_error"
+                    raise BridgeAPIError(code, response.status)
                 return await response.json()
+
+    async def lookup(self, payload):
+        try:
+            return await self.request("GET", "/v1/submissions/qq/" + quote(payload["request_id"], safe=""))
+        except BridgeAPIError as error:
+            if error.status == 404 and str(error) == "submission_not_found":
+                return None
+            raise
+
+    async def reconcile_inbox(self):
+        """Only query uncertain receipts. Never replay unaccepted input automatically."""
+        cfg = self.config.load()
+        for row in self.journal.pending():
+            payload = row["payload"]
+            if payload.get("sender") != cfg["owner_qq"] or payload.get("bot") != cfg["bot_qq"]:
+                continue
+            turn = await self.lookup(payload)
+            if turn:
+                self.journal.forget(payload["request_id"])
+            else:
+                self.journal.state(payload["request_id"], "not_accepted")
+
+    async def _notice(self, turn, kind, send):
+        claim = await self.request("POST", f"/v1/requests/{turn['id']}/notice", {"kind": kind})
+        if claim["claimed"]:
+            text = ("【服务提示】消息已受理，仍在排队或生成，请稍候。" if kind == "waiting" else
+                    "【服务提示】本条生成未完成；消息已保留，请在工作台查看原因并按需手动重试。")
+            await send(text)
 
     async def handle(self, event, send):
         payload = allowed_message(event, self.config.load())
         if payload is None:
             return False
         # The SDK handler stops the normal LLM path before this first await.
-        turn = await self.request("POST", "/v1/chat", payload)
+        payload = self.journal.remember(payload)
+        try:
+            turn = await self.request("POST", "/v1/chat", payload)
+        except BridgeAPIError as error:
+            self.journal.state(payload["request_id"], "not_accepted")
+            if str(error) in ("queue_full", "service_draining"):
+                await send("【服务提示】消息未受理：当前队列已满或服务正在停止，请稍后再试。")
+            return False
+        except (aiohttp.ClientError, OSError, TimeoutError):
+            self.journal.state(payload["request_id"], "unconfirmed")
+            try:
+                turn = await self.lookup(payload)
+            except (BridgeAPIError, aiohttp.ClientError, OSError, TimeoutError):
+                turn = None
+            if not turn:
+                await send("【服务提示】暂时无法确认是否受理；已保留本机接收记录，请先在工作台找回，避免重复发送。")
+                return False
+        self.journal.forget(payload["request_id"])
         turn_id = turn["id"]
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        notice_checked = False
         while turn["status"] in ("queued", "running"):
             await asyncio.sleep(.5)
-            turn = await self.request("GET", "/v1/requests/" + turn_id)
+            try:
+                turn = await self.request("GET", "/v1/requests/" + turn_id)
+            except (BridgeAPIError, aiohttp.ClientError, OSError, TimeoutError):
+                return False  # Already accepted; the background sender handles a completed reply.
+            settings = self.config.load()["interaction"]
+            if not notice_checked and settings["qq_wait_notice"] and loop.time()-started >= settings["qq_wait_seconds"]:
+                notice_checked = True
+                await self._notice(turn, "waiting", send)
         if turn["status"] != "completed":
+            await self._notice(turn, "failure", send)
             return False
         return await self.deliver(turn, send)
 

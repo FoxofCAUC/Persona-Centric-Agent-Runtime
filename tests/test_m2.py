@@ -94,7 +94,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         other = self.service.create_persona(replace(generic_persona(), name="新人格"))
         self.service.use_persona(other["id"])
         self.cfg.update({"model": {"name": "new-model"}})
-        repeated = await self.engine.submit("desktop", "重复推送", "stable")
+        repeated = await self.engine.submit("desktop", "原人格消息", "stable")
         self.assertEqual(repeated["id"], original["id"])
         self.model.gate.set()
         await self.engine.wait()

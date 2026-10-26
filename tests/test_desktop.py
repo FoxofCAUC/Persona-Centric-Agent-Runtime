@@ -43,6 +43,45 @@ class DesktopTests(unittest.TestCase):
             self.assertTrue(save.winfo_ismapped(), "Save must not be pushed out by the editor")
             self.assertLessEqual(save.winfo_rooty()+save.winfo_height(), dialog.winfo_rooty()+dialog.winfo_height())
 
+    def test_send_ack_does_not_erase_next_typed_message(self):
+        window = self.window()
+        window.persona_id = "test-persona"
+        window.session_id = "test-session"
+        window.chat_input.insert("1.0", "第一条")
+        callbacks = []
+        def capture(name, resources, action, success=None, **kwargs):
+            callbacks.append(success)
+            return object()
+        with patch.object(window, "run_task", side_effect=capture), patch.object(window, "load_chat"), patch.object(window, "watch_turn"):
+            window.send_chat()
+            window.chat_input.delete("1.0", "end")
+            window.chat_input.insert("1.0", "正在写的第二条")
+            callbacks[0]({"id": "ack", "session_id": "test-session"})
+        self.assertEqual(window.chat_input.get("1.0", "end-1c"), "正在写的第二条")
+
+    def test_fast_refresh_is_not_a_service_identity_scan(self):
+        window = self.window()
+        window.current_page = "chat"
+        window.session_id = "test-session"
+        window.chat_version = 10
+        callbacks = []
+        actions = []
+        def capture(name, resources, action, success=None, **kwargs):
+            actions.append(action)
+            callbacks.append(success)
+            return object()
+        with patch.object(window, "run_task", side_effect=capture), patch.object(window.client, "manage", return_value={"version": 10, "turns": None}) as manage, patch.object(window.controller, "snapshot") as snapshot:
+            window.refresh_conversation()
+            callbacks[0](actions[0](None))
+            manage.assert_called_once_with("chat.snapshot", session_id="test-session", version=10)
+            snapshot.assert_not_called()
+
+    def test_interaction_controls_keep_new_behaviors_opt_in(self):
+        window = self.window()
+        self.assertFalse(window.allow_queue_cancel.get())
+        self.assertFalse(window.qq_wait_notice.get())
+        self.assertTrue(any(w.winfo_class() == "TButton" and w.cget("text") == "保存私聊设置" for w in self.widgets(window)))
+
     def window(self):
         window = Workbench(self.paths)
         self.windows.append(window)

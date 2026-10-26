@@ -7,9 +7,10 @@ from uuid import uuid4
 from .models import LOCAL_USER_ID, RuntimeErrorBase, timestamp
 from .paths import RuntimePaths
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
-TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
+M2_TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
+TABLES = M2_TABLES + ("request_activity", "service_notices")
 
 SCHEMA = """
 CREATE TABLE users (
@@ -97,6 +98,24 @@ CREATE INDEX attempts_quota ON attempts(started_epoch);
 
 SCHEMA3 = "ALTER TABLE turns ADD COLUMN origin_json TEXT NOT NULL DEFAULT '{}';\n"
 
+SCHEMA4 = """
+ALTER TABLE turns ADD COLUMN cancelled_at TEXT;
+CREATE TABLE request_activity (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    turn_id TEXT NOT NULL REFERENCES turns(id),
+    attempt_id TEXT REFERENCES attempts(id),
+    event TEXT NOT NULL,
+    at_epoch REAL NOT NULL
+);
+CREATE INDEX activity_turn ON request_activity(turn_id,seq);
+CREATE TABLE service_notices (
+    turn_id TEXT NOT NULL REFERENCES turns(id),
+    kind TEXT NOT NULL CHECK(kind IN ('waiting','failure')),
+    claimed_at TEXT NOT NULL,
+    PRIMARY KEY(turn_id,kind)
+);
+"""
+
 
 def execute_schema(conn, schema):
     statement = ""
@@ -154,11 +173,12 @@ class Store:
         conn = self._connect(create=True)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version in (1, 2):
+            if version in (1, 2, 3):
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not set(M1_TABLES).issubset(tables):
                     raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
-                backup = self.paths.home / "backups" / f"before-m2-{uuid4()}.sqlite3"
+                prefix = "before-m3" if version == 3 else "before-m2"
+                backup = self.paths.home / "backups" / f"{prefix}-{uuid4()}.sqlite3"
                 target = sqlite3.connect(backup)
                 try:
                     conn.backup(target)
@@ -171,15 +191,21 @@ class Store:
                 execute_schema(conn, SCHEMA)
                 execute_schema(conn, SCHEMA2)
                 execute_schema(conn, SCHEMA3)
+                execute_schema(conn, SCHEMA4)
                 conn.execute("INSERT INTO users VALUES (?, ?, ?)",
                              (LOCAL_USER_ID, "本地用户", timestamp()))
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif version == 1 and set(M1_TABLES).issubset(tables):
                 execute_schema(conn, SCHEMA2)
                 execute_schema(conn, SCHEMA3)
+                execute_schema(conn, SCHEMA4)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            elif version == 2 and set(TABLES).issubset(tables):
+            elif version == 2 and set(M2_TABLES).issubset(tables):
                 execute_schema(conn, SCHEMA3)
+                execute_schema(conn, SCHEMA4)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            elif version == 3 and set(M2_TABLES).issubset(tables):
+                execute_schema(conn, SCHEMA4)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
