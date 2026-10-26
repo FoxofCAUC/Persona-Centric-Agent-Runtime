@@ -20,6 +20,8 @@ def parser() -> argparse.ArgumentParser:
     groups = root.add_subparsers(dest="group", required=True)
     groups.add_parser("paths")
     groups.add_parser("init-storage")
+    for name in ("serve", "prepare", "gui"):
+        groups.add_parser(name)
     commands = {
         "db": ("init", "status"),
         "persona": ("create", "list", "show", "use"),
@@ -67,6 +69,18 @@ def parser() -> argparse.ArgumentParser:
 
 
 def dispatch(args, paths: RuntimePaths):
+    if args.group == "serve":
+        import asyncio
+        from .server import serve
+        asyncio.run(serve(paths))
+        return {"stopped": True}
+    if args.group == "prepare":
+        from .deployment import prepare
+        return prepare(paths)
+    if args.group == "gui":
+        from .desktop import run
+        run(paths)
+        return {"closed": True}
     if args.group in ("paths", "init-storage"):
         if args.group == "init-storage":
             paths.initialize()

@@ -28,3 +28,14 @@ def setup(paths, component):
         if isinstance(logger, logging.Logger):
             logger.handlers.clear()
             logger.propagate = True
+
+
+def secure_astrbot_logging(paths):
+    """Override SDK sinks in this dedicated process, without editing the SDK."""
+    from astrbot.core import LogManager
+    from loguru import logger as raw
+    raw.remove()
+    LogManager.GetLogger = classmethod(lambda cls, log_name="default": logging.getLogger(log_name))
+    LogManager.configure_logger = classmethod(lambda cls, logger, config=None, override_level=None: None)
+    LogManager.set_queue_handler = classmethod(lambda cls, *args, **kwargs: None)
+    setup(paths, "astrbot")
