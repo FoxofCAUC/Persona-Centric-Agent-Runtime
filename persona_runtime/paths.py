@@ -39,6 +39,8 @@ class RuntimePaths:
             "pycache": self.home / "cache" / "pycache",
             "temp": self.home / "tmp",
             "venv": self.home / ".venv",
+            "runtime": self.home / "runtime",
+            "components": self.home / "components",
         }
 
     def initialize(self) -> None:

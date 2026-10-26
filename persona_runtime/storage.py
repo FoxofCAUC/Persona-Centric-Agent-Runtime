@@ -2,12 +2,14 @@
 
 from contextlib import contextmanager
 import sqlite3
+from uuid import uuid4
 
 from .models import LOCAL_USER_ID, RuntimeErrorBase, timestamp
 from .paths import RuntimePaths
 
-SCHEMA_VERSION = 1
-TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
+SCHEMA_VERSION = 2
+M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
+TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
 
 SCHEMA = """
 CREATE TABLE users (
@@ -62,6 +64,46 @@ CREATE INDEX events_session_order ON events(session_id, seq);
 CREATE INDEX memories_scope ON memories(persona_id, user_id, status, updated_at);
 """
 
+SCHEMA2 = """
+CREATE TABLE channel_sessions (
+    persona_id TEXT NOT NULL REFERENCES personas(id),
+    channel TEXT NOT NULL CHECK(channel IN ('desktop','qq')),
+    user_id TEXT NOT NULL REFERENCES users(id), session_id TEXT NOT NULL,
+    PRIMARY KEY(persona_id, channel),
+    FOREIGN KEY(session_id, persona_id, user_id) REFERENCES sessions(id, persona_id, user_id)
+);
+CREATE TABLE turns (
+    id TEXT PRIMARY KEY, source_key TEXT NOT NULL UNIQUE,
+    persona_id TEXT REFERENCES personas(id), session_id TEXT REFERENCES sessions(id),
+    channel TEXT NOT NULL CHECK(channel IN ('desktop','qq','test')),
+    user_event_id TEXT REFERENCES events(id), reply_event_id TEXT REFERENCES events(id),
+    status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','interrupted')),
+    error_code TEXT, model_snapshot TEXT NOT NULL, usage_json TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE attempts (
+    id TEXT PRIMARY KEY, turn_id TEXT NOT NULL REFERENCES turns(id),
+    started_epoch REAL NOT NULL, status TEXT NOT NULL,
+    error_code TEXT, usage_json TEXT
+);
+CREATE TABLE deliveries (
+    turn_id TEXT PRIMARY KEY REFERENCES turns(id),
+    state TEXT NOT NULL CHECK(state IN ('pending','sending','sent','uncertain','failed')),
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX turns_session ON turns(session_id, created_at);
+CREATE INDEX attempts_quota ON attempts(started_epoch);
+"""
+
+
+def execute_schema(conn, schema):
+    statement = ""
+    for line in schema.splitlines(keepends=True):
+        statement += line
+        if sqlite3.complete_statement(statement):
+            conn.execute(statement)
+            statement = ""
+
 
 class Store:
     def __init__(self, paths: RuntimePaths, timeout: float = 5.0):
@@ -109,19 +151,28 @@ class Store:
         self.paths.initialize()
         conn = self._connect(create=True)
         try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if version == 1:
+                tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if not set(M1_TABLES).issubset(tables):
+                    raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
+                backup = self.paths.home / "backups" / f"before-m2-{uuid4()}.sqlite3"
+                target = sqlite3.connect(backup)
+                try:
+                    conn.backup(target)
+                finally:
+                    target.close()
             conn.execute("BEGIN IMMEDIATE")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if version == 0 and not tables:
-                # executescript would implicitly commit the open transaction.
-                statement = ""
-                for line in SCHEMA.splitlines(keepends=True):
-                    statement += line
-                    if sqlite3.complete_statement(statement):
-                        conn.execute(statement)
-                        statement = ""
+                execute_schema(conn, SCHEMA)
+                execute_schema(conn, SCHEMA2)
                 conn.execute("INSERT INTO users VALUES (?, ?, ?)",
                              (LOCAL_USER_ID, "本地用户", timestamp()))
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            elif version == 1 and set(M1_TABLES).issubset(tables):
+                execute_schema(conn, SCHEMA2)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
