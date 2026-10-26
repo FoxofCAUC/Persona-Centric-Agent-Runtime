@@ -82,6 +82,7 @@ class ServiceController:
         self.config = ConfigStore(paths)
         self.client = LocalClient(self.config)
         self.notify = notify
+        self.processes = {}
         self.adapters = {role: ManagedService(self, role) for role in ("service", "astrbot", "napcat")}
 
     def record_path(self, role):
@@ -146,6 +147,10 @@ class ServiceController:
         cfg = self.config.load()
         if role == "napcat" and port_open(6099):
             raise RuntimeErrorBase("旧项目 QQ/NapCat 仍在运行，请从原入口正常停止后再启动本项目。")
+        if role == "napcat":
+            external = ps_json("Get-CimInstance Win32_Process -Filter \"Name='QQ.exe'\" | Select-Object ProcessId | ConvertTo-Json -Compress")
+            if external:
+                raise RuntimeErrorBase("检测到其他 QQ 实例；为避免共享主进程，请从原入口正常退出后再启动本项目。")
         if role != "service" and not (cfg["owner_qq"] and cfg["bot_qq"]):
             raise RuntimeErrorBase("请先填写本人 QQ 与 Bot QQ。")
         if role == "astrbot":
@@ -160,7 +165,7 @@ class ServiceController:
         if not python.exists():
             raise RuntimeErrorBase("独立运行环境未准备，请先准备组件。")
         self.notify("正在启动：" + role)
-        subprocess.Popen([str(python), "-B", "-m", "persona_runtime.host", "--role", role,
+        self.processes[role] = subprocess.Popen([str(python), "-B", "-m", "persona_runtime.host", "--role", role,
                           "--instance", cfg["instance_id"]], cwd=REPO, env=child_environment(self.paths),
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
         deadline = time.monotonic()+60
@@ -193,6 +198,8 @@ class ServiceController:
         deadline = time.monotonic()+30
         while time.monotonic() < deadline:
             if not self.owned(role) and not port_open(self.health(role)["port"]):
+                if role in self.processes:
+                    self.processes.pop(role).wait(timeout=2)
                 return
             time.sleep(.5)
         raise RuntimeErrorBase("正常停止尚未完成；不会强制结束其他程序。")

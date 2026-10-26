@@ -7,7 +7,7 @@ try {
     Push-Location -LiteralPath $projectRoot
     try {
         & $python -B -m unittest discover -s tests -v
-        if ($LASTEXITCODE -ne 0) { throw 'M1 verification failed' }
+        if ($LASTEXITCODE -ne 0) { throw 'Project verification failed' }
     } finally {
         Pop-Location
     }

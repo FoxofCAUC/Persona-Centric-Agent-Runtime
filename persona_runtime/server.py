@@ -38,7 +38,7 @@ def create_app(paths, client=None):
         else:
             return web.json_response({"error": "unauthorized"}, status=401)
         if request["role"] == "bridge" and not (
-            request.path == "/v1/health" or request.path == "/v1/chat" or request.path.startswith("/v1/requests/")):
+            request.path in ("/v1/health", "/v1/chat", "/v1/qq-pending") or request.path.startswith("/v1/requests/")):
             return web.json_response({"error": "forbidden"}, status=403)
         try:
             return await handler(request)
@@ -62,8 +62,10 @@ def create_app(paths, client=None):
         return value
 
     def bridge_turn(request, turn):
-        if request["role"] == "bridge" and turn["channel"] != "qq":
-            raise web.HTTPForbidden()
+        if request["role"] == "bridge":
+            cfg = config.load()
+            if turn["channel"] != "qq" or turn["origin"] != {"sender": cfg["owner_qq"], "bot": cfg["bot_qq"]}:
+                raise web.HTTPForbidden()
 
     async def health(request):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
@@ -80,7 +82,8 @@ def create_app(paths, client=None):
                 raise web.HTTPForbidden()
         elif value.get("channel", "desktop") != "desktop":
             raise RuntimeErrorBase("Desktop clients must use desktop channel")
-        result = await engine.submit(value.get("channel", "desktop"), value["text"], value["request_id"], value.get("session_id"))
+        origin = {"sender": value["sender"], "bot": value["bot"]} if request["role"] == "bridge" else None
+        result = await engine.submit(value.get("channel", "desktop"), value["text"], value["request_id"], value.get("session_id"), origin=origin)
         return web.json_response(result)
 
     async def get_request(request):
@@ -100,6 +103,17 @@ def create_app(paths, client=None):
         bridge_turn(request, engine.get(request.match_info["id"]))
         value = await body(request)
         return web.json_response(engine.delivery(request.match_info["id"], value["action"]))
+
+    async def qq_pending(request):
+        cfg = config.load()
+        rows = []
+        with store.connection() as conn:
+            for row in conn.execute("SELECT t.id FROM turns t JOIN deliveries d ON d.turn_id=t.id "
+                                    "WHERE t.status='completed' AND d.state='pending' ORDER BY t.rowid LIMIT 100"):
+                turn = engine._view(conn, row[0])
+                if turn["origin"] == {"sender": cfg["owner_qq"], "bot": cfg["bot_qq"]}:
+                    rows.append(turn)
+        return web.json_response(rows)
 
     async def configuration(request):
         if request.method == "GET":
@@ -130,6 +144,7 @@ def create_app(paths, client=None):
             "memory.show": service.show_memory, "memory.revise": service.revise_memory,
             "memory.retract": service.retract_memory, "data.export": service.export_persona,
             "data.backup": service.backup, "chat.history": engine.history,
+            "chat.sessions": engine.desktop_sessions,
             "delivery.pending": lambda: pending_deliveries(store),
         }
         if action not in handlers or not isinstance(args, dict):
@@ -148,6 +163,7 @@ def create_app(paths, client=None):
 
     app.router.add_get("/v1/health", health)
     app.router.add_post("/v1/chat", chat)
+    app.router.add_get("/v1/qq-pending", qq_pending)
     app.router.add_get("/v1/requests/{id}", get_request)
     app.router.add_post("/v1/requests/{id}/retry", retry)
     app.router.add_post("/v1/requests/{id}/delivery", delivery)

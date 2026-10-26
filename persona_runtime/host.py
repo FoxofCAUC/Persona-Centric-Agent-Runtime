@@ -100,6 +100,9 @@ def run_napcat(paths, cfg, record, stop):
                     candidate = process_info(parent.get("ParentProcessId"))
                     if not candidate or Path(candidate.get("ExecutablePath") or "").resolve() != qq.resolve():
                         break
+                    parent_created = datetime.fromisoformat(candidate["Created"].replace("Z", "+00:00")).timestamp()
+                    if parent_created < launched-1:
+                        break
                     parent = candidate
                 record["qq_parent"] = parent
                 atomic_json(record_file, record)

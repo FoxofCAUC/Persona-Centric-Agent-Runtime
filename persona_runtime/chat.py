@@ -107,7 +107,9 @@ class ChatEngine:
             RuntimeService._owned(conn, "sessions", session_id, persona_id)
             other = conn.execute("SELECT channel FROM channel_sessions WHERE session_id=? AND channel!=?",
                                  (session_id, channel)).fetchone()
-            if other:
+            historic_channel = conn.execute("SELECT channel FROM turns WHERE session_id=? AND channel!=? LIMIT 1",
+                                              (session_id, channel)).fetchone()
+            if other or historic_channel:
                 raise RuntimeErrorBase("Session belongs to a different channel")
         else:
             row = conn.execute("SELECT session_id FROM channel_sessions WHERE persona_id=? AND channel=?",
@@ -129,7 +131,16 @@ class ChatEngine:
             return {"session_id": self._session(conn, persona_id, channel, session_id, fresh),
                     "persona_id": persona_id, "channel": channel}
 
-    async def submit(self, channel, text, request_id, session_id=None, *, test=False):
+    def desktop_sessions(self):
+        with self.store.connection() as conn:
+            persona_id = self.service._persona(conn)["id"]
+            return [dict(row) for row in conn.execute(
+                "SELECT s.* FROM sessions s WHERE s.persona_id=? AND s.user_id=? "
+                "AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.session_id=s.id AND t.channel='qq') "
+                "AND NOT EXISTS (SELECT 1 FROM channel_sessions c WHERE c.session_id=s.id AND c.channel='qq') "
+                "ORDER BY s.created_at", (persona_id, LOCAL_USER_ID))]
+
+    async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None):
         if self.draining:
             raise RuntimeErrorBase("service_draining")
         require_text(text, "text")
@@ -157,10 +168,13 @@ class ChatEngine:
                              (event_id, session_id, persona_id, LOCAL_USER_ID, text, timestamp()))
             turn_id = identifier()
             model = self.config.load()["model"]
-            conn.execute("INSERT INTO turns VALUES (?,?,?,?,?,?,NULL,'queued',NULL,?,NULL,?,?)",
+            conn.execute("INSERT INTO turns (id,source_key,persona_id,session_id,channel,user_event_id,reply_event_id,status,error_code,"
+                         "model_snapshot,usage_json,created_at,updated_at) VALUES (?,?,?,?,?,?,NULL,'queued',NULL,?,NULL,?,?)",
                          (turn_id, source_key, persona_id, session_id, channel, event_id,
                           json.dumps(model), timestamp(), timestamp()))
             if channel == "qq":
+                identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
+                conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
                 conn.execute("INSERT INTO deliveries VALUES (?, 'pending', ?)", (turn_id, timestamp()))
         self._schedule(turn_id)
         return self.get(turn_id)
@@ -180,6 +194,7 @@ class ChatEngine:
             raise RuntimeErrorBase("Request not found")
         value = dict(row)
         value.pop("model_snapshot")
+        value["origin"] = json.loads(value.pop("origin_json"))
         value["usage"] = json.loads(value.pop("usage_json")) if row["usage_json"] else None
         for field, output in (("user_event_id", "text"), ("reply_event_id", "reply")):
             event = conn.execute("SELECT text FROM events WHERE id=?", (value[field],)).fetchone()

@@ -2,7 +2,9 @@
 
 以人格为中心的陪伴型智能体运行时。人格、经历与关系独立于具体模型和聊天渠道长期保存。
 
-当前阶段：M1 已实现人格、关系、会话、事件和显式记忆持久化，支持重启恢复、修订与撤回、导出和备份。尚未实现模型聊天、自动记忆提取或 QQ 接入。
+当前阶段：M1 持久化与 M2 人格工作台已实现。支持兼容接口模型对话、窗口聊天、QQ 本人好友私聊、记忆召回与独立服务管理。自动记忆提取、群聊和人格演化尚未实现。
+
+**双击 `启动人格工作台.bat` 打开桌面窗口。** 首次使用见 [M2 使用说明](docs/M2.md)。打开窗口不会自动启动组件、登录 QQ 或调用模型。
 
 ## 目录与存储
 
@@ -36,17 +38,21 @@
 开发脚本只临时配置子进程环境，退出后恢复原值，不修改系统级配置。
 `.env.example` 是参考模板，当前程序不会自动加载 `.env`。
 
-使用已安装的 Python 3.12 在 D 盘创建独立虚拟环境；运行和测试均只需标准库，无第三方依赖。
+使用 Python 3.12 的 D 盘独立环境。人格服务使用锁定版本的 aiohttp；AstrBot 使用另一套 D 盘环境，依赖清单为 `requirements-astrbot.lock`。原 M1 的数据操作仍只使用标准库。
 如需重建，先确认 D 盘可用，再执行：
 
 ```powershell
 python -B -m persona_runtime init-storage
 $env:UV_CACHE_DIR = 'D:\Persona-Centric Agent Runtime\cache\uv'
 uv venv --offline --no-managed-python --python (Get-Command python.exe).Source 'D:\Persona-Centric Agent Runtime\.venv'
+$env:UV_PROJECT_ENVIRONMENT = 'D:\Persona-Centric Agent Runtime\.venv'
+uv sync --frozen
 ```
 
 ## 开发方向
 
 使用步骤见 [M1 操作说明](docs/usage.md)。正式人格始终作为全新人格导入，不继承模板数据。
+
+独立组件准备：`.\scripts\dev.ps1 prepare`；前台人格服务：`.\scripts\dev.ps1 serve`。组件准备可能下载依赖，但不登录 QQ、不调用模型。
 
 运行验证：`.\scripts\test.ps1`。见 [架构与里程碑](docs/architecture.md) 和 [当前交接](docs/HANDOFF.md)。

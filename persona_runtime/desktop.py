@@ -439,10 +439,15 @@ class Workbench(tk.Tk):
                           lambda text: self.api_action("relationship.set", description=text)))
 
     def load_chat(self, fresh=False, session_id=None):
+        if fresh or (session_id and session_id != self.session_id):
+            self.view_epoch += 1
+        epoch = self.view_epoch
         def action(_):
             current = self.client.manage("session.select", channel="desktop", fresh=fresh, session_id=session_id)
             return current, self.client.manage("chat.history", session_id=current["session_id"])
         def done(result):
+            if epoch != self.view_epoch:
+                return
             self.session_id = result[0]["session_id"]
             self.turns = result[1]
             self.render_chat()
@@ -461,7 +466,7 @@ class Workbench(tk.Tk):
                     self.load_chat(session_id=rows[listing.curselection()[0]]["id"])
                     dialog.destroy()
             ttk.Button(dialog, text="载入窗口会话", command=select).pack(pady=8)
-        self.run_task("读取会话列表", {"chat"}, lambda _: self.client.manage("session.list"), done)
+        self.run_task("读取会话列表", {"chat"}, lambda _: self.client.manage("chat.sessions"), done)
 
     def render_chat(self):
         self.transcript.configure(state="normal")
@@ -641,7 +646,9 @@ class Workbench(tk.Tk):
                 raise ValueError("尚未验证此页面属于本项目，请先启动并检查状态。")
             cfg = self.config.load()
             if role == "napcat":
-                return f"http://127.0.0.1:{cfg['napcat_port']}/webui/"
+                from urllib.parse import quote
+                web_config = json.loads((self.paths.home / "components/napcat/config/webui.json").read_text(encoding="utf-8-sig"))
+                return f"http://127.0.0.1:{cfg['napcat_port']}/webui/?token=" + quote(web_config["token"], safe="")
             return f"http://127.0.0.1:{cfg['astrbot_port']}"
         self.run_task("核对管理页面", {"panel"}, action, lambda url: webbrowser.open(url))
 

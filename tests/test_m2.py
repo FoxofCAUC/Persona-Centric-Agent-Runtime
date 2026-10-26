@@ -107,6 +107,13 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
             reply = conn.execute("SELECT persona_id FROM events WHERE id=?", (result["reply_event_id"],)).fetchone()
             self.assertEqual(reply[0], self.persona["id"])
 
+    async def test_old_qq_session_cannot_be_reused_by_desktop(self):
+        turn = await self.chat(channel="qq", request_id="old-qq-thread")
+        self.engine.session("qq", fresh=True)
+        with self.assertRaises(RuntimeErrorBase):
+            self.engine.session("desktop", session_id=turn["session_id"])
+        self.assertNotIn(turn["session_id"], [s["id"] for s in self.engine.desktop_sessions()])
+
     async def test_fail_retry_atomicity_and_exclude_failed_context(self):
         self.model.failure = "provider_timeout"
         failed = await self.chat("失败的敏感问题", "failure")
@@ -167,6 +174,17 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state["delivery"], "uncertain")
         self.assertEqual(len(self.model.calls), 1)
 
+    async def test_reply_and_completion_rollback_together(self):
+        with self.store.connection(write=True) as conn:
+            conn.execute("CREATE TRIGGER reject_completed BEFORE UPDATE OF status ON turns "
+                         "WHEN NEW.status='completed' BEGIN SELECT RAISE(ABORT,'injected completion failure'); END")
+        turn = await self.chat(request_id="commit-failure")
+        self.assertEqual(turn["status"], "failed")
+        self.assertIsNone(turn["reply_event_id"])
+        with self.store.connection() as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM events WHERE role='persona'").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT count(*) FROM events WHERE role='user'").fetchone()[0], 1)
+
     async def test_service_auth_management_and_bridge_restrictions(self):
         app = create_app(self.paths, self.model)
         async with TestServer(app) as server, ClientSession() as client:
@@ -223,6 +241,64 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeErrorBase):
             self.cfg.update({"service_port": 6399})
         self.assertEqual(before, self.cfg.file.read_bytes())
+
+    async def test_owner_change_does_not_expose_old_pending_reply(self):
+        turn = await self.chat(channel="qq", request_id="old-owner")
+        self.cfg.update({"owner_qq": "777777"})
+        app = create_app(self.paths, self.model)
+        bridge = {"Authorization": "Bearer " + self.cfg.token("bridge")}
+        async with TestServer(app) as server, ClientSession() as client:
+            async with client.get(server.make_url("/v1/qq-pending"), headers=bridge) as response:
+                self.assertEqual(await response.json(), [])
+            async with client.get(server.make_url("/v1/requests/" + turn["id"]), headers=bridge) as response:
+                self.assertEqual(response.status, 403)
+
+    async def test_manual_retry_uses_updated_model_with_attempt_history(self):
+        self.model.failure = "provider_http_401"
+        turn = await self.chat(request_id="repair-key")
+        self.cfg.update({"model": {"name": "repaired-model", "api_key": "replacement-secret"}})
+        self.model.failure = None
+        await self.engine.retry(turn["id"])
+        await self.engine.wait()
+        self.assertEqual(self.model.calls[-1][0]["name"], "repaired-model")
+        with self.store.connection() as conn:
+            attempts = list(conn.execute("SELECT model_snapshot FROM attempts WHERE turn_id=? ORDER BY started_epoch", (turn["id"],)))
+            self.assertEqual(json.loads(attempts[0][0])["name"], "offline-model")
+            self.assertEqual(json.loads(attempts[1][0])["name"], "repaired-model")
+
+    async def test_provider_timeout_empty_invalid_and_chunked_response(self):
+        mode = ["timeout"]
+        async def provider(request):
+            if mode[0] == "timeout":
+                await asyncio.sleep(1.2)
+            if mode[0] == "invalid":
+                return web.Response(text="not-json")
+            if mode[0] == "empty":
+                return web.json_response({"choices": [{"message": {"content": ""}}]})
+            output = web.StreamResponse(headers={"Content-Type": "application/json"})
+            await output.prepare(request)
+            payload = json.dumps({"choices": [{"message": {"content": "分块响应"}}]}).encode()
+            await output.write(payload[:10])
+            await asyncio.sleep(.02)
+            await output.write(payload[10:])
+            await output.write_eof()
+            return output
+        app = web.Application()
+        app.router.add_post("/chat/completions", provider)
+        async with TestServer(app) as server:
+            model = self.cfg.load()["model"] | {"base_url": str(server.make_url("")), "timeout": 1}
+            with self.assertRaisesRegex(ModelError, "provider_timeout"):
+                await ChatCompletionsClient().complete(model, [])
+            mode[0] = "invalid"
+            with self.assertRaisesRegex(ModelError, "provider_invalid_response"):
+                await ChatCompletionsClient().complete(model, [])
+            mode[0] = "empty"
+            with self.assertRaisesRegex(ModelError, "provider_empty_response"):
+                await ChatCompletionsClient().complete(model, [])
+            mode[0] = "chunked"
+            text, usage = await ChatCompletionsClient().complete(model, [])
+            self.assertEqual(text, "分块响应")
+            self.assertIsNone(usage)
 
     async def test_m1_migration_backup_and_failure_rollback(self):
         paths = RuntimePaths(self.paths.home / "legacy")
@@ -285,6 +361,29 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(await bridge.handle(event, send))
             self.assertEqual(len(sent), 1)
             self.assertEqual(len(self.model.calls), 1)
+
+    async def test_qq_uncertain_send_is_not_retried(self):
+        event = self.fake_event()
+        bridge = QQBridge(self.paths)
+        async def request(method, path, value=None):
+            if path == "/v1/chat":
+                return await self.engine.submit("qq", value["text"], value["request_id"])
+            turn_id = path.split("/")[3]
+            if path.endswith("/delivery"):
+                return self.engine.delivery(turn_id, value["action"])
+            await self.engine.wait()
+            return self.engine.get(turn_id)
+        bridge.request = request
+        sends = []
+        async def failed_send(text):
+            sends.append(text)
+            raise RuntimeError("simulated SDK uncertainty")
+        with self.assertRaises(RuntimeError):
+            await bridge.handle(event, failed_send)
+        self.assertFalse(await bridge.handle(event, failed_send))
+        self.assertEqual(len(sends), 1)
+        with self.store.connection() as conn:
+            self.assertEqual(conn.execute("SELECT state FROM deliveries").fetchone()[0], "uncertain")
 
 
 if __name__ == "__main__":
