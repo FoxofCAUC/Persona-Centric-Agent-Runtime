@@ -11,11 +11,13 @@ DEFAULT_HOME = Path("D:/Persona-Centric Agent Runtime")
 class RuntimePaths:
     home: Path
 
+    def __post_init__(self) -> None:
+        if not self.home.is_absolute():
+            raise ValueError("PERSONA_RUNTIME_HOME must be an absolute path")
+
     @classmethod
     def from_environment(cls) -> "RuntimePaths":
         home = Path(os.environ.get("PERSONA_RUNTIME_HOME") or str(DEFAULT_HOME))
-        if not home.is_absolute():
-            raise ValueError("PERSONA_RUNTIME_HOME must be an absolute path")
         return cls(home)
 
     def directories(self) -> dict[str, Path]:

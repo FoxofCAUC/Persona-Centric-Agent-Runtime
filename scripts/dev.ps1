@@ -1,6 +1,6 @@
 param(
-    [ValidateSet('paths', 'init-storage')]
-    [string]$Command = 'paths'
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$RuntimeArgs = @('paths')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,7 +9,9 @@ $runtimeHome = if ($env:PERSONA_RUNTIME_HOME) { $env:PERSONA_RUNTIME_HOME } else
 if (-not [System.IO.Path]::IsPathFullyQualified($runtimeHome)) {
     throw 'PERSONA_RUNTIME_HOME must be an absolute path.'
 }
-$runtimePython = Join-Path $runtimeHome '.venv\Scripts\python.exe'
+$defaultHome = 'D:\Persona-Centric Agent Runtime'
+# The storage root may be a test/sandbox directory; the interpreter stays independent.
+$runtimePython = Join-Path $defaultHome '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $runtimePython)) {
     throw "Project Python environment is missing: $runtimePython"
 }
@@ -32,8 +34,8 @@ try {
     }
     Push-Location -LiteralPath $projectRoot
     try {
-        & $runtimePython -B -m persona_runtime $Command
-        if ($LASTEXITCODE -ne 0) { throw "Runtime command failed: $LASTEXITCODE" }
+        & $runtimePython -B -m persona_runtime @RuntimeArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } finally {
         Pop-Location
     }

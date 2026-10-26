@@ -2,7 +2,7 @@
 
 以人格为中心的陪伴型智能体运行时。人格、经历与关系独立于具体模型和聊天渠道长期保存。
 
-当前阶段：已建立项目骨架与 D 盘存储约定，尚未实现聊天、模型调用和长期记忆处理。
+当前阶段：M1 已实现人格、关系、会话、事件和显式记忆持久化，支持重启恢复、修订与撤回、导出和备份。尚未实现模型聊天、自动记忆提取或 QQ 接入。
 
 ## 目录与存储
 
@@ -16,10 +16,7 @@
 | --- | --- |
 | `config` | 本地配置，未来模型凭据配置应留在此处 |
 | `data/database` | 数据库 |
-| `data/personas` | 人格档案与版本 |
-| `data/events` | 原始事件 |
-| `data/memory` | 记忆及其来源 |
-| `data/knowledge` | 世界知识及索引 |
+| `data/personas` / `data/events` / `data/memory` / `data/knowledge` | 为后续资源和索引预留；M1 的人格、事件、记忆统一存于 SQLite |
 | `logs` / `backups` / `exports` | 日志、备份、导出 |
 | `downloads` / `models` | 下载文件与模型权重 |
 | `cache` / `tmp` / `.venv` | 工具缓存、临时文件、Python 环境 |
@@ -31,13 +28,15 @@
 ```powershell
 .\scripts\dev.ps1 paths
 .\scripts\dev.ps1 init-storage
+.\scripts\dev.ps1 db init
+.\scripts\dev.ps1 db status
 ```
 
-`paths` 只输出路径；`init-storage` 创建缺失的存储目录。两者均不会调用模型或发送消息。
+`paths` 只输出路径；`init-storage` 创建缺失的存储目录；`db init` 幂等初始化数据库。所有命令均不会调用模型或发送消息。
 开发脚本只临时配置子进程环境，退出后恢复原值，不修改系统级配置。
 `.env.example` 是参考模板，当前程序不会自动加载 `.env`。
 
-本次初始化使用已安装的 Python 3.12 在 D 盘创建独立虚拟环境；尚未安装第三方依赖。
+使用已安装的 Python 3.12 在 D 盘创建独立虚拟环境；运行和测试均只需标准库，无第三方依赖。
 如需重建，先确认 D 盘可用，再执行：
 
 ```powershell
@@ -48,4 +47,6 @@ uv venv --offline --no-managed-python --python (Get-Command python.exe).Source '
 
 ## 开发方向
 
-见 [架构与里程碑](docs/architecture.md) 和 [当前交接](docs/HANDOFF.md)。
+使用步骤见 [M1 操作说明](docs/usage.md)。正式人格始终作为全新人格导入，不继承模板数据。
+
+运行验证：`.\scripts\test.ps1`。见 [架构与里程碑](docs/architecture.md) 和 [当前交接](docs/HANDOFF.md)。
