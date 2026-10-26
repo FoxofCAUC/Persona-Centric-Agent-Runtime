@@ -24,6 +24,13 @@ class OrganizationSchedule:
             row["enabled"] = self.engine.config.load()["organization"]["daily_enabled"]
             row["model_ready"] = bool(self.engine.model()['base_url'] and self.engine.model()['name'])
             row["scope"] = "current_selected_persona_at_start"
+            row['total_turns'] = sum(s.get('total_turns',0) for s in row['progress'].get('sessions',[]))
+            row['remaining_turns'] = 0
+            for session in row['progress'].get('sessions',[])[row['progress'].get('index',0):]:
+                row['remaining_turns'] += conn.execute(
+                    "SELECT count(*) FROM turns t WHERE session_id=? AND status='completed' AND t.rowid>? AND t.rowid<=? "
+                    "AND NOT EXISTS (SELECT 1 FROM source_exclusions x WHERE x.event_id IN (t.user_event_id,t.reply_event_id))",
+                    (session['id'],session['cursor'],session['upper'])).fetchone()[0]
             row["automatic"] = self.automation_status(conn)
             row["excluded"] = [dict(r) for r in conn.execute("SELECT * FROM source_exclusions WHERE persona_id=? ORDER BY created_at DESC", (self.store.current(conn, required=False),))]
             return row
@@ -129,7 +136,7 @@ class OrganizationSchedule:
                 for session in conn.execute("SELECT id FROM sessions WHERE persona_id=? ORDER BY created_at,id", (persona,)):
                     turns = eligible_turns(conn, session[0])
                     if turns:
-                        sessions.append({"id": session[0], "upper": turns[-1]["ordinal"], "cursor": 0, "rebuild": True})
+                        sessions.append({"id": session[0], "upper": turns[-1]["ordinal"], "cursor": 0, "rebuild": True, 'total_turns':len(turns)})
             next_epoch = row["next_epoch"]
             while next_epoch <= now:
                 next_epoch += 86400

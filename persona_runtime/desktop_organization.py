@@ -159,7 +159,7 @@ class OrganizationUI:
             progress = status['progress']
             state = STATES.get(status['status'], status['status']) if status['enabled'] else '每日更新已关闭'
             self.org_state_text.set(f"每日更新：{state}；下次本机时间：{status['next_local_time']}\n"
-                                    f"已完成批次：{progress.get('completed_batches',0)}；空闲增量：{'开启' if status['automatic']['enabled'] else '关闭'}"
+                                    f"已完成批次：{progress.get('completed_batches',0)}；剩余有效轮次：{status['remaining_turns']}/{status['total_turns']}；空闲增量：{'开启' if status['automatic']['enabled'] else '关闭'}"
                                     + ('；尚未配置整理模型' if not status.get('model_ready') else ''))
             old_session = self.org_session.get()
             self.org_session_rows = value['sessions']

@@ -54,7 +54,9 @@ class SummaryService:
     def disable(self, summary_id):
         with self.store.connection(write=True) as conn:
             row = RuntimeService._owned(conn, "summaries", summary_id, self.store.current(conn))
-            conn.execute("UPDATE summaries SET status='disabled',reason='user_disabled' WHERE session_id=? AND rowid >= (SELECT rowid FROM summaries WHERE id=?)", (row["session_id"], summary_id))
+            conn.execute("WITH RECURSIVE dependent(id) AS (SELECT id FROM summaries WHERE id=? UNION ALL "
+                         "SELECT s.id FROM summaries s JOIN dependent d ON s.previous_id=d.id) "
+                         "UPDATE summaries SET status='disabled',reason='user_disabled' WHERE id IN (SELECT id FROM dependent)", (summary_id,))
         return self.show(summary_id)
 
 
@@ -162,7 +164,11 @@ class OrganizationEngine:
 
     def model(self):
         cfg = self.config.load()
-        return dict(cfg["model"] if cfg["organization"]["reuse_chat"] else cfg["organization"]["model"])
+        model = dict(cfg['organization']['model'])
+        if cfg['organization']['reuse_chat']:
+            for key in ('base_url','name','encrypted_key'):
+                model[key] = cfg['model'][key]
+        return model
 
     def model_fingerprint(self):
         return digest({"reuse": self.config.load()["organization"]["reuse_chat"], "model": self.model()})

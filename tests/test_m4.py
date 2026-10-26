@@ -293,6 +293,8 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         await self.org.run_next()
         self.org.schedule.daily_tick(due+3)
         self.assertEqual(self.org.schedule.status()['status'], 'waiting_quota')
+        self.assertEqual(self.org.schedule.status()['remaining_turns'],2)
+        self.assertEqual(self.org.schedule.status()['total_turns'],12)
         self.assertEqual(self.org.schedule.status()['persona_id'], self.persona['id'])
         self.cfg.update({'organization': {'hourly_limit': 6}})
         await self.org.run_next()
@@ -484,6 +486,23 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         self.org.schedule.daily_tick()
         self.assertEqual(len(self.org.candidates.list()),1)
         self.assertEqual(self.org.schedule.status()['status'],'awaiting_review')
+
+    async def test_reuse_chat_identity_preserves_background_request_limits(self):
+        self.cfg.update({'model': {'max_tokens':100,'timeout':5},
+                         'organization': {'reuse_chat':True,'model': {'max_tokens':2048,'timeout':60}}})
+        model=self.org.model()
+        self.assertEqual(model['name'],'fake')
+        self.assertEqual(model['max_tokens'],2048)
+        self.assertEqual(model['timeout'],60)
+
+    async def test_disable_old_summary_keeps_independent_rebuild_active(self):
+        turn=(await self.seed())[0]
+        await self.organize(turn['session_id'],'summary')
+        old=self.org.summaries.list()[0]
+        await self.organize(turn['session_id'],'summary',start_row=0,rebuild=True)
+        fresh=self.org.summaries.list()[0]
+        self.org.summaries.disable(old['id'])
+        self.assertEqual(self.org.summaries.show(fresh['id'])['status'],'active')
 
 
 if __name__ == '__main__':
