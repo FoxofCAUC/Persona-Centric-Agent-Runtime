@@ -8,9 +8,61 @@ import sys
 
 from .config import ConfigStore, atomic_json
 from .models import RuntimeErrorBase
+from .security import protect
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 REPO = Path(__file__).resolve().parents[1]
+
+# Consumer contract from the bundled NapCat TypeBox schema (rae / iae).
+NAPCAT_TIMEOUT_DEFAULTS = {"baseTimeout": 10000, "uploadSpeedKBps": 256,
+                           "downloadSpeedKBps": 256, "maxTimeout": 1800000}
+
+
+def validate_onebot_config(value):
+    timeout = value.get("timeout")
+    if not isinstance(timeout, dict):
+        raise RuntimeErrorBase("NapCat timeout 必须是参数对象，不能是数字；请重新生成消息连接配置。")
+    for key in NAPCAT_TIMEOUT_DEFAULTS:
+        if type(timeout.get(key)) not in (int, float) or timeout[key] <= 0:
+            raise RuntimeErrorBase("NapCat timeout 参数无效：" + key)
+    network = value.get("network")
+    if not isinstance(network, dict) or any(not isinstance(network.get(key), list) for key in (
+            "httpServers", "httpSseServers", "httpClients", "websocketServers", "websocketClients", "plugins")):
+        raise RuntimeErrorBase("NapCat network 配置结构无效。")
+
+
+def onebot_config(cfg, transport):
+    value = {
+        "network": {"httpServers": [], "httpSseServers": [], "httpClients": [], "websocketServers": [],
+                    "websocketClients": [{"name": "persona", "enable": True,
+                        "url": f"ws://127.0.0.1:{cfg['onebot_port']}/ws", "token": transport,
+                        "reportSelfMessage": False, "messagePostFormat": "array", "debug": False,
+                        "heartInterval": 30000, "reconnectInterval": 3000}], "plugins": []},
+        "musicSignUrl": "", "enableLocalFile2Url": False, "parseMultMsg": False,
+        "imageDownloadProxy": "", "timeout": dict(NAPCAT_TIMEOUT_DEFAULTS),
+    }
+    validate_onebot_config(value)
+    return value
+
+
+def repair_napcat_timeout(paths):
+    """Repair only the known scalar-timeout bug; preserve account, token and routing."""
+    from .models import identifier
+    cfg = ConfigStore(paths).load()
+    path = paths.home / "components/napcat/config" / f"onebot11_{cfg['bot_qq']}.json"
+    old = path.read_text(encoding="utf-8-sig")
+    value = json.loads(old)
+    if isinstance(value.get("timeout"), dict):
+        validate_onebot_config(value)
+        return {"changed": False}
+    if type(value.get("timeout")) not in (int, float):
+        raise RuntimeErrorBase("未知 NapCat 配置格式，未自动修改。")
+    backup = paths.home / "backups" / ("napcat-timeout-before-" + identifier() + ".dpapi.json")
+    value["timeout"] = dict(NAPCAT_TIMEOUT_DEFAULTS)
+    validate_onebot_config(value)
+    atomic_json(backup, {"format": "windows-dpapi", "original_config": protect(old)})
+    atomic_json(path, value)
+    return {"changed": True, "encrypted_backup": str(backup)}
 
 
 def child_environment(paths):
@@ -113,15 +165,7 @@ def write_component_config(paths):
             web_data["token"] = old.get("token") or web_data["token"]
     atomic_json(web_file, web_data)
     if cfg["bot_qq"]:
-        atomic_json(shell / f"config/onebot11_{cfg['bot_qq']}.json", {
-            "network": {"httpServers": [], "httpSseServers": [], "httpClients": [], "websocketServers": [],
-                        "websocketClients": [{"name": "persona", "enable": True,
-                            "url": f"ws://127.0.0.1:{cfg['onebot_port']}/ws", "token": transport,
-                            "reportSelfMessage": False, "messagePostFormat": "array", "debug": False,
-                            "heartInterval": 30000, "reconnectInterval": 3000}], "plugins": []},
-            "musicSignUrl": "", "enableLocalFile2Url": False, "parseMultMsg": False,
-            "imageDownloadProxy": "", "timeout": 30000,
-        })
+        atomic_json(shell / f"config/onebot11_{cfg['bot_qq']}.json", onebot_config(cfg, transport))
     # Third-party config readers require transport credentials in their native JSON format.
     # Restrict these runtime files to the current Windows user and SYSTEM.
     for root in (bot / "data", shell / "config"):

@@ -2,6 +2,16 @@
 
 日期：2026-10-26。
 
+## NapCat 登录后未知用户与无私聊回复修复
+
+- 根因：部署器错误写入标量 `timeout: 30000`。本机 NapCat 的 TypeBox 消费协议要求对象（baseTimeout/uploadSpeedKBps/downloadSpeedKBps/maxTimeout）；整份 OneBot 配置被拒绝后，初始化未走到账号信息同步和反向 WS 建立。
+- 修复生成器并在启动前校验，增加已部署旧配置的一次性修复函数。修改只影响 timeout，账号、连接 URL、传输令牌保持不变，原配置先经 DPAPI 加密备份到 D 盘。
+- 本机已修复并重启本项目 NapCat。正常窗口关闭未退出 QQ 后台，排查中核对 PID/创建时间和本项目 Hook DLL 后仅结束该 Bot 进程树，再沿用现有登录恢复；人格服务、AstrBot、数据库和模型配置未被停止或更改。
+- 实际只读验收：NapCat CheckLoginStatus 为 ready/coreReady，GetQQLoginInfo 正确返回账号与昵称，OB11Config/GetConfig 成功；6299 为 Established，AstrBot 心跳 verified/online 均为 true。
+- 本轮没有发起新的真实模型调用或发送 QQ 消息。实际私聊回复仍需用户重新发送新消息验证，不自动补发此前漏接的消息。
+- SDK 离线探针改用动态空闲管理端口，避免回归检查占用用户正在运行的 6285。
+- 本轮完整回归 54 项通过（42.310 秒），含 3 项 NapCat 配置契约与加密修复回归；实际连接检查均为只读，未发送测试私聊。
+
 ## 紧急强停更新
 
 - 用户要求“彻底停止全部相关程序而不追溯来源”：已增加首页和故障排查入口及 `force-stop` CLI。该入口明确包括普通 QQ、两项目的 NapCat/AstrBot/人格/TRPG 服务、宿主和其他管理窗口。

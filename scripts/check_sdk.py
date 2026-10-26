@@ -21,6 +21,14 @@ async def main(home):
     paths = RuntimePaths(home)
     cfg = ConfigStore(paths)
     cfg.initialize()
+    # Never contend with the user's live dashboard during an offline SDK probe.
+    while True:
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1", 0))
+            dashboard_port = reservation.getsockname()[1]
+        if dashboard_port not in (8765, 6399, 6299):
+            break
+    cfg.update({"astrbot_port": dashboard_port})
     bot = home / "components/astrbot/bot"
     bot.mkdir(parents=True, exist_ok=True)
     os.chdir(bot)
@@ -30,6 +38,9 @@ async def main(home):
     env.update(ASTRBOT_ROOT=str(bot), ASTRBOT_CLI="1")
     subprocess.run([sys.executable, "-B", "-m", "persona_runtime.host", "--role", "configure"],
                    env=env, cwd=bot, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Real SDK config rendering must also produce a consumer-compatible OneBot timeout.
+    from persona_runtime.deployment import onebot_config, validate_onebot_config
+    validate_onebot_config(onebot_config(cfg.load(), "offline-probe"))
     plugin_dir = bot / "data/plugins/astrbot_plugin_persona_runtime"
     shutil.copytree(REPO / "integrations/astrbot/astrbot_plugin_persona_runtime", plugin_dir, dirs_exist_ok=True)
 

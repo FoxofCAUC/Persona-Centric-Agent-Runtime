@@ -10,7 +10,7 @@ import sys
 import time
 
 from .config import ConfigStore, atomic_json
-from .deployment import NO_WINDOW, child_environment, write_component_config
+from .deployment import NO_WINDOW, child_environment, write_component_config, validate_onebot_config
 from .instance import InstanceLock
 from .lifecycle import listener, process_info, same_process
 from .logging_safe import setup, secure_astrbot_logging
@@ -72,6 +72,8 @@ def normal_close(identity):
 
 def run_napcat(paths, cfg, record, stop):
     root = paths.home / "components/napcat"
+    config_path = root / "config" / f"onebot11_{cfg['bot_qq']}.json"
+    validate_onebot_config(json.loads(config_path.read_text(encoding="utf-8-sig")))
     qq = installed_qq()
     before = listener(cfg["napcat_port"])
     if before:
