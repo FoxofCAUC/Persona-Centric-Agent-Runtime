@@ -20,3 +20,21 @@ exports/
 models/
 cache/
 tmp/
+runtime/
+components/
+downloads/
+
+# Local credentials and runtime artifacts must never enter publication history.
+*.sqlite
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+*.dpapi.json
+*.log
+*.jsonl
+*.pem
+*.key
+*.pfx
