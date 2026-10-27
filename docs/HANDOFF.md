@@ -4,6 +4,7 @@
 
 ## GitHub首发整理
 
+- 已创建上述公开仓库并推送 `main`，首次发布提交 `b677711`，保留此前26次开发提交。已核对GitHub可见性、默认分支、简介与主题，远程提交和README文件与本地一致；GitHub Markdown接口渲染检查通过（标题、4张表格及4个标识图片）。本记录随后作为发布回执同步，未创建安装包或GitHub Release。
 - 用户要求以全新GitHub项目仓库发布全部进度，并确认账号 `FoxofCAUC`、仓库名 `Persona-Centric-Agent-Runtime`、公开可见、保留完整开发历史。仓库链接：https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime 。实际创建/推送结果以GitHub返回及远程核对为准。
 - README按对外阅读顺序重排，加入能力、阶段进度、首次准备、架构、待办和文档导航；新增 `docs/STATUS.md`、`CHANGELOG.md`，说明QQ组件默认本机来源、解释器路径与尚未指定许可证等现状。
 - M4部分通过/M5真人待验结论保持，未关闭任何补验项。仅文档与忽略规则更新，没有业务改动、运行策略变化、新模型或QQ请求；不重新宣称跑过已有回归。
