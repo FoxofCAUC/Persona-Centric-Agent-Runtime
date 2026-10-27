@@ -1,16 +1,22 @@
 # 架构与实施基线：私聊陪伴主线
 
+## M6.2 已实现回复域（2026-10-27）
+
+源码0.6.2.dev1/结构9/全量导出6。回复政策是按人格/入口版本化的 `legacy_full`、`context_full`、`context_structured`，在受理时与 M6.1 批次政策快照共同固定；默认兼容全文。Behavior Resolver 为本地确定性词法弱提示，不增加模型调用或写入用户状态。角色表达样例可按弱情境匹配。
+
+结构化模式以单次主模型调用请求 `ReplyBatch`，由 `reply_batch.py` 严格校验后，在同一完成事务中保存完整回复事件、语义批次、段和完成用量。错误不自动修复或二次调用；用量保留且不创建回复事件。工作台/QQ仍走现有全文投递器，段投递账本属于 M6.3。管理员 `reply.*` 可管理策略，桥接令牌无写权限。结构8→9事务迁移和导出格式6见[M6.2](M6.2.md)。离线54项受影响回归通过；全量、真实模型、正式迁移恢复和实际QQ送达尚未验，正式库仍结构8。
+
 ## M6.1 已实现输入域（2026-10-27）
 
 新路径：获准文本 → 原子RawEvent/Event/Receipt → InputBatch → 唯一turn → 完整成员上下文 → 既有完整回复/投递。结构8增加政策版本/指针、raw_events、ingress_receipts、input_batches、input_batch_members、batch_operations与turns.input_batch_id；复合归属外键及turn批次范围触发器防串身份。SDK档案明确normalized_payload，旧历史不补造。
 
 批次政策数据库为唯一权威；首条固定core/expression/relationship/character，模型封批固定，state执行前查。BEGIN IMMEDIATE串行化受理与封批，网络调用在提交后。统一turn_input同时供上下文、近期历史、规则召回、M4整理/进度/撤回和导出读取；user_event_id仅兼容首条。任一成员撤回保守屏蔽整轮及相关派生内容。
 
-v1继续逐条，新客户端v2受理回执/批次查询，管理员才可改政策/处置批次。monotonic驱动，UTC诊断；重启标中断，显式恢复，正常停止拒绝未决输入。角色包与私人档案分离，全量导出5排除model_snapshot凭据。结构回复、逐片送达和Session生命周期均未实现。详见[M6.1](M6.1.md)。
+v1继续逐条，新客户端v2受理回执/批次查询，管理员才可改政策/处置批次。monotonic驱动，UTC诊断；重启标中断，显式恢复，正常停止拒绝未决输入。角色包与私人档案分离，全量导出5排除model_snapshot凭据。结构回复已在M6.2实现；逐片送达和Session生命周期仍未实现。详见[M6.1](M6.1.md)。
 
 ## M6.0新增角色域（2026-10-27）
 
-角色扩展独立版本，复用persona_id；core/expression/relationship/state仍是原字段权威。结构7增加character_versions/heads/operations及turns.character_snapshot，旧数据扩展初版标migration，旧turn空快照不补造。管理员character.*接口、原生包、结构化工作台与确定性设定激活见[M6.0](M6.0.md)。不新增模型职责/依赖/渠道权限；完整自然交互仍待M6.1后续实现。下方为既有架构和历史状态。
+角色扩展独立版本，复用persona_id；core/expression/relationship/state仍是原字段权威。结构7增加character_versions/heads/operations及turns.character_snapshot，旧数据扩展初版标migration，旧turn空快照不补造。管理员character.*接口、原生包、结构化工作台与确定性设定激活见[M6.0](M6.0.md)。不新增模型职责/依赖/渠道权限。下方为既有架构和历史状态。
 
 2026-10-27最新决定：用户确认M5验收通过，阶段收尾；因架构与项目目标拟调整，暂不准备M6。M4 O01–O03及M5 P09保留未执行。见[M5收尾总结](M5-收尾总结.md)。 下面目标架构为已交付基线与历史方向，尚未执行新架构调整。
 
