@@ -202,7 +202,7 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 6, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 7, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
@@ -221,6 +221,14 @@ class RuntimeService:
             payload['reply_batches']=[{k:v for k,v in dict(r).items() if k!='attempt_id'} for r in conn.execute('SELECT * FROM reply_batches WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['reply_segments']=[dict(r) for r in conn.execute('SELECT s.* FROM reply_segments s JOIN reply_batches b ON b.id=s.batch_id WHERE b.persona_id=? AND b.user_id=? ORDER BY b.rowid,s.segment_index',(persona['id'],LOCAL_USER_ID))]
             payload['turn_reply_links']=[dict(r) for r in conn.execute('SELECT t.id AS turn_id,t.persona_id,t.session_id,t.channel,t.reply_event_id,t.input_batch_id,b.id AS reply_batch_id,b.attempt_id FROM turns t LEFT JOIN reply_batches b ON b.turn_id=t.id WHERE t.persona_id=? AND t.session_id IS NOT NULL AND (b.id IS NOT NULL OR t.input_batch_id IS NOT NULL) ORDER BY t.rowid',(persona['id'],))]
+            payload['reply_delivery_streams']=[dict(r) for r in conn.execute('SELECT * FROM reply_delivery_streams WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
+            payload['reply_delivery_parts']=[{k:v for k,v in dict(r).items() if k!='claim_token'} for r in conn.execute('SELECT * FROM reply_delivery_parts WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
+            payload['reply_delivery_attempts']=[dict(r) for r in conn.execute('SELECT a.* FROM reply_delivery_attempts a JOIN reply_delivery_parts p ON p.id=a.part_id WHERE p.persona_id=? AND p.user_id=? ORDER BY a.rowid',(persona['id'],LOCAL_USER_ID))]
+            payload['reply_delivery_operations']=[dict(r) for r in conn.execute('SELECT o.* FROM reply_delivery_operations o JOIN reply_delivery_streams s ON s.id=o.stream_id WHERE s.persona_id=? AND s.user_id=? ORDER BY o.rowid',(persona['id'],LOCAL_USER_ID))]
+            for operation in payload['reply_delivery_operations']:
+                result=json.loads(operation['result_json'])
+                result.pop('claim_token',None)
+                operation['result_json']=json.dumps(result,ensure_ascii=False)
             # Model snapshots contain encrypted credentials and are never included in portable exports.
             for row in payload['input_batches']:row.pop('model_snapshot',None)
             payload['turn_input_batches']=[dict(r) for r in conn.execute('SELECT id,input_batch_id FROM turns WHERE persona_id=?',(persona['id'],))]

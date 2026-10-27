@@ -44,6 +44,29 @@ class DesktopTests(unittest.TestCase):
             self.assertTrue(save.winfo_ismapped(), "Save must not be pushed out by the editor")
             self.assertLessEqual(save.winfo_rooty()+save.winfo_height(), dialog.winfo_rooty()+dialog.winfo_height())
 
+    def test_delivery_selection_detail_survives_refresh_and_stale_persona_response(self):
+        window=self.window();window.persona_id='persona-a';window.view_epoch=1
+        part={'id':'part-a','state':'uncertain','semantic_index':1,'part_index':1,'attempt':1,
+              'platform_message_id':None,'text_hash':'hash','text':'test delivery detail','error':'timeout','attempts':[]}
+        stream={'id':'stream-a','persona_id':'persona-a','channel':'qq','state':'blocked',
+                'blocked_reason':'uncertain','parts':[part]}
+        callbacks=[]
+        with patch.object(window,'run_task',side_effect=lambda *a,**kw: callbacks.append(a[3])):
+            window.refresh_deliveries()
+        callbacks[0]([stream]);window.delivery_tree.selection_set('stream-a');window.show_delivery_parts()
+        window.delivery_part_tree.selection_set('part-a');window.show_delivery_detail()
+        self.assertIn('test delivery detail',window.delivery_detail.get('1.0','end'))
+        window.show_delivery_parts()
+        self.assertEqual(window.selected_delivery_part()['id'],'part-a')
+        actions=[]
+        with patch.object(window,'run_task',side_effect=lambda *a,**kw:actions.append(a[2])), patch.object(window.client,'call',return_value={}) as call:
+            window._delivery_action(dict(stream,revision=3),part,'retry',True)
+            actions[0](None)
+            self.assertEqual(call.call_args.args[2]['args']['action'],'retry')
+        window.view_epoch=2;window.persona_id='persona-b'
+        callbacks[0]([{'invalid':'stale'}])
+        self.assertEqual(window.delivery_rows,[stream])
+
     def test_send_ack_does_not_erase_next_typed_message(self):
         window = self.window()
         window.persona_id = "test-persona"

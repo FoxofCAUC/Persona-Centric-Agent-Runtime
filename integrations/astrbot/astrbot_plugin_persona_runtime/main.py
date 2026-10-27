@@ -14,7 +14,7 @@ from persona_runtime.paths import RuntimePaths
 from persona_runtime.qq_bridge import QQBridge
 
 
-@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.4.0")
+@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.5.0")
 class PersonaRuntimePlugin(Star):
     def __init__(self, context):
         super().__init__(context)
@@ -36,8 +36,11 @@ class PersonaRuntimePlugin(Star):
                 cfg = self.config.load()
                 if cfg["owner_qq"] and cfg["bot_qq"]:
                     await self.bridge.reconcile_inbox()
-                    pending = await self.bridge.request("GET", "/v1/qq-pending")
-                    for turn in pending:
+                    health = await self.bridge.request("GET", "/v1/health")
+                    m63 = "reply_delivery_parts_v1" in health.get("capabilities", [])
+                    pending = (await self.bridge.request("GET", "/v2/delivery/streams") if m63
+                               else await self.bridge.request("GET", "/v1/qq-pending"))
+                    for item in pending:
                         for platform in self.context.platform_manager.platform_insts:
                             if platform.meta().name != "aiocqhttp" or platform.meta().id != "persona-onebot":
                                 continue
@@ -48,7 +51,10 @@ class PersonaRuntimePlugin(Star):
                             async def send(text):
                                 return await client.send_private_msg(user_id=int(cfg["owner_qq"]),
                                     message=[{"type": "text", "data": {"text": text}}])
-                            await self.bridge.deliver(turn, send)
+                            if m63:
+                                await self.bridge.deliver_stream(item, send)
+                            else:
+                                await self.bridge.deliver(item, send)
                             break
             except Exception:
                 pass
@@ -71,7 +77,7 @@ class PersonaRuntimePlugin(Star):
                     pass
             atomic_json(self.paths.home / "runtime/astrbot-health.json", {
                 "at": time.time(), "pid": os.getpid(), "instance_id": cfg["instance_id"],
-                "verified": verified, "online": online, "plugin_version": "0.4.0"})
+                "verified": verified, "online": online, "plugin_version": "0.5.0"})
             await asyncio.sleep(5)
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=10000)

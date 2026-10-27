@@ -19,6 +19,8 @@ from .organization import OrganizationEngine
 from .profile import ProfileService
 from .character import CharacterService
 from .ingress import IngressService
+from .delivery import DeliveryService
+from .quotas import QuotaService
 
 
 def create_app(paths, client=None):
@@ -29,6 +31,7 @@ def create_app(paths, client=None):
     engine = ChatEngine(store, config, client)
     engine.recover()
     ingress=IngressService(engine)
+    delivery_service=DeliveryService(store)
     ingress.recover()
     organization = OrganizationEngine(store, config, engine.client, engine)
     organization.recover()
@@ -49,7 +52,11 @@ def create_app(paths, client=None):
         else:
             return web.json_response({"error": "unauthorized"}, status=401)
         if request["role"] == "bridge" and not (
-            request.path in ("/v1/health", "/v1/chat", "/v1/qq-pending") or request.path.startswith(("/v1/requests/", "/v1/submissions/")) or (request.method=="GET" and request.path.startswith(("/v2/submissions/","/v2/batches/"))) or request.path=="/v2/ingress"):
+            request.path in ("/v1/health", "/v1/chat", "/v1/qq-pending", "/v2/delivery/streams")
+            or request.path.startswith(("/v1/requests/", "/v1/submissions/"))
+            or (request.method=="GET" and request.path.startswith(("/v2/submissions/","/v2/batches/","/v2/delivery/streams/","/v2/replies/")))
+            or (request.method=="POST" and request.path.startswith(("/v2/replies/")))
+            or request.path=="/v2/ingress"):
             return web.json_response({"error": "forbidden"}, status=403)
         try:
             return await handler(request)
@@ -84,7 +91,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.6.2.dev1", "capabilities":["durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.6.3.dev1", "capabilities":["durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -159,7 +166,10 @@ def create_app(paths, client=None):
         return web.json_response(await engine.retry(turn["id"]))
 
     async def delivery(request):
-        bridge_turn(request, engine.get(request.match_info["id"]))
+        current=engine.get(request.match_info["id"])
+        bridge_turn(request, current)
+        if current.get("delivery_stream"):
+            raise RuntimeErrorBase("m63_delivery_protocol_required")
         value = await body(request)
         return web.json_response(engine.delivery(request.match_info["id"], value["action"]))
 
@@ -173,11 +183,61 @@ def create_app(paths, client=None):
         rows = []
         with store.connection() as conn:
             for row in conn.execute("SELECT t.id FROM turns t JOIN deliveries d ON d.turn_id=t.id "
-                                    "WHERE t.status='completed' AND d.state='pending' ORDER BY t.rowid LIMIT 100"):
+                                    "WHERE t.status='completed' AND d.state='pending' "
+                                    "AND NOT EXISTS (SELECT 1 FROM reply_delivery_parts p WHERE p.turn_id=t.id) ORDER BY t.rowid LIMIT 100"):
                 turn = engine._view(conn, row[0])
                 if turn["origin"] == {"sender": cfg["owner_qq"], "bot": cfg["bot_qq"]}:
                     rows.append(turn)
         return web.json_response(rows)
+
+    def delivery_origin(request):
+        if request["role"] != "bridge":
+            return None
+        cfg=config.load()
+        return {"sender":cfg["owner_qq"],"bot":cfg["bot_qq"]}
+
+    async def delivery_streams(request):
+        return web.json_response(delivery_service.pending(origin=delivery_origin(request),persona_id=request.query.get("persona_id")))
+
+    async def delivery_stream(request):
+        return web.json_response(delivery_service.get(request.match_info["stream_id"],origin=delivery_origin(request)))
+
+    async def reply_parts(request):
+        value=delivery_service.by_batch(request.match_info["reply_batch_id"])
+        if value is None:raise web.HTTPNotFound()
+        if request["role"]=="bridge":
+            cfg=config.load()
+            if value["channel"]!="qq" or value["origin"]!={"sender":cfg["owner_qq"],"bot":cfg["bot_qq"]}:raise web.HTTPForbidden()
+        value["parts"]=[part for part in value["parts"] if part["reply_batch_id"]==request.match_info["reply_batch_id"]]
+        return web.json_response(value)
+
+    async def delivery_claim(request):
+        value=await body(request);batch=delivery_service.by_batch(request.match_info["reply_batch_id"])
+        if batch is None:raise web.HTTPNotFound()
+        stream_id=batch["id"]
+        if request.match_info["part_id"] not in {part["id"] for part in batch["parts"] if part["reply_batch_id"]==request.match_info["reply_batch_id"]}:raise web.HTTPNotFound()
+        origin=delivery_origin(request)
+        return web.json_response(delivery_service.claim(stream_id,request.match_info["part_id"],value["expected_revision"],
+            value["operation_id"],persona_id=value.get("persona_id"),origin=origin,actor=request["role"]))
+
+    async def delivery_result(request):
+        value=await body(request);origin=delivery_origin(request);batch=delivery_service.by_batch(request.match_info["reply_batch_id"])
+        if batch is None:raise web.HTTPNotFound()
+        if request.match_info["part_id"] not in {part["id"] for part in batch["parts"] if part["reply_batch_id"]==request.match_info["reply_batch_id"]}:raise web.HTTPNotFound()
+        stream_id=batch["id"]
+        return web.json_response(delivery_service.result(stream_id,request.match_info["part_id"],
+            value["claim_token"],value["state"],value["expected_revision"],value["operation_id"],
+            platform_message_id=value.get("platform_message_id"),error=value.get("error"),persona_id=value.get("persona_id"),
+            origin=origin,actor=request["role"]))
+
+    async def delivery_resolve(request):
+        if request["role"]!="admin":raise web.HTTPForbidden()
+        value=await body(request);batch=delivery_service.by_batch(request.match_info["reply_batch_id"])
+        if batch is None:raise web.HTTPNotFound()
+        if request.match_info["part_id"] not in {part["id"] for part in batch["parts"] if part["reply_batch_id"]==request.match_info["reply_batch_id"]}:raise web.HTTPNotFound()
+        return web.json_response(delivery_service.resolve(batch["id"],request.match_info["part_id"],
+            value["action"],value["expected_revision"],value["operation_id"],persona_id=value["persona_id"],
+            reason=value.get("reason"),allow_continue=value.get("allow_continue",True)))
 
     async def configuration(request):
         if request.method == "GET":
@@ -246,6 +306,10 @@ def create_app(paths, client=None):
                 checked.append(row | {"turn": turn})
             return web.json_response(checked)
         handlers = {
+            'quota.current': lambda: QuotaService(store, config).current(),
+            'quota.update': lambda limits: QuotaService(store, config).update(limits),
+            'quota.acceptance.begin': lambda: QuotaService(store, config).begin_acceptance(),
+            'quota.acceptance.end': lambda: QuotaService(store, config).end_acceptance(),
             "interaction.current":ingress.current_policy,"interaction.update":ingress.update_policy,"batch.list":ingress.list,
             "reply.current":lambda persona_id,channel:ingress.current_policy(persona_id,channel),
             "reply.update":lambda persona_id,channel,reply_mode,expected_version,operation_id:ingress.update_policy(persona_id,channel,ingress.current_policy(persona_id,channel)['mode'],expected_version,operation_id,reply_mode=reply_mode),
@@ -268,7 +332,12 @@ def create_app(paths, client=None):
             "data.backup": service.backup, "chat.history": engine.history,
             "chat.sessions": engine.desktop_sessions,
             "chat.snapshot": engine.history_snapshot, "chat.requests": engine.requests,
-            "delivery.pending": lambda: pending_deliveries(store),
+            "delivery.pending": lambda: pending_deliveries(store, delivery_service),
+            "delivery.list": lambda persona_id: delivery_service.list(persona_id),
+            "delivery.show": lambda stream_id, persona_id: delivery_service.get(stream_id, persona_id=persona_id),
+            "delivery.resolve": lambda stream_id, part_id, action, expected_revision, operation_id, persona_id, reason=None, allow_continue=True: delivery_service.resolve(
+                stream_id, part_id, action, expected_revision, operation_id, persona_id=persona_id,
+                reason=reason, allow_continue=allow_continue),
         }
         if action not in handlers or not isinstance(args, dict):
             raise RuntimeErrorBase("Unknown management action")
@@ -293,6 +362,12 @@ def create_app(paths, client=None):
     app.router.add_get("/v2/submissions/{channel}/{request_id:.+}",ingress_lookup)
     app.router.add_get("/v2/batches/{id}",batch_read)
     app.router.add_post("/v2/batches/{id}/{action:seal|resume|cancel}",batch_action)
+    app.router.add_get("/v2/delivery/streams",delivery_streams)
+    app.router.add_get("/v2/delivery/streams/{stream_id}",delivery_stream)
+    app.router.add_get("/v2/replies/{reply_batch_id}/parts",reply_parts)
+    app.router.add_post("/v2/replies/{reply_batch_id}/parts/{part_id}/claim",delivery_claim)
+    app.router.add_post("/v2/replies/{reply_batch_id}/parts/{part_id}/result",delivery_result)
+    app.router.add_post("/v2/replies/{reply_batch_id}/parts/{part_id}/resolve",delivery_resolve)
     app.router.add_get("/v1/health", health)
     app.router.add_post("/v1/chat", chat)
     app.router.add_get("/v1/qq-pending", qq_pending)
@@ -329,11 +404,19 @@ def create_app(paths, client=None):
     return app
 
 
-def pending_deliveries(store):
+def pending_deliveries(store, delivery=None):
     with store.connection() as conn:
-        return [dict(row) for row in conn.execute(
+        rows=[dict(row) for row in conn.execute(
             "SELECT d.turn_id,d.state,t.persona_id,t.session_id,t.status FROM deliveries d "
-            "JOIN turns t ON t.id=d.turn_id WHERE d.state!='sent' ORDER BY d.updated_at DESC")]
+            "JOIN turns t ON t.id=d.turn_id WHERE d.state!='sent' "
+            "AND NOT EXISTS (SELECT 1 FROM reply_delivery_parts p WHERE p.turn_id=t.id) ORDER BY d.updated_at DESC")]
+        if delivery:
+            for stream in delivery.pending():
+                pending=[part for part in stream['parts'] if part['state'] in ('pending','sending')]
+                for part in pending:
+                    rows.append({'turn_id':part['turn_id'],'state':part['state'],'persona_id':stream['persona_id'],
+                                 'session_id':None,'status':'completed','part_id':part['id']})
+        return rows
 
 
 async def serve(paths):

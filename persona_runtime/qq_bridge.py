@@ -6,6 +6,7 @@ from urllib.parse import quote
 import aiohttp
 
 from .config import ConfigStore
+from .models import identifier
 from .submissions import SubmissionJournal
 
 
@@ -146,6 +147,10 @@ class QQBridge:
         return await self.deliver(turn, send)
 
     async def deliver(self, turn, send):
+        health = await self.request("GET", "/v1/health")
+        reply_batch = turn.get("reply_batch")
+        if "reply_delivery_parts_v1" in health.get("capabilities", []) and reply_batch:
+            return False  # The polling worker uses the platform API and captures message IDs.
         turn_id = turn["id"]
         claim = await self.request("POST", f"/v1/requests/{turn_id}/delivery", {"action": "claim"})
         if not claim["claimed"]:
@@ -164,3 +169,65 @@ class QQBridge:
             raise
         await self.request("POST", f"/v1/requests/{turn_id}/delivery", {"action": "sent"})
         return True
+
+    async def deliver_stream(self, stream, send):
+        view = stream
+        delivered = False
+        for part in view["parts"]:
+            if part["state"] in ("sent", "skipped", "resolved"):
+                continue
+            # A claim may have reached the service even if its response was lost.
+            # Never replay an in-flight send; service recovery turns it uncertain.
+            if part["state"] == "sending":
+                return delivered
+            if part["state"] != "pending" or view["state"] != "open":
+                return delivered
+            try:
+                claim = await self.request("POST", f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/claim",
+                    {"expected_revision": view["revision"], "operation_id": identifier()})
+            except BridgeAPIError as exc:
+                if str(exc) == "version_conflict":
+                    return delivered
+                raise
+            if not claim["claimed"]:
+                return delivered
+            state, message_id, error = "sent", None, None
+            cancelled = False
+            try:
+                result = await send(part["text"])
+                if result is False:
+                    state, error = "failed", "platform_send_failed"
+                elif result is None:
+                    state, error = "uncertain", "platform_send_result_missing"
+                elif isinstance(result, dict):
+                    data = result.get("data")
+                    message_id = result.get("message_id") or (data.get("message_id") if isinstance(data, dict) else None)
+                    if message_id is None:
+                        state, error = "uncertain", "platform_message_id_missing"
+                elif isinstance(result, str):
+                    message_id = result
+                else:
+                    state, error = "uncertain", "platform_message_id_missing"
+            except asyncio.CancelledError:
+                state, error, cancelled = "uncertain", "platform_send_cancelled", True
+            except Exception as exc:
+                state, error = "uncertain", type(exc).__name__
+            try:
+                recorded = await self.request("POST", f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/result", {
+                    "claim_token": claim["claim_token"], "expected_revision": claim["part_revision"],
+                    "operation_id": identifier(), "state": state,
+                    "platform_message_id": str(message_id) if message_id is not None else None,
+                    "error": error,
+                })
+            except BaseException:
+                if cancelled:
+                    raise asyncio.CancelledError
+                raise
+            if cancelled:
+                raise asyncio.CancelledError
+            if state != "sent":
+                return delivered
+            delivered = True
+            view["revision"] = recorded["revision"]
+            view = await self.request("GET", f"/v2/delivery/streams/{view['id']}")
+        return delivered

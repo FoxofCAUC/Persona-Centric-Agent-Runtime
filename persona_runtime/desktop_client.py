@@ -41,8 +41,8 @@ class LocalClient:
         except (OSError, ValueError, http.client.HTTPException):
             raise TransportUnknown("人格服务尚未连接或响应未确认；发送过的消息请先找回受理结果，不要换 ID 重发。") from None
 
-    def manage(self, action, **args):
-        return self.call("POST", "/v1/manage", {"action": action, "args": args})
+    def manage(self, management_action, **args):
+        return self.call("POST", "/v1/manage", {"action": management_action, "args": args})
 
     def lookup_v1(self, payload):
         try:

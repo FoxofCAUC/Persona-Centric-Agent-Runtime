@@ -116,7 +116,7 @@ def prepare(paths, *, install=True, source=Path("D:/QQ_Bot_2/napcat-shell")):
         if item.is_file():
             shutil.copy2(item, plugin / item.name)
     atomic_json(paths.home / "runtime/deployment.json", {"version": 1, "astrbot": "4.29.1", "source": str(source),
-                "plugin": "0.4.0", "independent": True})
+                "plugin": "0.5.0", "independent": True})
     return {"prepared": True, "component_root": str(paths.home / "components")}
 
 

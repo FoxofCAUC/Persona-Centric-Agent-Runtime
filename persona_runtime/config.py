@@ -75,7 +75,7 @@ class ConfigStore:
             if url.scheme == "http" and url.hostname not in ("localhost", "127.0.0.1", "::1"):
                 raise RuntimeErrorBase("Remote model endpoints require HTTPS")
         for key, minimum, maximum in (("timeout", 1, 300), ("max_tokens", 1, 32768),
-                                      ("hourly_limit", 1, 10000), ("max_input_chars", 1000, 200000)):
+                                      ("hourly_limit", 0, 10000), ("max_input_chars", 1000, 200000)):
             if type(model.get(key)) is not int or not minimum <= model[key] <= maximum:
                 raise RuntimeErrorBase(f"Invalid model limit: {key}")
         if not isinstance(model.get("name"), str):
@@ -91,7 +91,7 @@ class ConfigStore:
         if not isinstance(org, dict) or set(org) != set(DEFAULTS["organization"]) or any(type(org[k]) is not bool for k in ("reuse_chat", "daily_enabled")):
             raise RuntimeErrorBase("Invalid organization configuration")
         for field in ("hourly_limit", "daily_limit"):
-            if type(org[field]) is not int or not 1 <= org[field] <= 10000:
+            if type(org[field]) is not int or not 0 <= org[field] <= 10000:
                 raise RuntimeErrorBase("Invalid organization budget")
         # Reuse the endpoint and numeric validation without recursive organization validation.
         background = org["model"]
@@ -103,7 +103,7 @@ class ConfigStore:
             raise RuntimeErrorBase("Invalid organization endpoint")
         if not isinstance(background["name"], str) or not isinstance(background["encrypted_key"], str):
             raise RuntimeErrorBase("Invalid organization model text")
-        for field, low, high in (("timeout", 1, 300), ("max_tokens", 1, 32768), ("hourly_limit", 1, 10000), ("max_input_chars", 1000, 200000)):
+        for field, low, high in (("timeout", 1, 300), ("max_tokens", 1, 32768), ("hourly_limit", 0, 10000), ("max_input_chars", 1000, 200000)):
             if type(background[field]) is not int or not low <= background[field] <= high:
                 raise RuntimeErrorBase("Invalid organization model limit")
 

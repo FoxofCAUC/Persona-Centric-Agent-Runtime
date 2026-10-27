@@ -229,7 +229,7 @@ class M5Tests(unittest.IsolatedAsyncioTestCase):
     async def test_export_and_backup_include_versions_but_not_credentials(self):
         self.edit('expression',{'style':'可导出的虚构风格'})
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],6);self.assertEqual(len(data['profile_versions']),5)
+        self.assertEqual(data['format_version'],7);self.assertEqual(len(data['profile_versions']),5)
         self.assertNotIn('encrypted_key',json.dumps(data))
         db=sqlite3.connect(self.service.backup()['path'])
         try:self.assertEqual(db.execute('SELECT count(*) FROM profile_heads').fetchone()[0],4)

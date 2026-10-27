@@ -357,9 +357,10 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
             sent = []
             async def send(text):
                 sent.append(text)
-            self.assertTrue(await bridge.handle(event, send))
+            # M6.3 completion is handled by the single polling sender, not the event handler.
             self.assertFalse(await bridge.handle(event, send))
-            self.assertEqual(len(sent), 1)
+            self.assertFalse(await bridge.handle(event, send))
+            self.assertEqual(len(sent), 0)
             self.assertEqual(len(self.model.calls), 1)
 
     async def test_qq_uncertain_send_is_not_retried(self):

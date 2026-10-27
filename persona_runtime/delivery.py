@@ -1,0 +1,256 @@
+"""M6.3 durable, claim-based platform delivery ledger."""
+import hashlib
+import json
+
+from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, timestamp
+
+PART_CHARS = 450
+TERMINAL = ("sent", "skipped", "resolved")
+
+
+def _fingerprint(value):
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _split(text):
+    return [text[offset:offset + PART_CHARS] for offset in range(0, len(text), PART_CHARS)]
+
+
+class DeliveryService:
+    def __init__(self, store):
+        self.store = store
+
+    @staticmethod
+    def _stream(conn, stream_id):
+        row = conn.execute("SELECT * FROM reply_delivery_streams WHERE id=?", (stream_id,)).fetchone()
+        if not row:
+            raise RuntimeErrorBase("Delivery stream not found")
+        return dict(row)
+
+    @staticmethod
+    def _scope(stream, persona_id=None, origin=None):
+        if persona_id is not None and stream["persona_id"] != persona_id:
+            raise RuntimeErrorBase("Delivery record belongs to a different persona")
+        if origin is not None and json.loads(stream["origin_json"]) != origin:
+            raise RuntimeErrorBase("Delivery target does not match the current QQ identity")
+
+    @staticmethod
+    def _operation(conn, operation_id, request_hash):
+        row = conn.execute("SELECT request_hash,result_json FROM reply_delivery_operations WHERE operation_id=?",
+                           (operation_id,)).fetchone()
+        if not row:
+            return None
+        if row[0] != request_hash:
+            raise RuntimeErrorBase("operation_conflict")
+        return json.loads(row[1])
+
+    @staticmethod
+    def _record(conn, operation_id, stream_id, part_id, action, actor, reason, allow_continue, request_hash, result):
+        conn.execute("INSERT INTO reply_delivery_operations VALUES (?,?,?,?,?,?,?,?,?,?)",
+                     (operation_id, stream_id, part_id, action, actor, reason, int(bool(allow_continue)), request_hash,
+                      json.dumps(result, ensure_ascii=False), timestamp()))
+
+    @staticmethod
+    def _refresh(conn, stream_id):
+        stream = DeliveryService._stream(conn, stream_id)
+        rows = conn.execute("SELECT id,state FROM reply_delivery_parts WHERE stream_id=? ORDER BY stream_seq", (stream_id,)).fetchall()
+        blocking = next((row for row in rows if row["state"] in ("failed", "uncertain")), None)
+        if blocking:
+            state, reason, part_id = "blocked", blocking["state"], blocking["id"]
+        elif rows and all(row["state"] in TERMINAL for row in rows):
+            state = "skipped" if any(row["state"] == "skipped" for row in rows) else "completed"
+            reason = part_id = None
+        else:
+            state, reason, part_id = "open", None, None
+        conn.execute("UPDATE reply_delivery_streams SET state=?,blocked_reason=?,blocked_part_id=?,revision=revision+1,updated_at=? WHERE id=?",
+                     (state, reason, part_id, timestamp(), stream_id))
+        return DeliveryService._stream(conn, stream_id)
+
+    def recover(self):
+        with self.store.connection(write=True) as conn:
+            rows = conn.execute("SELECT id,stream_id FROM reply_delivery_parts WHERE state='sending'").fetchall()
+            for row in rows:
+                conn.execute("UPDATE reply_delivery_parts SET state='uncertain',claim_token=NULL,error=?,updated_at=? WHERE id=?",
+                             ("service_restarted_before_delivery_confirmation", timestamp(), row[0]))
+                conn.execute("UPDATE reply_delivery_attempts SET state='uncertain',error=?,ended_at=? WHERE part_id=? AND state='sending'",
+                             ("service_restarted_before_delivery_confirmation", timestamp(), row[0]))
+                self._refresh(conn, row[1])
+
+    def create_for_batch(self, conn, batch_id, turn):
+        if turn["channel"] != "qq":
+            return None
+        origin = json.loads(turn.get("origin_json") or "{}")
+        origin_json = json.dumps(origin, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        stream = conn.execute("SELECT id FROM reply_delivery_streams WHERE persona_id=? AND user_id=? AND channel=? "
+                              "AND json_extract(origin_json,'$.sender')=? AND json_extract(origin_json,'$.bot')=? "
+                              "ORDER BY created_at,id LIMIT 1",
+                              (turn["persona_id"], LOCAL_USER_ID, turn["channel"], origin.get('sender'), origin.get('bot'))).fetchone()
+        if stream:
+            stream_id = stream[0]
+            conn.execute("UPDATE reply_delivery_streams SET state='open',revision=revision+1,updated_at=? WHERE id=? AND state IN ('completed','skipped')",
+                         (timestamp(), stream_id))
+        else:
+            stream_id = identifier()
+            conn.execute("INSERT INTO reply_delivery_streams VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                         (stream_id, turn["persona_id"], LOCAL_USER_ID, turn["channel"], origin_json, "open", 1, None, None,
+                          timestamp(), timestamp()))
+        stream_seq = conn.execute("SELECT coalesce(max(stream_seq),0) FROM reply_delivery_parts WHERE stream_id=?", (stream_id,)).fetchone()[0]
+        segments = conn.execute("SELECT segment_index,text FROM reply_segments WHERE batch_id=? ORDER BY segment_index", (batch_id,)).fetchall()
+        part_index = 0
+        for segment in segments:
+            for text in _split(segment[1]):
+                part_index += 1
+                stream_seq += 1
+                conn.execute("INSERT INTO reply_delivery_parts (id,stream_id,reply_batch_id,turn_id,persona_id,user_id,semantic_index,part_index,stream_seq,text,text_hash,state,revision,claim_token,attempt,platform_message_id,sent_at,error,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',1,NULL,0,NULL,NULL,NULL,?,?)",
+                             (identifier(), stream_id, batch_id, turn["id"], turn["persona_id"], LOCAL_USER_ID,
+                              segment[0], part_index, stream_seq, text, hashlib.sha256(text.encode("utf-8")).hexdigest(), timestamp(), timestamp()))
+        return stream_id
+
+    def _view(self, conn, stream_id):
+        stream = self._stream(conn, stream_id)
+        stream["origin"] = json.loads(stream.pop("origin_json"))
+        stream["parts"] = []
+        for row in conn.execute("SELECT * FROM reply_delivery_parts WHERE stream_id=? ORDER BY stream_seq", (stream_id,)):
+            part=dict(row);part.pop("claim_token",None)
+            part["attempts"]=[dict(item) for item in conn.execute(
+                "SELECT attempt_no,state,platform_message_id,error,started_at,ended_at FROM reply_delivery_attempts WHERE part_id=? ORDER BY attempt_no",
+                (part["id"],))]
+            stream["parts"].append(part)
+        return stream
+
+    def by_batch(self, batch_id):
+        with self.store.connection() as conn:
+            row = conn.execute("SELECT stream_id FROM reply_delivery_parts WHERE reply_batch_id=? LIMIT 1", (batch_id,)).fetchone()
+            return self._view(conn, row[0]) if row else None
+
+    def get(self, stream_id, *, persona_id=None, origin=None):
+        with self.store.connection() as conn:
+            stream = self._stream(conn, stream_id)
+            self._scope(stream, persona_id, origin)
+            return self._view(conn, stream_id)
+
+    def pending(self, *, origin=None, persona_id=None):
+        with self.store.connection() as conn:
+            rows = conn.execute("SELECT id FROM reply_delivery_streams WHERE state IN ('open','blocked') ORDER BY created_at").fetchall()
+            result = []
+            for row in rows:
+                stream = self._stream(conn, row[0])
+                if ((origin is None or json.loads(stream["origin_json"]) == origin)
+                        and (persona_id is None or stream["persona_id"] == persona_id)):
+                    result.append(self._view(conn, row[0]))
+            return result
+
+    def list(self, persona_id):
+        with self.store.connection() as conn:
+            return [self._view(conn, row[0]) for row in conn.execute(
+                "SELECT id FROM reply_delivery_streams WHERE persona_id=? ORDER BY updated_at DESC", (persona_id,))]
+
+    def claim(self, stream_id, part_id, expected_revision, operation_id, *, persona_id=None, origin=None, actor="bridge"):
+        request = {"stream_id": stream_id, "part_id": part_id, "expected_revision": expected_revision}
+        request_hash = _fingerprint(request)
+        with self.store.connection(write=True) as conn:
+            stream = self._stream(conn, stream_id); self._scope(stream, persona_id, origin)
+            old = self._operation(conn, operation_id, request_hash)
+            if old is not None:
+                return old
+            if stream["revision"] != expected_revision:
+                raise RuntimeErrorBase("version_conflict")
+            part = conn.execute("SELECT * FROM reply_delivery_parts WHERE id=? AND stream_id=?", (part_id, stream_id)).fetchone()
+            if not part:
+                raise RuntimeErrorBase("Delivery part not found")
+            first = conn.execute("SELECT id,state FROM reply_delivery_parts WHERE stream_id=? AND state NOT IN ('sent','skipped','resolved') ORDER BY stream_seq LIMIT 1",
+                                 (stream_id,)).fetchone()
+            if stream["state"] != "open" or part["state"] != "pending" or not first or first["id"] != part_id:
+                result = {"claimed": False, "state": part["state"], "revision": stream["revision"],
+                          "reason": stream["blocked_reason"] or "another_part_has_priority"}
+                self._record(conn, operation_id, stream_id, part_id, "claim", actor, None, False, request_hash, result)
+                return result
+            token = identifier()
+            conn.execute("UPDATE reply_delivery_parts SET state='sending',revision=revision+1,claim_token=?,attempt=attempt+1,updated_at=? WHERE id=? AND state='pending'",
+                         (token, timestamp(), part_id))
+            conn.execute("INSERT INTO reply_delivery_attempts (id,part_id,attempt_no,state,platform_message_id,error,started_at,ended_at) VALUES (?,?,?,'sending',NULL,NULL,?,NULL)",
+                         (identifier(), part_id, part["attempt"] + 1, timestamp()))
+            conn.execute("UPDATE reply_delivery_streams SET revision=revision+1,updated_at=? WHERE id=?", (timestamp(), stream_id))
+            stream = self._stream(conn, stream_id)
+            result = {"claimed": True, "claim_token": token, "attempt": part["attempt"] + 1,
+                      "revision": stream["revision"], "part_revision": part["revision"] + 1,
+                      "part_id": part_id, "expires_at": None}
+            self._record(conn, operation_id, stream_id, part_id, "claim", actor, None, False, request_hash, result)
+            return result
+
+    def result(self, stream_id, part_id, claim_token, status, expected_revision, operation_id, *, platform_message_id=None,
+               error=None, persona_id=None, origin=None, actor="bridge"):
+        if status not in ("sent", "failed", "uncertain"):
+            raise RuntimeErrorBase("Invalid delivery result")
+        request = {"stream_id": stream_id, "part_id": part_id, "claim_token": claim_token, "status": status,
+                   "platform_message_id": platform_message_id, "error": error, "expected_revision": expected_revision}
+        request_hash = _fingerprint(request)
+        with self.store.connection(write=True) as conn:
+            stream = self._stream(conn, stream_id); self._scope(stream, persona_id, origin)
+            old = self._operation(conn, operation_id, request_hash)
+            if old is not None:
+                return old
+            part = conn.execute("SELECT * FROM reply_delivery_parts WHERE id=? AND stream_id=?", (part_id, stream_id)).fetchone()
+            if not part or part["revision"] != expected_revision:
+                raise RuntimeErrorBase("version_conflict")
+            if not part or part["state"] != "sending" or part["claim_token"] != claim_token:
+                raise RuntimeErrorBase("claim_token_mismatch")
+            conn.execute("UPDATE reply_delivery_parts SET state=?,revision=revision+1,claim_token=NULL,platform_message_id=?,sent_at=?,error=?,updated_at=? WHERE id=?",
+                         (status, platform_message_id, timestamp() if status == "sent" else None, error, timestamp(), part_id))
+            conn.execute("UPDATE reply_delivery_attempts SET state=?,platform_message_id=?,error=?,ended_at=? WHERE part_id=? AND attempt_no=? AND state='sending'",
+                         (status, platform_message_id, error, timestamp(), part_id, part["attempt"]))
+            stream = self._refresh(conn, stream_id)
+            result = {"state": status, "revision": stream["revision"], "part_id": part_id}
+            self._record(conn, operation_id, stream_id, part_id, "result", actor, error, False, request_hash, result)
+            return result
+
+    def resolve(self, stream_id, part_id, action, expected_revision, operation_id, *, persona_id=None, reason=None,
+                actor="admin", allow_continue=True):
+        if action not in ("resolve", "skip", "retry", "release"):
+            raise RuntimeErrorBase("Invalid delivery resolution")
+        request = {"stream_id": stream_id, "part_id": part_id, "action": action, "expected_revision": expected_revision,
+                   "reason": reason, "allow_continue": bool(allow_continue)}
+        request_hash = _fingerprint(request)
+        with self.store.connection(write=True) as conn:
+            stream = self._stream(conn, stream_id); self._scope(stream, persona_id)
+            old = self._operation(conn, operation_id, request_hash)
+            if old is not None:
+                return old
+            if stream["revision"] != expected_revision:
+                raise RuntimeErrorBase("version_conflict")
+            part = conn.execute("SELECT * FROM reply_delivery_parts WHERE id=? AND stream_id=?", (part_id, stream_id)).fetchone()
+            if not part:
+                raise RuntimeErrorBase("Delivery part not found")
+            if action == "retry":
+                if part["state"] not in ("uncertain", "failed"):
+                    raise RuntimeErrorBase("part_not_retryable")
+                conn.execute("UPDATE reply_delivery_parts SET state='pending',revision=revision+1,claim_token=NULL,error=?,updated_at=? WHERE id=?",
+                             (reason or "explicit_retry_may_duplicate", timestamp(), part_id))
+                stream = self._refresh(conn, stream_id)
+            elif action == "skip":
+                if part["state"] not in ("failed", "uncertain"):
+                    raise RuntimeErrorBase("part_not_skippable")
+                conn.execute("UPDATE reply_delivery_parts SET state='skipped',revision=revision+1,error=?,updated_at=? WHERE reply_batch_id=? AND part_index>=? AND state IN ('pending','failed','uncertain')",
+                             (reason or "explicitly_skipped", timestamp(), part["reply_batch_id"], part["part_index"]))
+                stream = self._refresh(conn, stream_id)
+            elif action == "resolve":
+                if part["state"] not in ("uncertain", "failed"):
+                    raise RuntimeErrorBase("part_not_resolvable")
+                conn.execute("UPDATE reply_delivery_parts SET state='resolved',revision=revision+1,claim_token=NULL,error=?,updated_at=? WHERE id=?",
+                             (reason or "explicitly_resolved", timestamp(), part_id))
+                stream = self._refresh(conn, stream_id)
+            else:
+                if stream["state"] != "blocked" or stream["blocked_reason"] != "admin_hold":
+                    raise RuntimeErrorBase("blocking_part_must_be_resolved_first")
+                stream = self._refresh(conn, stream_id)
+            if action != "release" and not allow_continue:
+                conn.execute("UPDATE reply_delivery_streams SET state='blocked',blocked_reason='admin_hold',blocked_part_id=?,revision=revision+1,updated_at=? WHERE id=?",
+                             (part_id, timestamp(), stream_id))
+                stream = self._stream(conn, stream_id)
+            resolved_part=conn.execute("SELECT state,attempt FROM reply_delivery_parts WHERE id=?",(part_id,)).fetchone()
+            result = {"state": stream["state"], "part_id":part_id,"part_state":resolved_part["state"],
+                      "attempt":resolved_part["attempt"],"revision": stream["revision"],
+                      "allow_continue": bool(allow_continue)}
+            self._record(conn, operation_id, stream_id, part_id, action, actor, reason, allow_continue, request_hash, result)
+            return result

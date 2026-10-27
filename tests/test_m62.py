@@ -23,6 +23,7 @@ from persona_runtime.storage import Store
 from persona_runtime.storage import SCHEMA,SCHEMA2,SCHEMA3,SCHEMA4,SCHEMA5,SCHEMA6,SCHEMA7,execute_schema
 from persona_runtime.schema_m61 import SCHEMA8
 from persona_runtime.schema_m62 import SCHEMA9
+from persona_runtime.schema_m63 import SCHEMA10
 from persona_runtime.behavior import resolve_behavior
 
 
@@ -128,7 +129,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         receipt=self.accept('代码修正')
         await self.engine.wait()
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],6);self.assertEqual(len(data['reply_batches']),1)
+        self.assertEqual(data['format_version'],7);self.assertEqual(len(data['reply_batches']),1)
         self.assertEqual(len(data['reply_segments']),2)
         self.assertNotIn('encrypted_key',json.dumps(data))
 
@@ -141,8 +142,8 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         original=execute_schema
         def fail_after_m62(conn,schema):
             original(conn,schema)
-            if schema==SCHEMA9:raise RuntimeErrorBase('injected schema9 failure')
-        with patch('persona_runtime.storage.execute_schema',side_effect=fail_after_m62),self.assertRaisesRegex(RuntimeErrorBase,'schema9'):
+            if schema==SCHEMA10:raise RuntimeErrorBase('injected schema10 failure')
+        with patch('persona_runtime.storage.execute_schema',side_effect=fail_after_m62),self.assertRaisesRegex(RuntimeErrorBase,'schema10'):
             store.initialize()
         db=sqlite3.connect(store.path)
         self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
@@ -150,7 +151,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_batches'").fetchone());db.close()
         store.initialize();store.initialize()
         with store.connection() as conn:
-            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],9)
+            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],10)
             self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(conn.execute("SELECT dflt_value FROM pragma_table_info('interaction_policies') WHERE name='reply_mode'").fetchone()[0],"'legacy_full'")
         self.assertTrue(list((path.home/'backups').glob('before-m62-*.sqlite3')))

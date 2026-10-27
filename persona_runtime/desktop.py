@@ -19,6 +19,8 @@ from .desktop_organization import OrganizationUI
 from .desktop_profile import ProfileUI
 from .desktop_character import CharacterUI
 from .desktop_batches import BatchUI, BATCH_LABELS
+from .desktop_delivery import DeliveryUI
+from .desktop_quotas import QuotaUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -60,7 +62,7 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
@@ -68,6 +70,7 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
                      ('profile','人格与关系','build_profile'),
                      ('character','角色资料','build_character'),
                      ('batches','输入与缓冲','build_batches'),
+                     ('delivery','回复投递','build_delivery'),
                      ("diagnostics", "故障排查", "build_diagnostics"))
 
     def __init__(self, paths):
@@ -91,7 +94,7 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         self.last_ready = False
         self.tail = LogTail()
         self.current_page = "home"
-        self.notice = tk.StringVar(value="打开窗口不会自动启动、安装、登录或调用模型。")
+        self.notice = tk.StringVar(value="")
         self.status_text = tk.StringVar(value="正在读取本项目状态…")
         self.operation_text = tk.StringVar(value="没有正在执行的操作")
         self.persona_choice = tk.StringVar()
@@ -108,7 +111,8 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         self.init_profile_vars()
         self.init_character_vars()
         self.init_batch_vars()
-        self.title("人格工作台 · M6.2")
+        self.init_delivery_vars()
+        self.title("Persona-Centric Agent Runtime (PCAR) · M6.3")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -120,6 +124,7 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         self.after(900, self.poll_organization)
         self.after(1100,self.poll_profile)
         self.after(1200,self.poll_batches)
+        self.after(1500,self.poll_deliveries)
 
     def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None):
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
@@ -174,8 +179,7 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         style.configure("Primary.TButton", background="#2859b8", foreground="white")
         header = ttk.Frame(self, padding=(18, 12))
         header.pack(fill="x")
-        ttk.Label(header, text="人格工作台", font=("Microsoft YaHei UI", 14, "bold")).pack(side="left")
-        ttk.Label(header, text="本地人格 · 窗口与 QQ 私聊", foreground="#526174").pack(side="left", padx=15)
+        ttk.Label(header, text="Persona-Centric Agent Runtime (PCAR)", font=("Microsoft YaHei UI", 14, "bold")).pack(side="left")
         shell = ttk.Frame(self)
         shell.pack(fill="both", expand=True)
         nav = ttk.Frame(shell, padding=12)
@@ -210,9 +214,10 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         if key == "organization":
             self.refresh_organization()
         if key=='profile':self.refresh_profile()
+        if key=='delivery':self.refresh_deliveries()
 
     def build_home(self, parent):
-        self.heading(parent, "让人格持续陪伴", "先启动人格服务，即可在窗口聊天。QQ 私聊还需准备组件并填写账号。")
+        ttk.Label(parent, text="运行状态", style="Title.TLabel").pack(anchor="w", pady=(0, 8))
         ttk.Label(parent, textvariable=self.status_text, wraplength=720).pack(anchor="w", pady=12)
         bar = self.bar(parent)
         bar.pack(fill="x")
@@ -223,14 +228,14 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         bar.pack(fill="x")
         self.button(bar, "只启动人格服务", lambda: self.start_one("service"), {"lifecycle"})
         self.button(bar, "准备独立组件", self.prepare_components, {"lifecycle", "config"})
-        ttk.Label(parent, text="停止服务会保留 QQ 登录；关闭窗口也会保留后台服务。", wraplength=700).pack(anchor="w", pady=12)
         ttk.Label(parent, textvariable=self.operation_text, wraplength=700).pack(anchor="w", pady=8)
         self.progress = ttk.Progressbar(parent, mode="indeterminate")
         self.progress.pack(fill="x", pady=8)
         ttk.Button(parent, text="取消后续启动步骤", command=self.cancel_tasks).pack(anchor="w", pady=5)
-        self.login_text = tk.StringVar(value="QQ 登录和 OneBot 连接分别核对，页面可打开不代表已登录。")
+        self.login_text = tk.StringVar(value="QQ：正在核对 · OneBot：正在核对")
         ttk.Label(parent, textvariable=self.login_text, wraplength=700).pack(anchor="w", pady=12)
         ttk.Button(parent, text="打开 QQ 登录页", command=lambda: self.open_panel("napcat")).pack(anchor="w")
+        self.build_quotas(parent)
 
     def build_chat(self, parent):
         self.heading(parent, "聊天", "窗口和 QQ 共享长期记忆，各自保留近期会话。失败不会自动重试。")
@@ -303,7 +308,7 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     def build_model(self, parent):
         self.heading(parent, "模型", "Chat Completions 兼容接口。地址填写到 /v1 等基础路径，程序追加 /chat/completions。")
         self.fields(parent, self.model_vars, (("base_url", "接口基础地址"), ("name", "模型名称"), ("api_key", "新密钥（留空保留）"),
-                    ("timeout", "总超时（秒）"), ("max_tokens", "输出 token 上限"), ("hourly_limit", "每小时调用上限"),
+                    ("timeout", "总超时（秒）"), ("max_tokens", "输出 token 上限"), ("hourly_limit", "每小时调用上限（0 为不限额）"),
                     ("max_input_chars", "输入字符上限")), secret="api_key")
         self.key_status = tk.StringVar(value="")
         ttk.Label(parent, textvariable=self.key_status).pack(anchor="w", pady=5)
@@ -489,6 +494,9 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     def use_persona(self, persona_id):
         if not self.character_can_leave():return
         self.view_epoch += 1
+        self.delivery_rows = []
+        self.delivery_tree.delete(*self.delivery_tree.get_children())
+        self.show_delivery_parts()
         def done(_):
             self.session_id = None
             self.turns = []
@@ -980,6 +988,7 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         if self.closed:
             return
         def done(states):
+            self.refresh_quotas()
             self.status_text.set("\n".join(LABELS[role] + "：" + value["state"] for role, value in states.items()))
             bot = states["astrbot"]
             self.login_text.set("QQ 账号：" + ("已核对" if bot.get("login") else "等待登录／核对") +

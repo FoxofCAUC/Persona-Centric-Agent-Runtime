@@ -431,7 +431,10 @@ class OrganizationEngine:
             limits, now = self.config.load()["organization"], time.time()
             hour = conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (now-3600,)).fetchone()[0]
             day = conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (now-86400,)).fetchone()[0]
-            if hour >= limits["hourly_limit"] or day >= limits["daily_limit"] or project_calls(conn, now-3600) >= self.config.load()["model"]["hourly_limit"]:
+            project_limit = self.config.load()["model"]["hourly_limit"]
+            if ((limits["hourly_limit"] and hour >= limits["hourly_limit"])
+                    or (limits["daily_limit"] and day >= limits["daily_limit"])
+                    or (project_limit and project_calls(conn, now-3600) >= project_limit)):
                 conn.execute("UPDATE organization_tasks SET status='waiting_quota' WHERE id=?", (task["id"],))
                 return False
             model = json.loads(task["model_snapshot"])

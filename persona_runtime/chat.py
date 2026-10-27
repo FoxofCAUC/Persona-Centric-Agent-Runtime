@@ -105,6 +105,8 @@ class ChatEngine:
                          "WHERE status IN ('queued','running')", (timestamp(),))
             conn.execute("UPDATE attempts SET status='interrupted', error_code='service_restarted' WHERE status='running'")
             conn.execute("UPDATE deliveries SET state='uncertain', updated_at=? WHERE state='sending'", (timestamp(),))
+        from .delivery import DeliveryService
+        DeliveryService(self.store).recover()
 
     @staticmethod
     def _session(conn, persona_id, channel, session_id=None, fresh=False):
@@ -235,6 +237,8 @@ class ChatEngine:
             for key in ('persona_id','user_id','attempt_id','raw_fingerprint'):batch.pop(key,None)
             value['reply_batch']=batch
         else:value['reply_batch']=None
+        delivery_stream=conn.execute('SELECT s.id,s.state,s.revision,s.blocked_reason,s.blocked_part_id,count(p.id) AS part_count,sum(CASE WHEN p.state="sent" THEN 1 ELSE 0 END) AS sent_count FROM reply_delivery_streams s JOIN reply_delivery_parts p ON p.stream_id=s.id WHERE p.turn_id=? GROUP BY s.id',(turn_id,)).fetchone()
+        value['delivery_stream']=dict(delivery_stream) if delivery_stream else None
         context = conn.execute("SELECT details_json FROM context_uses WHERE turn_id=? ORDER BY rowid DESC LIMIT 1", (turn_id,)).fetchone()
         value['context'] = json.loads(context[0]) if context else None
         value.update(progress(conn, value))
@@ -301,7 +305,8 @@ class ChatEngine:
                         raise ModelError("model_not_configured")
                     from .memory_policy import project_calls
                     count = project_calls(conn, time.time()-3600)
-                    if count >= self.config.load()["model"]["hourly_limit"]:
+                    limit = self.config.load()["model"]["hourly_limit"]
+                    if limit and count >= limit:
                         raise ModelError("hourly_limit_reached")
                     attempt_id = identifier()
                     conn.execute("INSERT INTO attempts VALUES (?,?,?,'running',NULL,NULL,?)",
@@ -326,6 +331,8 @@ class ChatEngine:
                                      (batch_id,turn_id,attempt_id,turn['persona_id'],LOCAL_USER_ID,reply_batch.schema_version,reply_batch.mode,reply_batch.raw_fingerprint,len(reply_batch.segments),sum(len(item.text) for item in reply_batch.segments),timestamp()))
                         conn.executemany('INSERT INTO reply_segments (batch_id,persona_id,user_id,segment_index,text,format) VALUES (?,?,?,?,?,?)',
                                          [(batch_id,turn['persona_id'],LOCAL_USER_ID,index,item.text,item.format) for index,item in enumerate(reply_batch.segments,1)])
+                        from .delivery import DeliveryService
+                        DeliveryService(self.store).create_for_batch(conn,batch_id,turn)
                     encoded = json.dumps(usage) if usage is not None else None
                     conn.execute("UPDATE turns SET status='completed',reply_event_id=?,error_code=NULL,usage_json=?,updated_at=? WHERE id=?",
                                  (event_id, encoded, timestamp(), turn_id))
