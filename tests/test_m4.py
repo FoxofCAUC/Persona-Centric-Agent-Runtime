@@ -320,7 +320,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         finally:
             db.close()
         legacy.initialize()
-        self.assertEqual(legacy.status()['schema_version'], 8)
+        self.assertEqual(legacy.status()['schema_version'], 9)
         self.assertTrue(list((legacy.paths.home/'backups').glob('before-m4-*.sqlite3')))
 
     async def test_management_is_admin_only_and_public_config_masks_both_keys(self):
@@ -452,7 +452,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         candidate=self.org.candidates.list()[0]
         self.org.candidates.accept(candidate['id'],'accept')
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],5)
+        self.assertEqual(data['format_version'],6)
         self.assertEqual(len(data['candidate_reviews']),1)
         self.assertNotIn('encrypted_key',encoded(data))
         destination=Path(self.service.backup()['path'])

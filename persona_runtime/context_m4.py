@@ -11,6 +11,11 @@ def build_context(engine, conn, turn):
     from .chat import terms, ModelError
     if turn['channel'] == 'test':
         return [{"role": "user", "content": "Reply with OK."}], {"test": True}
+    from .behavior import resolve_behavior, render_behavior
+    from .reply_batch import prompt_contract, REPLY_MODES
+    reply_mode=turn.get('reply_mode_snapshot') or 'legacy_full'
+    if reply_mode not in REPLY_MODES:raise ModelError('reply_mode_invalid')
+    contextual=reply_mode!='legacy_full'
     ordinal = conn.execute('SELECT rowid FROM turns WHERE id=?', (turn['id'],)).fetchone()[0]
     frozen=json.loads(turn['profile_snapshot']) if turn.get('profile_snapshot') else snapshot(conn,turn['persona_id'])
     spec={'format_version':1,**frozen['core']['data'],'expression_style':frozen['expression']['data']['style']}
@@ -59,7 +64,13 @@ def build_context(engine, conn, turn):
         base+='\n用户显式临时状态（仅影响当下表达，不改写核心设定或事实）：'+state['data']['text']
     limit = json.loads(turn['model_snapshot'])['max_input_chars']
     from .character_context import select_context, render_parts, manifest
-    character = select_context(json.loads(turn['character_snapshot']), text) if turn.get('character_snapshot') else None
+    behavior=resolve_behavior(text) if contextual else {'resolver':'disabled','signals':[],'uncertainty':None}
+    character = select_context(json.loads(turn['character_snapshot']), text,
+                                scenario=[item['act'] for item in behavior['signals']],
+                                example_limit=4 if contextual else 2) if turn.get('character_snapshot') else None
+    behavior_instruction=render_behavior(behavior,character) if contextual else ''
+    base+=behavior_instruction
+    if reply_mode=='context_structured':base+=prompt_contract()
     character_parts = list(character['parts']) if character else []
     character_removed = []
     removed = []
@@ -86,6 +97,12 @@ def build_context(engine, conn, turn):
             raise ModelError('context_limit_exceeded')
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
     return result, {'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
+                    'reply_mode':reply_mode,
+                    'behavior':{'resolver':behavior['resolver'],'signals':[item['act'] for item in behavior['signals']],
+                                'uncertainty':behavior['uncertainty'],'character_version_id':character['version_id'] if character else None,
+                                'profile_versions':{kind:{'id':version['id'],'revision':version['revision']} for kind,version in frozen.items()},
+                                'example_ids':character['example_ids'] if character else [],
+                                'guidance':'advisory_lexical_cues_only' if contextual else 'disabled_for_compatibility'},
                     'character':manifest(character,character_parts,character_removed) if character else None,
                     'character_snapshot_origin':'accepted' if character else 'legacy_without_character',
                     'profile_versions':{kind:{'id':v['id'],'revision':v['revision']} for kind,v in frozen.items()},

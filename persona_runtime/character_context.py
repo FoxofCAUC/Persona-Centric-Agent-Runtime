@@ -25,8 +25,9 @@ def render_parts(parts):
     return HEADER+'\n'.join(p['text'] for p in parts) if parts else ''
 
 
-def select_context(version, query):
+def select_context(version, query, *, scenario=None, example_limit=2):
     data=version['data']; folded=query.casefold(); parts=[]; removed=[]; facts=[]; lore_ids=[]; example_ids=[]
+    scenarios = (scenario,) if isinstance(scenario, str) else tuple(scenario or ())
     def add(kind, item_id, content, limit, used, required=False):
         rendered=encode({'kind':kind,'id':item_id,'data':content})
         cost=len(rendered)+1
@@ -84,8 +85,9 @@ def select_context(version, query):
         if ok:selected.update(new);lore_ids.extend(new)
     examples_used=0
     for row in sorted(data['examples'],key=lambda r:r['id']):
-        if not row['enabled'] or not any(k.casefold() in folded for k in row['keywords']):continue
-        if len(example_ids)>=2:
+        scenario_match=any(value.casefold() in row['scenario'].casefold() for value in scenarios)
+        if not row['enabled'] or not (scenario_match or any(k.casefold() in folded for k in row['keywords'])):continue
+        if len(example_ids)>=example_limit:
             removed.append({'kind':'example','id':row['id'],'reason':'item_limit'});continue
         examples_used,ok=add('example',row['id'],{'scenario':row['scenario'],'text':row['text']},600,examples_used)
         if ok:example_ids.append(row['id'])

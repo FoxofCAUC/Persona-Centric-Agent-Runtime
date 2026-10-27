@@ -228,6 +228,13 @@ class ChatEngine:
         delivery = conn.execute("SELECT state FROM deliveries WHERE turn_id=?", (turn_id,)).fetchone()
         value["delivery"] = delivery[0] if delivery else None
         value["attempt_count"] = conn.execute("SELECT count(*) FROM attempts WHERE turn_id=?", (turn_id,)).fetchone()[0]
+        reply_batch=conn.execute('SELECT * FROM reply_batches WHERE turn_id=? ORDER BY created_at DESC LIMIT 1',(turn_id,)).fetchone()
+        if reply_batch:
+            batch=dict(reply_batch)
+            batch['segments']=[dict(r) for r in conn.execute('SELECT segment_index,text,format FROM reply_segments WHERE batch_id=? ORDER BY segment_index',(batch['id'],))]
+            for key in ('persona_id','user_id','attempt_id','raw_fingerprint'):batch.pop(key,None)
+            value['reply_batch']=batch
+        else:value['reply_batch']=None
         context = conn.execute("SELECT details_json FROM context_uses WHERE turn_id=? ORDER BY rowid DESC LIMIT 1", (turn_id,)).fetchone()
         value['context'] = json.loads(context[0]) if context else None
         value.update(progress(conn, value))
@@ -282,6 +289,7 @@ class ChatEngine:
         initial = self.get(turn_id)
         async with self.locks[initial["persona_id"]]:
             attempt_id = None
+            usage = None
             try:
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
@@ -302,8 +310,10 @@ class ChatEngine:
                                  json.dumps(turn["_context_details"], ensure_ascii=False), timestamp()))
                     conn.execute("UPDATE turns SET status='running', updated_at=? WHERE id=?", (timestamp(), turn_id))
                     record_progress(conn, turn_id, "provider_started", attempt_id)
-                reply, usage = await self.client.complete(model, messages)
-                require_text(reply, "model reply")
+                from .reply_batch import ReplySchemaError, validate_reply
+                raw_reply, usage = await self.client.complete(model, messages)
+                reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
+                reply=reply_batch.text
                 with self.store.connection(write=True) as conn:
                     record_progress(conn, turn_id, "generated", attempt_id)
                     event_id = identifier() if turn["channel"] != "test" else None
@@ -311,6 +321,11 @@ class ChatEngine:
                         conn.execute("INSERT INTO events (id,session_id,persona_id,user_id,role,text,created_at) "
                                      "VALUES (?,?,?,?, 'persona',?,?)",
                                      (event_id, turn["session_id"], turn["persona_id"], LOCAL_USER_ID, reply, timestamp()))
+                        batch_id=identifier()
+                        conn.execute('INSERT INTO reply_batches (id,turn_id,attempt_id,persona_id,user_id,schema_version,mode,raw_fingerprint,segment_count,total_chars,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                                     (batch_id,turn_id,attempt_id,turn['persona_id'],LOCAL_USER_ID,reply_batch.schema_version,reply_batch.mode,reply_batch.raw_fingerprint,len(reply_batch.segments),sum(len(item.text) for item in reply_batch.segments),timestamp()))
+                        conn.executemany('INSERT INTO reply_segments (batch_id,persona_id,user_id,segment_index,text,format) VALUES (?,?,?,?,?,?)',
+                                         [(batch_id,turn['persona_id'],LOCAL_USER_ID,index,item.text,item.format) for index,item in enumerate(reply_batch.segments,1)])
                     encoded = json.dumps(usage) if usage is not None else None
                     conn.execute("UPDATE turns SET status='completed',reply_event_id=?,error_code=NULL,usage_json=?,updated_at=? WHERE id=?",
                                  (event_id, encoded, timestamp(), turn_id))
@@ -318,15 +333,17 @@ class ChatEngine:
                     record_progress(conn, turn_id, "persisted", attempt_id)
             except BaseException as error:
                 interrupted = isinstance(error, asyncio.CancelledError)
-                code = str(error) if isinstance(error, ModelError) else ("request_interrupted" if interrupted else "request_failed")
+                from .reply_batch import ReplySchemaError
+                code = str(error) if isinstance(error, (ModelError,ReplySchemaError)) else ("request_interrupted" if interrupted else "request_failed")
                 with self.store.connection(write=True) as conn:
                     if attempt_id and not conn.execute("SELECT 1 FROM attempts WHERE id=?", (attempt_id,)).fetchone():
                         attempt_id = None
                     record_progress(conn, turn_id, "interrupted" if interrupted else "failed", attempt_id)
-                    conn.execute("UPDATE turns SET status=?,error_code=?,updated_at=? WHERE id=?",
-                                 ("interrupted" if interrupted else "failed", code, timestamp(), turn_id))
+                    encoded=json.dumps(usage) if usage is not None else None
+                    conn.execute("UPDATE turns SET status=?,error_code=?,usage_json=?,updated_at=? WHERE id=?",
+                                 ("interrupted" if interrupted else "failed", code, encoded, timestamp(), turn_id))
                     if attempt_id:
-                        conn.execute("UPDATE attempts SET status='failed',error_code=? WHERE id=?", (code, attempt_id))
+                        conn.execute("UPDATE attempts SET status='failed',error_code=?,usage_json=? WHERE id=?", (code,encoded,attempt_id))
                 if interrupted:
                     raise
 
@@ -348,6 +365,9 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET profile_snapshot=? WHERE id=?',(json.dumps(snapshot(conn,turn['persona_id']),ensure_ascii=False),turn_id))
                 from .character import head as character_head
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,turn['persona_id']),ensure_ascii=False),turn_id))
+                reply_policy=conn.execute('SELECT p.reply_mode FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(turn['persona_id'],turn['channel'])).fetchone()
+                reply_mode=reply_policy[0] if reply_policy else 'legacy_full'
+                conn.execute('UPDATE turns SET reply_mode_snapshot=? WHERE id=?',(reply_mode,turn_id))
             record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
         return self.get(turn_id)

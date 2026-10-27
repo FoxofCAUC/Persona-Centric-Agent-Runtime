@@ -84,7 +84,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.6.1.dev1", "capabilities":["durable_ingress_v2","input_batch_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.6.2.dev1", "capabilities":["durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -247,6 +247,8 @@ def create_app(paths, client=None):
             return web.json_response(checked)
         handlers = {
             "interaction.current":ingress.current_policy,"interaction.update":ingress.update_policy,"batch.list":ingress.list,
+            "reply.current":lambda persona_id,channel:ingress.current_policy(persona_id,channel),
+            "reply.update":lambda persona_id,channel,reply_mode,expected_version,operation_id:ingress.update_policy(persona_id,channel,ingress.current_policy(persona_id,channel)['mode'],expected_version,operation_id,reply_mode=reply_mode),
             **{"character."+name:getattr(characters,name) for name in ("current","update","history","show","compare","restore","fact","preview","export")},
             "character.import":characters.import_package,
             'profile.current':profiles.current,'profile.history':profiles.history,'profile.update':profiles.update,

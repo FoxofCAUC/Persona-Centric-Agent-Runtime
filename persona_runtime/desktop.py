@@ -108,7 +108,7 @@ class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         self.init_profile_vars()
         self.init_character_vars()
         self.init_batch_vars()
-        self.title("人格工作台 · M6.1")
+        self.title("人格工作台 · M6.2")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()

@@ -4,6 +4,7 @@ from tkinter import ttk,messagebox,scrolledtext
 from .models import identifier
 
 BATCH_LABELS={'collecting':'收集中','sealed_waiting_capacity':'已封存，等待队列容量','interrupted_buffer':'中断，待继续或取消','cancelled':'已取消','queued':'排队中','running':'正在生成','completed':'生成完成','failed':'生成失败','interrupted':'请求中断'}
+REPLY_LABELS={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复'}
 
 class BatchUI:
     def init_batch_vars(self):
@@ -17,6 +18,11 @@ class BatchUI:
         self.button(bar,'切换窗口模式',lambda:self.change_batch_mode('desktop'),{'batch-write'})
         self.button(bar,'切换 QQ 模式',lambda:self.change_batch_mode('qq'),{'batch-write'})
         ttk.Label(parent,textvariable=self.batch_policy_text,wraplength=700).pack(anchor='w',pady=5)
+        reply_bar=ttk.Frame(parent);reply_bar.pack(fill='x',pady=(0,5))
+        self.button(reply_bar,'设置窗口回复',lambda:self.change_reply_mode('desktop'),{'batch-write'})
+        self.button(reply_bar,'设置 QQ 回复',lambda:self.change_reply_mode('qq'),{'batch-write'})
+        self.reply_policy_text=tk.StringVar(value='启动服务后读取回复模式。')
+        ttk.Label(parent,textvariable=self.reply_policy_text,wraplength=700).pack(anchor='w',pady=(0,5))
         self.batch_tree=ttk.Treeview(parent,columns=('channel','status','members','remaining'),show='headings',height=10)
         for key,title,width in (('channel','入口',80),('status','状态',220),('members','输入条数',90),('remaining','剩余等待',110)):
             self.batch_tree.heading(key,text=title);self.batch_tree.column(key,width=width)
@@ -37,6 +43,7 @@ class BatchUI:
             if epoch!=self.view_epoch or pid!=self.persona_id:return
             rows,policies=value;self.batch_policies=policies
             self.batch_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+('五秒缓冲' if p['mode']=='natural_batch' else '逐条回复') for c,p in policies.items()))
+            self.reply_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+REPLY_LABELS.get(p.get('reply_mode','legacy_full'),'兼容全文') for c,p in policies.items()))
             selected=self.batch_tree.selection()
             self.batch_rows=rows
             self.batch_tree.delete(*self.batch_tree.get_children())
@@ -76,6 +83,34 @@ class BatchUI:
         def done(_):
             if epoch==self.view_epoch and pid==self.persona_id:self.refresh_batches()
         self.run_task('保存入口模式',{'batch-write'},lambda _:self.client.manage('interaction.update',persona_id=pid,channel=channel,mode=mode,expected_version=p['id'],operation_id=op,pending_action=pending_action),done)
+
+    def change_reply_mode(self,channel):
+        p=self.batch_policies.get(channel);pid=self.persona_id;epoch=self.view_epoch
+        if not p or p['persona_id']!=pid:return
+        dialog,body,footer=self.dialog_shell('选择回复模式',(430,245))
+        value=tk.StringVar(value=p.get('reply_mode','legacy_full'))
+        ttk.Label(body,text=('窗口' if channel=='desktop' else 'QQ')+' 后续受理的请求使用：').pack(anchor='w',pady=(8,4))
+        for mode,label,description in (
+            ('legacy_full','兼容全文','保持现有完整文本回复行为。'),
+            ('context_full','情境全文','使用本地情境线索和角色样例，仍返回完整文本。'),
+            ('context_structured','情境结构回复','一次主调用返回经校验的 1–3 段；仍以完整文本投递。'),
+        ):
+            row=ttk.Frame(body);row.pack(fill='x',anchor='w',pady=3)
+            ttk.Radiobutton(row,text=label,value=mode,variable=value).pack(side='left')
+            ttk.Label(row,text=description,wraplength=280).pack(side='left',padx=8)
+        def save():
+            mode=value.get()
+            if mode==p.get('reply_mode','legacy_full'):
+                dialog.destroy();return
+            op=identifier()
+            def done(_):
+                if epoch==self.view_epoch and pid==self.persona_id:self.refresh_batches()
+                if dialog.winfo_exists():dialog.destroy()
+            def failed(_):
+                if dialog.winfo_exists():dialog.destroy()
+            self.run_task('保存回复模式',{'batch-write'},lambda _:self.client.manage('reply.update',persona_id=pid,channel=channel,reply_mode=mode,expected_version=p['id'],operation_id=op),done,failure=failed)
+        ttk.Button(footer,text='取消',command=dialog.destroy).grid(row=0,column=0,padx=5)
+        ttk.Button(footer,text='保存',command=save,style='Primary.TButton').grid(row=0,column=1,padx=5)
 
     def act_batch(self,action):
         b=self.selected_batch();pid=self.persona_id;epoch=self.view_epoch

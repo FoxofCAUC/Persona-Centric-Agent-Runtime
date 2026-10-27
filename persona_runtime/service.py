@@ -202,7 +202,7 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 5, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 6, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
@@ -218,6 +218,9 @@ class RuntimeService:
                 payload[table]=[dict(r) for r in conn.execute(f'SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             for table in ('interaction_policies','interaction_heads','raw_events','ingress_receipts','input_batches','input_batch_members','batch_operations'):
                 payload[table]=[dict(r) for r in conn.execute(f'SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
+            payload['reply_batches']=[{k:v for k,v in dict(r).items() if k!='attempt_id'} for r in conn.execute('SELECT * FROM reply_batches WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
+            payload['reply_segments']=[dict(r) for r in conn.execute('SELECT s.* FROM reply_segments s JOIN reply_batches b ON b.id=s.batch_id WHERE b.persona_id=? AND b.user_id=? ORDER BY b.rowid,s.segment_index',(persona['id'],LOCAL_USER_ID))]
+            payload['turn_reply_links']=[dict(r) for r in conn.execute('SELECT t.id AS turn_id,t.persona_id,t.session_id,t.channel,t.reply_event_id,t.input_batch_id,b.id AS reply_batch_id,b.attempt_id FROM turns t LEFT JOIN reply_batches b ON b.turn_id=t.id WHERE t.persona_id=? AND t.session_id IS NOT NULL AND (b.id IS NOT NULL OR t.input_batch_id IS NOT NULL) ORDER BY t.rowid',(persona['id'],))]
             # Model snapshots contain encrypted credentials and are never included in portable exports.
             for row in payload['input_batches']:row.pop('model_snapshot',None)
             payload['turn_input_batches']=[dict(r) for r in conn.execute('SELECT id,input_batch_id FROM turns WHERE persona_id=?',(persona['id'],))]
