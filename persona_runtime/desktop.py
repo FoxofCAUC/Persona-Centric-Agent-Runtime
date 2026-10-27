@@ -17,6 +17,7 @@ from .reused.logs import LogTail
 from .reused.tasks import TaskHub
 from .desktop_organization import OrganizationUI
 from .desktop_profile import ProfileUI
+from .desktop_character import CharacterUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -49,7 +50,8 @@ class ScrollPage(ttk.Frame):
             def wrap(frame, width):
                 for child in frame.winfo_children():
                     if isinstance(child, ttk.Label) and int(child.cget("wraplength") or 0):
-                        child.configure(wraplength=max(180, width-10))
+                        target=max(180,width-10)
+                        if int(child.cget("wraplength")) != target:child.configure(wraplength=target)
                     elif isinstance(child, ttk.Frame):
                         wrap(child, max(180, width-20))
             wrap(self.body, event.width)
@@ -57,12 +59,13 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
                      ("model", "模型", "build_model"), ("organization", "记忆整理", "build_organization"),
                      ('profile','人格与关系','build_profile'),
+                     ('character','角色资料','build_character'),
                      ("diagnostics", "故障排查", "build_diagnostics"))
 
     def __init__(self, paths):
@@ -101,7 +104,8 @@ class Workbench(ProfileUI, OrganizationUI, tk.Tk):
         self.log_search = tk.StringVar()
         self.init_organization_vars()
         self.init_profile_vars()
-        self.title("人格工作台 · M5")
+        self.init_character_vars()
+        self.title("人格工作台 · M6.0")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -189,10 +193,12 @@ class Workbench(ProfileUI, OrganizationUI, tk.Tk):
             self.pages[self.current_page].canvas.yview_scroll(int(-event.delta/120), "units")
 
     def show_page(self, key):
+        if key != self.current_page and not self.character_can_leave():return
         for page in self.pages.values():
             page.pack_forget()
         self.pages[key].pack(fill="both", expand=True)
         self.current_page = key
+        if key == "character":self.refresh_character()
         if key in ("chat", "persona"):
             self.refresh_personas()
         if key == "diagnostics":
@@ -477,6 +483,7 @@ class Workbench(ProfileUI, OrganizationUI, tk.Tk):
             self.use_persona(self.personas[index]["id"])
 
     def use_persona(self, persona_id):
+        if not self.character_can_leave():return
         self.view_epoch += 1
         def done(_):
             self.session_id = None
@@ -1001,7 +1008,8 @@ class Workbench(ProfileUI, OrganizationUI, tk.Tk):
         resources = set().union(*(op.resources for op in active)) if active else set()
         for button, required in self.buttons:
             if button.winfo_exists():
-                button.configure(state="disabled" if required & resources or "emergency" in resources else "normal")
+                state="disabled" if required & resources or "emergency" in resources else "normal"
+                if str(button.cget("state")) != state:button.configure(state=state)
         if any(op.name != "检查状态" for op in active):
             self.progress.start(15)
         else:
@@ -1009,6 +1017,7 @@ class Workbench(ProfileUI, OrganizationUI, tk.Tk):
         self.after(100, self.tick)
 
     def close_window(self):
+        if not self.character_can_leave():return
         self.closed = True
         self.hub.close()
         for timer in self.tk.splitlist(self.tk.call("after", "info")):

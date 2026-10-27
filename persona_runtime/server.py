@@ -17,6 +17,7 @@ from .storage import SCHEMA_VERSION, Store
 from .submissions import SubmissionJournal
 from .organization import OrganizationEngine
 from .profile import ProfileService
+from .character import CharacterService
 
 
 def create_app(paths, client=None):
@@ -29,6 +30,7 @@ def create_app(paths, client=None):
     organization = OrganizationEngine(store, config, engine.client, engine)
     organization.recover()
     profiles=ProfileService(store)
+    characters=CharacterService(store)
     admin, bridge = config.token(), config.token("bridge")
 
     @web.middleware
@@ -78,7 +80,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.5.0"})
+                                  "version": "0.6.0.dev1"})
 
     async def chat(request):
         value = await body(request)
@@ -210,6 +212,8 @@ def create_app(paths, client=None):
                 checked.append(row | {"turn": turn})
             return web.json_response(checked)
         handlers = {
+            **{"character."+name:getattr(characters,name) for name in ("current","update","history","show","compare","restore","fact","preview","export")},
+            "character.import":characters.import_package,
             'profile.current':profiles.current,'profile.history':profiles.history,'profile.update':profiles.update,
             'profile.restore':profiles.restore,'profile.compare':profiles.compare,
             'relationship.propose':profiles.propose_relationship,'relationship.proposals':profiles.proposals,

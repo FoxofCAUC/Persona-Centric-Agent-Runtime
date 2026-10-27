@@ -57,14 +57,22 @@ def build_context(engine, conn, turn):
     if state_active:
         base+='\n用户显式临时状态（仅影响当下表达，不改写核心设定或事实）：'+state['data']['text']
     limit = json.loads(turn['model_snapshot'])['max_input_chars']
+    from .character_context import select_context, render_parts, manifest
+    character = select_context(json.loads(turn['character_snapshot']), text) if turn.get('character_snapshot') else None
+    character_parts = list(character['parts']) if character else []
+    character_removed = []
     removed = []
     while True:
         reference = '\n已确认长期记忆：'+json.dumps([{'id': r[3]['id'], 'text': r[3]['text'], 'revision': r[3]['revision']} for r in memories], ensure_ascii=False)
         reference += '\n本会话有损摘要（仅作参考）：'+json.dumps(summary_items, ensure_ascii=False)
-        result = [{'role': 'system', 'content': base+reference}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
+        result = [{'role': 'system', 'content': base+render_parts(character_parts)+reference}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
         if sum(len(m['content']) for m in result) <= limit:
             break
-        if history:
+        optional = next((i for i in range(len(character_parts)-1,-1,-1) if not character_parts[i]['required']), None)
+        if optional is not None:
+            item = character_parts.pop(optional)
+            character_removed.append({'kind':item['kind'],'id':item['id'],'reason':'input_budget'})
+        elif history:
             history.pop(0)
             removed.append({'kind': 'history', 'ordinal': history_rows.pop(0), 'reason': 'input_budget'})
         elif memories:
@@ -76,7 +84,9 @@ def build_context(engine, conn, turn):
         else:
             raise ModelError('context_limit_exceeded')
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
-    return result, {'profile_versions':{kind:{'id':v['id'],'revision':v['revision']} for kind,v in frozen.items()},
+    return result, {'character':manifest(character,character_parts,character_removed) if character else None,
+                    'character_snapshot_origin':'accepted' if character else 'legacy_without_character',
+                    'profile_versions':{kind:{'id':v['id'],'revision':v['revision']} for kind,v in frozen.items()},
                     'profile_snapshot_origin':'accepted' if turn.get('profile_snapshot') else 'legacy_execution_fallback',
                     'relationship_requires_review':bool(relation_blocked),
                     'state_version':state['id'] if state_active else None,

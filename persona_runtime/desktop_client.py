@@ -27,7 +27,7 @@ class LocalClient:
     def call(self, method, path, value=None, timeout=8):
         cfg = self.config.load()
         request = urllib.request.Request(f"http://127.0.0.1:{cfg['service_port']}" + path,
-            data=json.dumps(value).encode("utf-8") if value is not None else None, method=method,
+            data=json.dumps(value,ensure_ascii=False).encode("utf-8") if value is not None else None, method=method,
             headers={"Authorization": "Bearer " + self.config.token(), "Content-Type": "application/json"})
         try:
             with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=timeout) as response:

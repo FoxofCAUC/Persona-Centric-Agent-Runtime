@@ -42,6 +42,8 @@ class RuntimeService:
                           json.dumps(data, ensure_ascii=False), timestamp()))
             from .profile import initialize_profiles
             initialize_profiles(conn,persona_id,actor='create')
+            from .character import initialize_characters
+            initialize_characters(conn,persona_id,actor='create')
             return self._persona(conn, persona_id)
 
     def list_personas(self) -> list[dict]:
@@ -200,7 +202,7 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 3, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 4, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
@@ -211,6 +213,8 @@ class RuntimeService:
                 payload[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid", (persona["id"], LOCAL_USER_ID))]
             payload["memory_sources"] = [dict(r) for r in conn.execute("SELECT s.* FROM memory_sources s JOIN memories m ON m.id=s.memory_id WHERE m.persona_id=? AND m.user_id=?", (persona["id"], LOCAL_USER_ID))]
             for table in ('profile_versions','relationship_proposals'):
+                payload[table]=[dict(r) for r in conn.execute(f'SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
+            for table in ('character_versions','character_heads'):
                 payload[table]=[dict(r) for r in conn.execute(f'SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['profile_heads']=[dict(r) for r in conn.execute('SELECT * FROM profile_heads WHERE persona_id=?',(persona['id'],))]
         path = self._output_path("exports", name, ".json")

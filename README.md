@@ -4,9 +4,11 @@
 
 ### 以人格为中心的私聊陪伴运行时
 
+新增 **M6.0 角色系统**：结构化人设、设定书、版本与请求快照，见[使用与验证说明](docs/M6.0.md)、[实施计划](docs/M6.0-角色系统实施计划.md)、[施工总计划](docs/施工总计划/README.md)。整个M6自然交互尚未完成；下文M5收尾为历史基线。
+
 人格、记忆与关系持续保存，模型与聊天渠道可以替换。
 
-![Version](https://img.shields.io/badge/version-0.5.0-4263eb)
+![Version](https://img.shields.io/badge/version-0.6.0.dev1-4263eb)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003B57?logo=sqlite&logoColor=white)

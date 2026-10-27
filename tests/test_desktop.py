@@ -402,6 +402,65 @@ class DesktopTests(unittest.TestCase):
                 action(None)
             self.assertNotIn("sensitive", str(error.exception))
 
+    def test_m6_character_form_failed_save_keeps_draft_and_blocks_discard(self):
+        from persona_runtime.character import CharacterService
+        window=self.window();store=Store(self.paths);store.initialize();service=RuntimeService(store)
+        persona=service.create_persona(generic_persona());service.use_persona(persona['id'])
+        value=CharacterService(store).current(persona['id'])
+        dialog=window.character_editor(persona['id'],value)
+        box=dialog.character_editors[('appearance','height_cm')];box.insert('1.0','162')
+        with patch.object(window,'run_task',return_value=None):dialog.character_save()
+        self.assertEqual(box.get('1.0','end-1c'),'162')
+        with patch('persona_runtime.desktop_character.messagebox.askyesno',return_value=False):
+            self.assertFalse(window.character_can_leave())
+            self.assertTrue(dialog.winfo_exists())
+        with patch('persona_runtime.desktop_character.messagebox.askyesno',return_value=True):
+            self.assertTrue(window.character_can_leave())
+
+    def test_m6_character_form_async_save_and_repeat_noop(self):
+        from persona_runtime.character import CharacterService
+        window=self.window();store=Store(self.paths);store.initialize();service=RuntimeService(store)
+        persona=service.create_persona(generic_persona());service.use_persona(persona['id']);characters=CharacterService(store)
+        dialog=window.character_editor(persona['id'],characters.current(persona['id']))
+        box=dialog.character_editors[('appearance','height_cm')];box.insert('1.0','162')
+        with patch.object(window.client,'manage',side_effect=lambda action,**args:getattr(characters,action.split('.')[1])(**args)),patch.object(window,'refresh_character'):
+            dialog.character_save()
+            self.assertEqual(str(box.cget('state')),'disabled')
+            self.pump(window,lambda:not dialog.character_busy())
+            self.assertEqual(characters.fact(persona['id'],'appearance.height_cm')['value'],162)
+            self.assertFalse(dialog.character_dirty())
+            dialog.character_save();self.pump(window,lambda:not dialog.character_busy())
+            self.assertEqual(len(characters.history(persona['id'])),2)
+        dialog.character_close()
+
+    def test_m6_character_page_management_actions_are_mapped(self):
+        window=self.window()
+        with patch.object(window,'refresh_character'):
+            window.show_page('character');window.update()
+        for label in ('读取角色资料','编辑角色资料','导出角色包','导入为新角色','编辑姓名与人格核心'):
+            button=self.control(window.pages['character'],label)
+            self.assertTrue(button.winfo_ismapped(),label)
+
+    def test_m6_character_form_footer_visible_at_three_scales(self):
+        from persona_runtime.character import CharacterService
+        window=self.window();store=Store(self.paths);store.initialize();service=RuntimeService(store)
+        persona=service.create_persona(generic_persona());service.use_persona(persona['id'])
+        dialog=window.character_editor(persona['id'],CharacterService(store).current(persona['id']))
+        for scale in (1,1.25,1.5):
+            window.tk.call('tk','scaling',96/72*scale);dialog.geometry('520x370');window.update()
+            save=self.control(dialog,'保存角色资料')
+            self.assertTrue(save.winfo_ismapped())
+            self.assertLessEqual(save.winfo_rooty()+save.winfo_height(),dialog.winfo_rooty()+dialog.winfo_height())
+        dialog.character_close()
+
+    def test_m6_stale_character_read_does_not_replace_new_selection(self):
+        window=self.window();callbacks=[]
+        with patch.object(window,'run_task',side_effect=lambda name,resources,action,success=None,**kw:callbacks.append(success)):
+            window.refresh_character()
+        window.view_epoch+=1
+        callbacks[0](('old',{'invalid':'must not be read'}))
+        self.assertIsNone(window.character_data)
+
     def test_force_stop_is_available_on_both_pages_and_uses_urgent_lane(self):
         window = self.window()
         force_buttons = [button for button, _ in window.buttons if button.cget("text") == "强制停止全部相关程序"]
