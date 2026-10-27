@@ -182,6 +182,9 @@ class ChatEngine:
                          "model_snapshot,usage_json,created_at,updated_at) VALUES (?,?,?,?,?,?,NULL,'queued',NULL,?,NULL,?,?)",
                          (turn_id, source_key, persona_id, session_id, channel, event_id,
                           json.dumps(model), timestamp(), timestamp()))
+            if not test:
+                from .profile import snapshot
+                conn.execute('UPDATE turns SET profile_snapshot=? WHERE id=?',(json.dumps(snapshot(conn,persona_id),ensure_ascii=False),turn_id))
             if channel == "qq":
                 identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
                 conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
@@ -206,6 +209,7 @@ class ChatEngine:
             raise RuntimeErrorBase("Request not found")
         value = dict(row)
         value.pop("model_snapshot")
+        value.pop('profile_snapshot',None)
         value["origin"] = json.loads(value.pop("origin_json"))
         value["usage"] = json.loads(value.pop("usage_json")) if row["usage_json"] else None
         for field, output in (("user_event_id", "text"), ("reply_event_id", "reply")):
@@ -329,6 +333,9 @@ class ChatEngine:
                 raise RuntimeErrorBase("queue_full")
             conn.execute("UPDATE turns SET status='queued',cancelled_at=NULL,error_code=NULL,model_snapshot=?,updated_at=? WHERE id=?",
                          (json.dumps(self.config.load()["model"]), timestamp(), turn_id))
+            if turn['persona_id']:
+                from .profile import snapshot
+                conn.execute('UPDATE turns SET profile_snapshot=? WHERE id=?',(json.dumps(snapshot(conn,turn['persona_id']),ensure_ascii=False),turn_id))
             record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
         return self.get(turn_id)

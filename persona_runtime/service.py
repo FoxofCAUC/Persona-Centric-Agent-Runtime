@@ -40,6 +40,8 @@ class RuntimeService:
             conn.execute("INSERT INTO personas VALUES (?, ?, ?, ?, ?)",
                          (persona_id, spec.name, spec.format_version,
                           json.dumps(data, ensure_ascii=False), timestamp()))
+            from .profile import initialize_profiles
+            initialize_profiles(conn,persona_id,actor='create')
             return self._persona(conn, persona_id)
 
     def list_personas(self) -> list[dict]:
@@ -63,10 +65,8 @@ class RuntimeService:
         require_text(description, "description")
         with self.store.connection(write=True) as conn:
             persona_id = self._persona(conn)["id"]
-            conn.execute("INSERT INTO relationships VALUES (?, ?, ?, ?) "
-                         "ON CONFLICT(persona_id, user_id) DO UPDATE SET "
-                         "description=excluded.description, updated_at=excluded.updated_at",
-                         (persona_id, LOCAL_USER_ID, description, timestamp()))
+            from .profile import ProfileService,head
+            ProfileService(self.store)._write(conn,persona_id,'relationship',{'description':description},head(conn,persona_id,'relationship')['id'],identifier())
             return dict(conn.execute("SELECT * FROM relationships WHERE persona_id=? AND user_id=?",
                                      (persona_id, LOCAL_USER_ID)).fetchone())
 
@@ -200,7 +200,7 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 2, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 3, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
@@ -210,6 +210,9 @@ class RuntimeService:
             for table in ("summaries", "candidates", "candidate_reviews", "source_exclusions", "organization_progress", "automation", "context_uses"):
                 payload[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid", (persona["id"], LOCAL_USER_ID))]
             payload["memory_sources"] = [dict(r) for r in conn.execute("SELECT s.* FROM memory_sources s JOIN memories m ON m.id=s.memory_id WHERE m.persona_id=? AND m.user_id=?", (persona["id"], LOCAL_USER_ID))]
+            for table in ('profile_versions','relationship_proposals'):
+                payload[table]=[dict(r) for r in conn.execute(f'SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
+            payload['profile_heads']=[dict(r) for r in conn.execute('SELECT * FROM profile_heads WHERE persona_id=?',(persona['id'],))]
         path = self._output_path("exports", name, ".json")
         created = False
         try:

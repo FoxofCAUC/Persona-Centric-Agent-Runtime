@@ -13,7 +13,7 @@ from aiohttp.test_utils import TestServer
 from persona_runtime.chat import ChatEngine, ModelError
 from persona_runtime.config import ConfigStore
 from persona_runtime.desktop_client import LocalClient, LocalAPIError, TransportUnknown
-from persona_runtime.models import RuntimeErrorBase, generic_persona
+from persona_runtime.models import RuntimeErrorBase, generic_persona, LOCAL_USER_ID
 from persona_runtime.paths import RuntimePaths
 from persona_runtime.server import create_app
 from persona_runtime.service import RuntimeService
@@ -237,7 +237,8 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
         conn = sqlite3.connect(legacy.path, isolation_level=None)
         for schema in (SCHEMA, SCHEMA2, SCHEMA3):
             execute_schema(conn, schema)
-        conn.execute("INSERT INTO personas VALUES (?,?,?,?,?)", ("legacy-persona", "旧人格", 1, "{}", "2026-01-01T00:00:00Z"))
+        conn.execute('INSERT INTO users VALUES (?,?,?)',(LOCAL_USER_ID,'本地用户','2026-01-01T00:00:00Z'))
+        conn.execute("INSERT INTO personas VALUES (?,?,?,?,?)", ("legacy-persona", "旧人格", 1, json.dumps(generic_persona().to_dict()), "2026-01-01T00:00:00Z"))
         conn.execute("INSERT INTO settings VALUES ('current_persona','legacy-persona')")
         conn.execute("PRAGMA user_version=3")
         conn.close()
@@ -249,7 +250,7 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("cancelled_at", [r[1] for r in failed.execute("PRAGMA table_info(turns)")])
         failed.close()
         legacy.initialize()
-        self.assertEqual(legacy.status()["schema_version"], 5)
+        self.assertEqual(legacy.status()["schema_version"], 6)
         with legacy.connection() as migrated:
             self.assertEqual(migrated.execute("SELECT value FROM settings").fetchone()[0], "legacy-persona")
         self.assertTrue(list((legacy.paths.home / "backups").glob("before-m3-*.sqlite3")))

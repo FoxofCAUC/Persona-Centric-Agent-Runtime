@@ -16,6 +16,7 @@ from .paths import RuntimePaths
 from .storage import SCHEMA_VERSION, Store
 from .submissions import SubmissionJournal
 from .organization import OrganizationEngine
+from .profile import ProfileService
 
 
 def create_app(paths, client=None):
@@ -27,6 +28,7 @@ def create_app(paths, client=None):
     engine.recover()
     organization = OrganizationEngine(store, config, engine.client, engine)
     organization.recover()
+    profiles=ProfileService(store)
     admin, bridge = config.token(), config.token("bridge")
 
     @web.middleware
@@ -76,7 +78,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.4.0"})
+                                  "version": "0.5.0"})
 
     async def chat(request):
         value = await body(request)
@@ -208,6 +210,10 @@ def create_app(paths, client=None):
                 checked.append(row | {"turn": turn})
             return web.json_response(checked)
         handlers = {
+            'profile.current':profiles.current,'profile.history':profiles.history,'profile.update':profiles.update,
+            'profile.restore':profiles.restore,'profile.compare':profiles.compare,
+            'relationship.propose':profiles.propose_relationship,'relationship.proposals':profiles.proposals,
+            'relationship.proposal-show':profiles.proposal_show,'relationship.review':profiles.review_relationship,
             "db.status": store.status,
             "persona.create": lambda spec=None: service.create_persona(PersonaSpec.from_dict(spec) if spec is not None else generic_persona()),
             "persona.list": service.list_personas, "persona.show": service.show_persona,

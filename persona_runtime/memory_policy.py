@@ -12,6 +12,7 @@ def exclude_sources(conn, persona_id, event_ids, reason):
     for event_id in expanded:
         conn.execute("INSERT OR IGNORE INTO source_exclusions VALUES (?,?,?,?,?)",
                      (event_id, persona_id, LOCAL_USER_ID, reason, timestamp()))
+        conn.execute("UPDATE relationship_proposals SET status='stale' WHERE source_event_id=? AND status='pending'", (event_id,))
     # Cumulative summaries carry all their evidence, including parent evidence.
     for row in conn.execute("SELECT id,sources_json FROM summaries WHERE persona_id=? AND status='active'", (persona_id,)).fetchall():
         if expanded.intersection(json.loads(row["sources_json"])):

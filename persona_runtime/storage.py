@@ -7,12 +7,14 @@ from uuid import uuid4
 from .models import LOCAL_USER_ID, RuntimeErrorBase, timestamp
 from .paths import RuntimePaths
 from .schema_m4 import SCHEMA5, TABLES5
+from .schema_m5 import SCHEMA6, TABLES6
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
 M2_TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
 M3_TABLES = M2_TABLES + ("request_activity", "service_notices")
-TABLES = M3_TABLES + TABLES5
+M4_TABLES = M3_TABLES + TABLES5
+TABLES = M4_TABLES + TABLES6
 
 SCHEMA = """
 CREATE TABLE users (
@@ -175,11 +177,11 @@ class Store:
         conn = self._connect(create=True)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version in (1, 2, 3, 4):
+            if version in (1, 2, 3, 4, 5):
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not set(M1_TABLES).issubset(tables):
                     raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
-                prefix = "before-m4" if version == 4 else ("before-m3" if version == 3 else "before-m2")
+                prefix = "before-m5" if version == 5 else ("before-m4" if version == 4 else ("before-m3" if version == 3 else "before-m2"))
                 backup = self.paths.home / "backups" / f"{prefix}-{uuid4()}.sqlite3"
                 target = sqlite3.connect(backup)
                 try:
@@ -216,8 +218,14 @@ class Store:
             elif version == 4 and set(M3_TABLES).issubset(tables):
                 execute_schema(conn, SCHEMA5)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            elif version == 5 and set(M4_TABLES).issubset(tables):
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
+            if version < 6:
+                execute_schema(conn, SCHEMA6)
+                from .profile import initialize_profiles
+                initialize_profiles(conn)
             conn.commit()
         except BaseException:
             conn.rollback()
