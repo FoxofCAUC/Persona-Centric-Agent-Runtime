@@ -1,6 +1,6 @@
 [project]
 name = "persona-centric-agent-runtime"
-version = "0.6.0.dev1"
+version = "0.6.1.dev1"
 description = "Persona-centric companion runtime with persistent local state"
 requires-python = ">=3.12"
 dependencies = ["aiohttp==3.14.5"]

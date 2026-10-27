@@ -366,8 +366,8 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         event = self.fake_event()
         bridge = QQBridge(self.paths)
         async def request(method, path, value=None):
-            if path == "/v1/chat":
-                return await self.engine.submit("qq", value["text"], value["request_id"])
+            if path == "/v1/health":return {"capabilities":["durable_ingress_v2"]}
+            if path == "/v2/ingress":return await self.engine.submit("qq",value["text"],value["request_id"])
             turn_id = path.split("/")[3]
             if path.endswith("/delivery"):
                 return self.engine.delivery(turn_id, value["action"])

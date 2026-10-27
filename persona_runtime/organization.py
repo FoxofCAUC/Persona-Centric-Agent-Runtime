@@ -7,6 +7,7 @@ import unicodedata
 
 from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, require_text, timestamp
 from .service import RuntimeService
+from .turn_input import load_turn_sources
 from .memory_policy import exclude_sources, exclude_memory, project_calls
 
 
@@ -26,7 +27,7 @@ def eligible_turns(conn, session_id, upper=None):
     return [dict(r) for r in conn.execute(
         "SELECT t.rowid AS ordinal,t.* FROM turns t WHERE session_id=? AND status='completed' "
         "AND (? IS NULL OR t.rowid<=?) AND NOT EXISTS (SELECT 1 FROM source_exclusions x "
-        "WHERE x.event_id IN (t.user_event_id,t.reply_event_id)) ORDER BY t.rowid", (session_id, upper, upper))]
+        "WHERE x.event_id IN (t.user_event_id,t.reply_event_id) OR x.event_id IN (SELECT event_id FROM input_batch_members WHERE batch_id=t.input_batch_id)) ORDER BY t.rowid", (session_id, upper, upper))]
 
 
 def latest_summary(conn, session_id):
@@ -202,7 +203,7 @@ class OrganizationEngine:
         while batch:
             events = []
             for turn in batch:
-                for event_id in (turn["user_event_id"], turn["reply_event_id"]):
+                for event_id in load_turn_sources(conn,turn):
                     event = RuntimeService._owned(conn, "events", event_id, persona_id)
                     events.append({"id": event["id"], "role": event["role"], "text": event["text"], "turn": turn["ordinal"]})
             payload = {"persona_id": persona_id, "user_id": LOCAL_USER_ID, "session_id": session_id,

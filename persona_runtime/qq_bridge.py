@@ -42,7 +42,7 @@ def allowed_message(event, cfg):
         return None
     key = ":".join((meta.id, cfg["bot_qq"], cfg["owner_qq"], message_id))
     return {"channel": "qq", "bot": cfg["bot_qq"], "sender": cfg["owner_qq"],
-            "text": text, "request_id": "qq-" + hashlib.sha256(key.encode()).hexdigest()}
+            "text": text, "platform_message_id":message_id, "platform_time":str(raw.get("time")) if raw.get("time") is not None else None, "request_id": "qq-" + hashlib.sha256(key.encode()).hexdigest()}
 
 
 class QQBridge:
@@ -64,13 +64,12 @@ class QQBridge:
                     raise BridgeAPIError(code, response.status)
                 return await response.json()
 
-    async def lookup(self, payload):
-        try:
-            return await self.request("GET", "/v1/submissions/qq/" + quote(payload["request_id"], safe=""))
-        except BridgeAPIError as error:
-            if error.status == 404 and str(error) == "submission_not_found":
-                return None
-            raise
+    async def lookup(self,payload):
+        for prefix in ('/v2/submissions/qq/','/v1/submissions/qq/'):
+            try:return await self.request('GET',prefix+quote(payload['request_id'],safe=''))
+            except BridgeAPIError as error:
+                if error.status!=404:raise
+        return None
 
     async def reconcile_inbox(self):
         """Only query uncertain receipts. Never replay unaccepted input automatically."""
@@ -99,10 +98,15 @@ class QQBridge:
         # The SDK handler stops the normal LLM path before this first await.
         payload = self.journal.remember(payload)
         try:
-            turn = await self.request("POST", "/v1/chat", payload)
+            health=await self.request('GET','/v1/health')
+            if 'durable_ingress_v2' not in health.get('capabilities',[]):
+                self.journal.state(payload['request_id'],'not_accepted')
+                await send('【服务提示】人格服务版本不兼容，请升级服务；本次消息未自动降级提交。')
+                return False
+            turn = await self.request("POST", "/v2/ingress", payload)
         except BridgeAPIError as error:
             self.journal.state(payload["request_id"], "not_accepted")
-            if str(error) in ("queue_full", "service_draining"):
+            if str(error) in ("queue_full", "buffer_full", "service_draining"):
                 await send("【服务提示】消息未受理：当前队列已满或服务正在停止，请稍后再试。")
             return False
         except (aiohttp.ClientError, OSError, TimeoutError):
@@ -115,6 +119,13 @@ class QQBridge:
                 await send("【服务提示】暂时无法确认是否受理；已保留本机接收记录，请先在工作台找回，避免重复发送。")
                 return False
         self.journal.forget(payload["request_id"])
+        if 'receipt_id' in turn:
+            while not turn['turn_id']:
+                batch=await self.request('GET','/v2/batches/'+turn['batch_id'])
+                if batch['state'] in ('interrupted_buffer','cancelled'):return False
+                turn['turn_id']=batch['turn_id']
+                if not turn['turn_id']:await asyncio.sleep(.5)
+            turn=await self.request('GET','/v1/requests/'+turn['turn_id'])
         turn_id = turn["id"]
         loop = asyncio.get_running_loop()
         started = loop.time()

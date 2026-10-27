@@ -18,6 +18,7 @@ from .reused.tasks import TaskHub
 from .desktop_organization import OrganizationUI
 from .desktop_profile import ProfileUI
 from .desktop_character import CharacterUI
+from .desktop_batches import BatchUI, BATCH_LABELS
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -25,7 +26,7 @@ ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重�
           "provider_http_429": "模型提供商限流，请稍后手动重试。", "queue_full": "等待队列已满，请稍后再试。",
           "provider_network_error": "模型网络连接失败。", "context_limit_exceeded": "人格、关系与消息超过输入长度限制。",
           "service_restarted": "请求因服务重启而中断，未自动重试。"}
-ERRORS.update({"only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
+ERRORS.update({"buffer_full":"输入缓冲已满，本条未受理；请先处理已有批次。", "unresolved_input_batches":"仍有未处理输入，请到输入与缓冲页继续或取消后再停止。", "runtime_upgrade_required":"人格服务版本不兼容，请先升级服务。", "only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
                "queue_cancellation_disabled": "排队取消尚未开启，可在模型页的私聊交互设置中显式开启。",
                "submission_conflict": "此请求标识已用于其他内容；请先找回原消息，不能覆盖。",
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
@@ -59,13 +60,14 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
                      ("model", "模型", "build_model"), ("organization", "记忆整理", "build_organization"),
                      ('profile','人格与关系','build_profile'),
                      ('character','角色资料','build_character'),
+                     ('batches','输入与缓冲','build_batches'),
                      ("diagnostics", "故障排查", "build_diagnostics"))
 
     def __init__(self, paths):
@@ -105,7 +107,8 @@ class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         self.init_organization_vars()
         self.init_profile_vars()
         self.init_character_vars()
-        self.title("人格工作台 · M6.0")
+        self.init_batch_vars()
+        self.title("人格工作台 · M6.1")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -116,6 +119,7 @@ class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         self.after(450, self.refresh_conversation)
         self.after(900, self.poll_organization)
         self.after(1100,self.poll_profile)
+        self.after(1200,self.poll_batches)
 
     def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None):
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
@@ -320,7 +324,7 @@ class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
         bar = self.bar(group)
         bar.pack(fill="x")
         self.button(bar, "保存私聊设置", self.save_interaction, {"config"})
-        ttk.Label(group, text="连续消息逐条有序处理；窗口继续显示完整回复。取消只作用于未开始的请求，不中断远端模型。", wraplength=650).pack(anchor="w", pady=6)
+        ttk.Label(group, text="默认逐条有序；可到“输入与缓冲”按入口显式开启五秒缓冲。窗口显示完整回复。取消只作用于未开始的请求，不中断远端模型。", wraplength=650).pack(anchor="w", pady=6)
         self.build_organization_model(parent)
 
     def build_diagnostics(self, parent):
@@ -668,6 +672,12 @@ class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
                 ("queue_seconds", "排队"), ("provider_seconds", "模型"), ("delivery_seconds", "投递"))]
             if any(value is not None for _, value in measured):
                 self.transcript.insert("end", "耗时：" + " / ".join(f"{label} {value:.2f}s" for label, value in measured if value is not None) + "\n\n")
+        linked_batches={t.get('input_batch_id') for t in self.turns}
+        for batch in getattr(self,'chat_batches',[]):
+            if batch['id'] in linked_batches:continue
+            if batch['session_id']!=self.session_id or batch['persona_id']!=self.persona_id:continue
+            for member in batch['members']:self.transcript.insert('end','你：'+member['text']+'\n')
+            self.transcript.insert('end','['+BATCH_LABELS.get(batch['status'],batch['status'])+f" · {batch['remaining_ms']/1000:.1f} 秒]\n\n")
         self.transcript.configure(state="disabled")
         if at_bottom:
             self.transcript.see("end")
@@ -693,10 +703,11 @@ class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
             if self.chat_input.get("1.0", "end-1c") == text:
                 self.chat_input.delete("1.0", "end")
             self.session_id = turn["session_id"]
-            self.selected_request = turn["id"]
+            self.selected_request = turn.get("turn_id") if "receipt_id" in turn else turn["id"]
             self.load_chat(session_id=self.session_id)
-            self.watch_turn(turn, epoch)
-        self.run_task("提交消息", {"send"}, lambda _: self.client.submit(payload), done)
+            if 'receipt_id' in turn:self.refresh_batches()
+            else:self.watch_turn(turn, epoch)
+        self.run_task("提交消息", {"send"}, lambda _: self.client.submit_input(payload), done)
 
     def refresh_conversation(self):
         """Fast conversation refresh is independent of slow OS/service polling."""
@@ -732,8 +743,8 @@ class Workbench(CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
             def resubmit():
                 row = select()
                 if row and row["turn"] is None:
-                    self.run_task("按原标识重新提交", {"send"}, lambda _: self.client.submit(row["payload"]),
-                                  lambda value: self.notice.set("原消息已受理，未创建新请求标识：" + value["id"]))
+                    self.run_task("按原标识重新提交", {"send"}, lambda _: self.client.submit_input(row["payload"]),
+                                  lambda value: self.notice.set("原消息已受理，未创建新请求标识：" + value.get("receipt_id",value.get("id",""))))
                     dialog.destroy()
             ttk.Button(footer, text="查看详情", command=details).grid(row=0, column=0, padx=5)
             ttk.Button(footer, text="提交选中未受理消息", command=resubmit).grid(row=0, column=1, padx=5)

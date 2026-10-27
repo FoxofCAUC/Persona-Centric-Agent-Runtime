@@ -29,7 +29,7 @@ class OrganizationSchedule:
             for session in row['progress'].get('sessions',[])[row['progress'].get('index',0):]:
                 row['remaining_turns'] += conn.execute(
                     "SELECT count(*) FROM turns t WHERE session_id=? AND status='completed' AND t.rowid>? AND t.rowid<=? "
-                    "AND NOT EXISTS (SELECT 1 FROM source_exclusions x WHERE x.event_id IN (t.user_event_id,t.reply_event_id))",
+                    "AND NOT EXISTS (SELECT 1 FROM source_exclusions x WHERE x.event_id IN (t.user_event_id,t.reply_event_id) OR x.event_id IN (SELECT event_id FROM input_batch_members WHERE batch_id=t.input_batch_id))",
                     (session['id'],session['cursor'],session['upper'])).fetchone()[0]
             row["automatic"] = self.automation_status(conn)
             row["excluded"] = [dict(r) for r in conn.execute("SELECT * FROM source_exclusions WHERE persona_id=? ORDER BY created_at DESC", (self.store.current(conn, required=False),))]

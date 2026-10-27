@@ -5,10 +5,10 @@ from .models import LOCAL_USER_ID, timestamp
 
 def exclude_sources(conn, persona_id, event_ids, reason):
     expanded = set(event_ids)
-    for event_id in list(expanded):
-        for row in conn.execute("SELECT user_event_id,reply_event_id FROM turns WHERE persona_id=? AND "
-                                "(user_event_id=? OR reply_event_id=?)", (persona_id, event_id, event_id)):
-            expanded.update(value for value in row if value)
+    from .turn_input import load_turn_sources
+    for row in conn.execute("SELECT * FROM turns WHERE persona_id=?",(persona_id,)):
+        ids=set(load_turn_sources(conn,dict(row)))
+        if expanded.intersection(ids):expanded.update(ids)
     for event_id in expanded:
         conn.execute("INSERT OR IGNORE INTO source_exclusions VALUES (?,?,?,?,?)",
                      (event_id, persona_id, LOCAL_USER_ID, reason, timestamp()))

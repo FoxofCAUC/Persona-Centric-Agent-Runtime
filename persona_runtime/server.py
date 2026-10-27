@@ -18,6 +18,7 @@ from .submissions import SubmissionJournal
 from .organization import OrganizationEngine
 from .profile import ProfileService
 from .character import CharacterService
+from .ingress import IngressService
 
 
 def create_app(paths, client=None):
@@ -27,6 +28,8 @@ def create_app(paths, client=None):
     store.initialize()
     engine = ChatEngine(store, config, client)
     engine.recover()
+    ingress=IngressService(engine)
+    ingress.recover()
     organization = OrganizationEngine(store, config, engine.client, engine)
     organization.recover()
     profiles=ProfileService(store)
@@ -46,7 +49,7 @@ def create_app(paths, client=None):
         else:
             return web.json_response({"error": "unauthorized"}, status=401)
         if request["role"] == "bridge" and not (
-            request.path in ("/v1/health", "/v1/chat", "/v1/qq-pending") or request.path.startswith(("/v1/requests/", "/v1/submissions/"))):
+            request.path in ("/v1/health", "/v1/chat", "/v1/qq-pending") or request.path.startswith(("/v1/requests/", "/v1/submissions/")) or (request.method=="GET" and request.path.startswith(("/v2/submissions/","/v2/batches/"))) or request.path=="/v2/ingress"):
             return web.json_response({"error": "forbidden"}, status=403)
         try:
             return await handler(request)
@@ -60,6 +63,7 @@ def create_app(paths, client=None):
     app = web.Application(middlewares=[guard], client_max_size=256*1024)
     app["engine"], app["config"], app["store"] = engine, config, store
     app["organization"] = organization
+    app["ingress"] = ingress
     app["stop"] = asyncio.Event()
 
     async def body(request):
@@ -80,7 +84,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.6.0.dev1"})
+                                  "version": "0.6.1.dev1", "capabilities":["durable_ingress_v2","input_batch_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -95,6 +99,35 @@ def create_app(paths, client=None):
         origin = {"sender": value["sender"], "bot": value["bot"]} if request["role"] == "bridge" else None
         result = await engine.submit(value.get("channel", "desktop"), value["text"], value["request_id"], value.get("session_id"), origin=origin, persona_id=value.get("persona_id"))
         return web.json_response(result)
+
+    def bridge_batch(request,value):
+        if request['role']=='bridge':
+            cfg=config.load()
+            if value['channel']!='qq' or value['origin']!={'sender':cfg['owner_qq'],'bot':cfg['bot_qq']}:raise web.HTTPForbidden()
+
+    async def ingress_accept(request):
+        value=await body(request)
+        if request['role']=='bridge':
+            cfg=config.load()
+            if value.get('channel')!='qq' or not cfg['owner_qq'] or value.get('sender')!=cfg['owner_qq'] or value.get('bot')!=cfg['bot_qq']:raise web.HTTPForbidden()
+        elif value.get('channel','desktop')!='desktop':raise web.HTTPForbidden()
+        return web.json_response(ingress.accept(value))
+
+    async def ingress_lookup(request):
+        if request['role']=='bridge' and request.match_info['channel']!='qq':raise web.HTTPForbidden()
+        value=ingress.lookup(request.match_info['channel'],request.match_info['request_id'])
+        if value is None:return web.json_response({'error':'submission_not_found'},status=404)
+        bridge_batch(request,value)
+        return web.json_response(value)
+
+    async def batch_read(request):
+        value=ingress.get(request.match_info['id']);bridge_batch(request,value)
+        return web.json_response(value)
+
+    async def batch_action(request):
+        if request['role']!='admin':raise web.HTTPForbidden()
+        value=await body(request)
+        return web.json_response(ingress.action(request.match_info['id'],request.match_info['action'],value['expected_revision'],value['operation_id'],value['persona_id']))
 
     async def get_request(request):
         turn = engine.get(request.match_info["id"])
@@ -198,20 +231,22 @@ def create_app(paths, client=None):
                 origin = {"sender": payload["sender"], "bot": payload["bot"]}
                 if origin != {"sender": cfg["owner_qq"], "bot": cfg["bot_qq"]}:
                     raise RuntimeErrorBase("Inbox target changed; automatic redirection is forbidden")
-                turn = engine.lookup("qq", payload["request_id"])
+                turn = ingress.lookup("qq", payload["request_id"]) or engine.lookup("qq", payload["request_id"])
                 if turn is None:
-                    turn = await engine.submit("qq", payload["text"], payload["request_id"], origin=origin)
+                    if payload.get("platform_message_id"):turn = ingress.accept(payload)
+                    else:turn = await engine.submit("qq",payload["text"],payload["request_id"],origin=origin)
                 journal.forget(payload["request_id"])
                 return web.json_response(turn)
             checked = []
             for row in rows:
                 payload = row["payload"]
-                turn = engine.lookup("qq", payload["request_id"])
+                turn = ingress.lookup("qq", payload["request_id"]) or engine.lookup("qq", payload["request_id"])
                 if turn:
                     journal.forget(payload["request_id"])
                 checked.append(row | {"turn": turn})
             return web.json_response(checked)
         handlers = {
+            "interaction.current":ingress.current_policy,"interaction.update":ingress.update_policy,"batch.list":ingress.list,
             **{"character."+name:getattr(characters,name) for name in ("current","update","history","show","compare","restore","fact","preview","export")},
             "character.import":characters.import_package,
             'profile.current':profiles.current,'profile.history':profiles.history,'profile.update':profiles.update,
@@ -241,6 +276,8 @@ def create_app(paths, client=None):
         operation = request.match_info["operation"]
         if operation not in ("drain", "stop", "resume"):
             raise web.HTTPNotFound()
+        if operation in ("drain","stop") and ingress.unresolved_count():
+            raise RuntimeErrorBase("unresolved_input_batches")
         engine.draining = operation != "resume"
         if operation == "resume":
             organization.draining = False
@@ -250,6 +287,10 @@ def create_app(paths, client=None):
             app["stop"].set()
         return web.json_response({"draining": engine.draining, "pending": len(engine.tasks)})
 
+    app.router.add_post("/v2/ingress",ingress_accept)
+    app.router.add_get("/v2/submissions/{channel}/{request_id:.+}",ingress_lookup)
+    app.router.add_get("/v2/batches/{id}",batch_read)
+    app.router.add_post("/v2/batches/{id}/{action:seal|resume|cancel}",batch_action)
     app.router.add_get("/v1/health", health)
     app.router.add_post("/v1/chat", chat)
     app.router.add_get("/v1/qq-pending", qq_pending)
@@ -267,10 +308,15 @@ def create_app(paths, client=None):
 
     async def startup(_):
         app["organization_worker"] = asyncio.create_task(organization.worker())
+        app["ingress_worker"] = asyncio.create_task(ingress.worker())
     app.on_startup.append(startup)
 
     async def cleanup(_):
         engine.draining = True
+        ingress_worker=app.get("ingress_worker")
+        if ingress_worker:
+            ingress_worker.cancel()
+            await asyncio.gather(ingress_worker,return_exceptions=True)
         await organization.drain()
         worker = app.get("organization_worker")
         if worker:

@@ -71,6 +71,7 @@ class SubmissionJournal:
             rows = self._read()
             for row in rows:
                 if row["payload"]["request_id"] == payload["request_id"]:
+                    if row["payload"] != payload:raise RuntimeErrorBase("submission_conflict")
                     return row["payload"]
                 if match_draft and all(row["payload"].get(key) == payload.get(key) for key in ("text", "persona_id", "session_id", "channel")):
                     return row["payload"]

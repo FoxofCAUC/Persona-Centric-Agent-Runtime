@@ -474,5 +474,32 @@ class DesktopTests(unittest.TestCase):
                 force.assert_called_once()
 
 
+    def test_m61_buffer_controls_and_stale_read(self):
+        window=self.window();window.persona_id='persona-a';window.view_epoch=1
+        callbacks=[]
+        with patch.object(window,'run_task',side_effect=lambda *a,**k:callbacks.append(a[3])):
+            window.refresh_batches()
+        window.view_epoch=2;window.persona_id='persona-b'
+        callbacks[0](([],{}))
+        self.assertEqual(window.batch_policies,{})
+        labels={c.cget('text') for c in self.widgets(window) if c.winfo_class()=='TButton'}
+        for text in ('切换窗口模式','切换 QQ 模式','立即回复','继续中断输入','取消未生成批次'):self.assertIn(text,labels)
+
+    def test_m61_receipt_ack_keeps_new_draft(self):
+        window=self.window();window.persona_id='persona-a';window.session_id='session-a'
+        window.chat_input.insert('1.0','first');callbacks=[]
+        with patch.object(window,'run_task',side_effect=lambda *a,**k:callbacks.append(a[3])),patch.object(window,'load_chat'),patch.object(window,'refresh_batches'):
+            window.send_chat();window.chat_input.delete('1.0','end');window.chat_input.insert('1.0','next')
+            callbacks[0]({'receipt_id':'r','batch_id':'b','turn_id':None,'session_id':'session-a','status':'collecting'})
+        self.assertEqual(window.chat_input.get('1.0','end-1c'),'next');self.assertIsNone(window.selected_request)
+
+    def test_m61_linked_batch_does_not_duplicate_old_collecting_view(self):
+        window=self.window();window.persona_id='p';window.session_id='s'
+        window.turns=[{'id':'t','text':'input','reply':'reply','usage':None,'status':'completed','input_batch_id':'b'}]
+        window.chat_batches=[{'id':'b','session_id':'s','persona_id':'p','members':[{'text':'input'}],'status':'collecting','remaining_ms':4900}]
+        window.render_chat();text=window.transcript.get('1.0','end')
+        self.assertEqual(text.count('input'),1);self.assertNotIn('收集中',text)
+
+
 if __name__ == "__main__":
     unittest.main()

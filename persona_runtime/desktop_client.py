@@ -44,13 +44,35 @@ class LocalClient:
     def manage(self, action, **args):
         return self.call("POST", "/v1/manage", {"action": action, "args": args})
 
-    def lookup(self, payload):
+    def lookup_v1(self, payload):
         try:
             return self.call("GET", "/v1/submissions/desktop/" + quote(payload["request_id"], safe=""))
         except LocalAPIError as error:
             if error.status == 404 and str(error) == "submission_not_found":
                 return None
             raise
+
+    def lookup(self,payload):
+        try:
+            return self.call('GET','/v2/submissions/desktop/'+quote(payload['request_id'],safe=''))
+        except LocalAPIError as error:
+            if error.status==404:return self.lookup_v1(payload)
+            raise
+
+    def submit_input(self,payload):
+        payload=self.journal.remember(payload,match_draft=True)
+        try:
+            result=self.lookup(payload)
+            if result is None:
+                health=self.call('GET','/v1/health')
+                if 'durable_ingress_v2' not in health.get('capabilities',[]):raise RuntimeErrorBase('runtime_upgrade_required')
+                result=self.call('POST','/v2/ingress',payload)
+        except TransportUnknown:
+            self.journal.state(payload['request_id'],'unconfirmed');raise
+        except LocalAPIError as error:
+            if str(error) in ('queue_full','buffer_full','service_draining','submission_conflict'):self.journal.forget(payload['request_id'])
+            raise
+        self.journal.forget(payload['request_id']);return result
 
     def submit(self, payload):
         # Persist the intent first. Repeated clicks on the same unconfirmed draft reuse its ID.

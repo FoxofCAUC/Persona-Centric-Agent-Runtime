@@ -156,6 +156,8 @@ class ChatEngine:
             raise RuntimeErrorBase("Input is too long")
         source_key = channel + ":" + request_id
         with self.store.connection(write=True) as conn:
+            if conn.execute("SELECT 1 FROM ingress_receipts WHERE channel=? AND request_id=?",(channel,request_id)).fetchone():
+                raise RuntimeErrorBase("v2_submission_exists")
             old = conn.execute("SELECT id FROM turns WHERE source_key=?", (source_key,)).fetchone()
             if old:
                 previous = self._view(conn, old[0])
@@ -218,6 +220,11 @@ class ChatEngine:
         for field, output in (("user_event_id", "text"), ("reply_event_id", "reply")):
             event = conn.execute("SELECT text FROM events WHERE id=?", (value[field],)).fetchone()
             value[output] = event[0] if event else None
+        from .turn_input import input_text, load_turn_input
+        if value.get("input_batch_id"):
+            value["text"]=input_text(conn,value)
+            value["input_members"]=load_turn_input(conn,value)
+            value["raw_message_count"]=len(value["input_members"])
         delivery = conn.execute("SELECT state FROM deliveries WHERE turn_id=?", (turn_id,)).fetchone()
         value["delivery"] = delivery[0] if delivery else None
         value["attempt_count"] = conn.execute("SELECT count(*) FROM attempts WHERE turn_id=?", (turn_id,)).fetchone()[0]

@@ -14,7 +14,7 @@ from persona_runtime.paths import RuntimePaths
 from persona_runtime.qq_bridge import QQBridge
 
 
-@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.3.0")
+@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.4.0")
 class PersonaRuntimePlugin(Star):
     def __init__(self, context):
         super().__init__(context)
@@ -71,7 +71,7 @@ class PersonaRuntimePlugin(Star):
                     pass
             atomic_json(self.paths.home / "runtime/astrbot-health.json", {
                 "at": time.time(), "pid": os.getpid(), "instance_id": cfg["instance_id"],
-                "verified": verified, "online": online, "plugin_version": "0.3.0"})
+                "verified": verified, "online": online, "plugin_version": "0.4.0"})
             await asyncio.sleep(5)
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=10000)
