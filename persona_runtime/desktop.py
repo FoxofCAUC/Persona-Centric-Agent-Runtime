@@ -16,6 +16,7 @@ from .models import identifier
 from .reused.logs import LogTail
 from .reused.tasks import TaskHub
 from .desktop_organization import OrganizationUI
+from .desktop_profile import ProfileUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -56,11 +57,12 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(OrganizationUI, tk.Tk):
+class Workbench(ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
                      ("model", "模型", "build_model"), ("organization", "记忆整理", "build_organization"),
+                     ('profile','人格与关系','build_profile'),
                      ("diagnostics", "故障排查", "build_diagnostics"))
 
     def __init__(self, paths):
@@ -98,7 +100,8 @@ class Workbench(OrganizationUI, tk.Tk):
         self.log_source = tk.StringVar(value="service")
         self.log_search = tk.StringVar()
         self.init_organization_vars()
-        self.title("人格工作台 · M4")
+        self.init_profile_vars()
+        self.title("人格工作台 · M5")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -108,6 +111,7 @@ class Workbench(OrganizationUI, tk.Tk):
         self.after(300, self.poll)
         self.after(450, self.refresh_conversation)
         self.after(900, self.poll_organization)
+        self.after(1100,self.poll_profile)
 
     def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None):
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
@@ -195,6 +199,7 @@ class Workbench(OrganizationUI, tk.Tk):
             self.read_logs()
         if key == "organization":
             self.refresh_organization()
+        if key=='profile':self.refresh_profile()
 
     def build_home(self, parent):
         self.heading(parent, "让人格持续陪伴", "先启动人格服务，即可在窗口聊天。QQ 私聊还需准备组件并填写账号。")
@@ -593,9 +598,7 @@ class Workbench(OrganizationUI, tk.Tk):
         return dialog
 
     def edit_relationship(self):
-        self.run_task("读取关系", {"persona-read"}, lambda _: self.client.manage("relationship.show"),
-                      lambda value: self.text_dialog("关系说明", value["description"] if value else "",
-                          lambda text: self.client.manage("relationship.set", description=text)))
+        self.edit_profile_text('relationship')
 
     def load_chat(self, fresh=False, session_id=None):
         if fresh or (session_id and session_id != self.session_id):

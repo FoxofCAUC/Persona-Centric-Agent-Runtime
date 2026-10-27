@@ -14,6 +14,7 @@ from persona_runtime.lifecycle import ServiceController
 from persona_runtime.storage import Store
 from persona_runtime.service import RuntimeService
 from persona_runtime.models import generic_persona
+from persona_runtime.profile import ProfileService
 
 
 class DesktopTests(unittest.TestCase):
@@ -233,6 +234,8 @@ class DesktopTests(unittest.TestCase):
                     "event.append": service.append_event, "memory.add": service.add_memory,
                     "memory.search": service.search_memories, "memory.revise": service.revise_memory,
                     "relationship.show": service.show_relationship, "relationship.set": service.set_relationship}
+        profile=ProfileService(store)
+        handlers.update({'profile.current':profile.current,'profile.update':profile.update,'relationship.proposals':profile.proposals,'persona.show':service.show_persona})
         window.client.manage = lambda name, **args: handlers[name](**args)
 
         chosen = []
@@ -302,7 +305,7 @@ class DesktopTests(unittest.TestCase):
     def test_six_pages_at_three_scales_and_responsive_callbacks(self):
         window = self.window()
         # No OS process scans or HTTP during component rendering checks.
-        with patch.object(window, "poll"), patch.object(window, "refresh_personas"), patch.object(window, "read_logs"):
+        with patch.object(window, "poll"), patch.object(window, "refresh_personas"), patch.object(window, "read_logs"), patch.object(window,'refresh_organization'),patch.object(window,'refresh_profile'):
             for scale in (1, 1.25, 1.5):
                 window.tk.call("tk", "scaling", 96/72*scale)
                 window.geometry("1000x700")
@@ -324,6 +327,30 @@ class DesktopTests(unittest.TestCase):
                 window.update()
                 time.sleep(.005)
             self.assertTrue(marker, "A slow background operation must not block Tk callbacks")
+
+    def test_m5_core_editor_actions_visible_and_failed_save_keeps_content(self):
+        window=self.window()
+        version={'id':'core-v1','data':generic_persona().to_dict()}
+        version['data'].pop('format_version');version['data'].pop('expression_style')
+        dialog=window.core_editor(version)
+        for scale in (1,1.25,1.5):
+            window.tk.call('tk','scaling',96/72*scale);dialog.geometry('480x300');window.update()
+            save=self.control(dialog,'保存核心设定')
+            self.assertTrue(save.winfo_ismapped())
+            self.assertLessEqual(save.winfo_rooty()+save.winfo_height(),dialog.winfo_rooty()+dialog.winfo_height())
+        editor=dialog.core_editors['name'];editor.delete('1.0','end');editor.insert('1.0','保留的虚构名字')
+        with patch.object(window.client,'manage',side_effect=ValueError('profile_version_conflict')):
+            self.control(dialog,'保存核心设定').invoke()
+            self.pump(window,lambda:not window.hub.active)
+        self.assertTrue(dialog.winfo_exists());self.assertEqual(editor.get('1.0','end-1c'),'保留的虚构名字')
+        self.assertEqual(str(editor.cget('state')),'normal')
+
+    def test_m5_page_has_explicit_state_and_version_actions(self):
+        window=self.window();self.assertIn('profile',window.pages)
+        self.assertEqual(window.state_hours.get(),'24')
+        labels={w.cget('text') for w in self.widgets(window) if w.winfo_class()=='TButton'}
+        for label in ('编辑当前人格核心','与当前版本比较','恢复选中版本','设置临时状态','从来源创建关系建议','编辑并确认关系建议'):
+            self.assertIn(label,labels)
 
     def test_external_service_and_stale_pid_are_never_stopped(self):
         from persona_runtime.config import ConfigStore
