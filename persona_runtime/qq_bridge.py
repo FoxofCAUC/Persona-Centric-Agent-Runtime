@@ -8,6 +8,7 @@ import aiohttp
 from .config import ConfigStore
 from .models import identifier
 from .submissions import SubmissionJournal
+from .qq_text import plain_qq_text
 
 
 class BridgeAPIError(RuntimeError):
@@ -156,8 +157,11 @@ class QQBridge:
         if not claim["claimed"]:
             return False
         try:
-            for offset in range(0, len(turn["reply"]), 450):
-                result = await send(turn["reply"][offset:offset+450])
+            reply = plain_qq_text(turn["reply"])
+            if not reply.strip():
+                raise RuntimeError('qq_plain_text_empty')
+            for offset in range(0, len(reply), 450):
+                result = await send(reply[offset:offset+450])
                 if result is False:
                     raise RuntimeError("platform_send_failed")
         except BaseException:

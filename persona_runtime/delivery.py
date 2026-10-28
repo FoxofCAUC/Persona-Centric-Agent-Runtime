@@ -3,6 +3,7 @@ import hashlib
 import json
 
 from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, timestamp
+from .qq_text import plain_qq_text
 
 PART_CHARS = 450
 TERMINAL = ("sent", "skipped", "resolved")
@@ -99,7 +100,11 @@ class DeliveryService:
         segments = conn.execute("SELECT segment_index,text FROM reply_segments WHERE batch_id=? ORDER BY segment_index", (batch_id,)).fetchall()
         part_index = 0
         for segment in segments:
-            for text in _split(segment[1]):
+            rendered = plain_qq_text(segment[1])
+            if not rendered.strip():
+                from .reply_batch import ReplySchemaError
+                raise ReplySchemaError('qq_plain_text_empty')
+            for text in _split(rendered):
                 part_index += 1
                 stream_seq += 1
                 conn.execute("INSERT INTO reply_delivery_parts (id,stream_id,reply_batch_id,turn_id,persona_id,user_id,semantic_index,part_index,stream_seq,text,text_hash,state,revision,claim_token,attempt,platform_message_id,sent_at,error,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',1,NULL,0,NULL,NULL,NULL,?,?)",
