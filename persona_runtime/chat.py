@@ -3,6 +3,7 @@ import asyncio
 from collections import defaultdict
 import json
 import re
+import sqlite3
 import time
 from typing import Protocol
 
@@ -89,6 +90,8 @@ def recall(query, memories):
 class ChatEngine:
     def __init__(self, store, config, client=None):
         self.store, self.config = store, config
+        from .cognitive import CognitiveService
+        self.cognitive=CognitiveService(store,self)
         self.client = client or ChatCompletionsClient()
         self.service = RuntimeService(store)
         self.tasks = {}
@@ -191,6 +194,8 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET profile_snapshot=? WHERE id=?',(json.dumps(snapshot(conn,persona_id),ensure_ascii=False),turn_id))
                 from .character import head as character_head
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,persona_id),ensure_ascii=False),turn_id))
+                from .context_policy import current as context_policy
+                conn.execute('UPDATE turns SET context_policy_snapshot=? WHERE id=?',(json.dumps(context_policy(conn,persona_id,channel)),turn_id))
             if channel == "qq":
                 identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
                 conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
@@ -284,24 +289,28 @@ class ChatEngine:
                 "SELECT id FROM turns WHERE persona_id=? ORDER BY rowid DESC LIMIT 100", (persona_id,))]
 
     def _context(self, conn, turn):
-        from .context_m4 import build_context
-        messages, details = build_context(self, conn, turn)
+        # Compatibility helper also uses canonical scope and withdrawal rules.
+        evidence=None if turn['channel']=='test' else self.cognitive.dialogue.basic_evidence(conn,turn)
+        messages, details = self.cognitive.dialogue.render(conn,turn,evidence)
         turn["_context_details"] = details
         return messages
 
     async def _run(self, turn_id):
         initial = self.get(turn_id)
+        if initial['status']!='queued' or initial.get('cancelled_at'):return
         async with self.locks[initial["persona_id"]]:
             attempt_id = None
             usage = None
             reference_manifest = None
             try:
+                prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id)
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
                     if turn["status"] != "queued" or turn["cancelled_at"]:
                         return
                     model = json.loads(turn["model_snapshot"])
-                    messages = self._context(conn, turn)
+                    prepared=self.cognitive.finalize(conn,turn,prepared)
+                    messages=prepared['messages'];turn['_context_details']=prepared['details']
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
@@ -313,6 +322,8 @@ class ChatEngine:
                     attempt_id = identifier()
                     conn.execute("INSERT INTO attempts VALUES (?,?,?,'running',NULL,NULL,?)",
                                  (attempt_id, turn_id, time.time(), turn["model_snapshot"]))
+                    context_id=self.cognitive.persist(conn,prepared['manifest'],turn=turn,attempt_id=attempt_id)
+                    turn['_context_details']['context_id']=context_id
                     conn.execute("INSERT INTO context_uses VALUES (?,?,?,?,?,?)", (attempt_id, turn_id, turn["persona_id"], LOCAL_USER_ID,
                                  json.dumps(turn["_context_details"], ensure_ascii=False), timestamp()))
                     conn.execute("UPDATE turns SET status='running', updated_at=? WHERE id=?", (timestamp(), turn_id))
@@ -357,6 +368,9 @@ class ChatEngine:
                         # without creating an attempt or marking sources invalid.
                         manifest={**reference_manifest,'check_status':'passed','execution_blocked':code}
                         record_check(conn,initial,manifest,error=code)
+                    if attempt_id is None:
+                        try:self.cognitive.blocked(conn,initial,code)
+                        except (sqlite3.Error,OSError,ModelError):pass
                     record_progress(conn, turn_id, "interrupted" if interrupted else "failed", attempt_id)
                     encoded=json.dumps(usage) if usage is not None else None
                     conn.execute("UPDATE turns SET status=?,error_code=?,usage_json=?,updated_at=? WHERE id=?",
@@ -387,6 +401,8 @@ class ChatEngine:
                 reply_policy=conn.execute('SELECT p.reply_mode FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(turn['persona_id'],turn['channel'])).fetchone()
                 reply_mode=reply_policy[0] if reply_policy else 'legacy_full'
                 conn.execute('UPDATE turns SET reply_mode_snapshot=? WHERE id=?',(reply_mode,turn_id))
+                from .context_policy import current as context_policy
+                conn.execute('UPDATE turns SET context_policy_snapshot=? WHERE id=?',(json.dumps(context_policy(conn,turn['persona_id'],turn['channel'])),turn_id))
             record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
         return self.get(turn_id)

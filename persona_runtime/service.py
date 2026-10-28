@@ -44,6 +44,8 @@ class RuntimeService:
             initialize_profiles(conn,persona_id,actor='create')
             from .character import initialize_characters
             initialize_characters(conn,persona_id,actor='create')
+            from .context_policy import initialize as initialize_context_policies
+            initialize_context_policies(conn,persona_id)
             return self._persona(conn, persona_id)
 
     def list_personas(self) -> list[dict]:
@@ -202,14 +204,14 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 8, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 9, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
                 payload[table] = [dict(r) for r in conn.execute(
                     f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY {order}",
                     (persona["id"], LOCAL_USER_ID))]
-            for table in ("summaries", "candidates", "candidate_reviews", "source_exclusions", "organization_progress", "automation", "context_uses", "input_references", "reference_checks"):
+            for table in ("summaries", "candidates", "candidate_reviews", "source_exclusions", "organization_progress", "automation", "context_uses", "input_references", "reference_checks", "context_manifests"):
                 payload[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid", (persona["id"], LOCAL_USER_ID))]
             payload["memory_sources"] = [dict(r) for r in conn.execute("SELECT s.* FROM memory_sources s JOIN memories m ON m.id=s.memory_id WHERE m.persona_id=? AND m.user_id=?", (persona["id"], LOCAL_USER_ID))]
             for table in ('profile_versions','relationship_proposals'):
@@ -221,6 +223,7 @@ class RuntimeService:
             payload['reply_batches']=[{k:v for k,v in dict(r).items() if k!='attempt_id'} for r in conn.execute('SELECT * FROM reply_batches WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['reply_segments']=[dict(r) for r in conn.execute('SELECT s.* FROM reply_segments s JOIN reply_batches b ON b.id=s.batch_id WHERE b.persona_id=? AND b.user_id=? ORDER BY b.rowid,s.segment_index',(persona['id'],LOCAL_USER_ID))]
             payload['turn_reply_links']=[dict(r) for r in conn.execute('SELECT t.id AS turn_id,t.persona_id,t.session_id,t.channel,t.reply_event_id,t.input_batch_id,b.id AS reply_batch_id,b.attempt_id FROM turns t LEFT JOIN reply_batches b ON b.turn_id=t.id WHERE t.persona_id=? AND t.session_id IS NOT NULL AND (b.id IS NOT NULL OR t.input_batch_id IS NOT NULL) ORDER BY t.rowid',(persona['id'],))]
+            payload['turn_context_policies']=[dict(r) for r in conn.execute('SELECT id AS turn_id,context_policy_snapshot FROM turns WHERE persona_id=? ORDER BY rowid',(persona['id'],))]
             payload['reply_delivery_streams']=[dict(r) for r in conn.execute('SELECT * FROM reply_delivery_streams WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['reply_delivery_parts']=[{k:v for k,v in dict(r).items() if k!='claim_token'} for r in conn.execute('SELECT * FROM reply_delivery_parts WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['reply_delivery_attempts']=[dict(r) for r in conn.execute('SELECT a.* FROM reply_delivery_attempts a JOIN reply_delivery_parts p ON p.id=a.part_id WHERE p.persona_id=? AND p.user_id=? ORDER BY a.rowid',(persona['id'],LOCAL_USER_ID))]

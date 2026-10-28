@@ -8,6 +8,7 @@ from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, require_text, t
 from .profile import snapshot
 from .character import head as character_head
 from .progress import record
+from .context_policy import DEFAULT_CONTEXT, values as context_values, snapshot as context_snapshot
 
 PARAMS={'schema_version':1,'quiet_ms':5000,'max_wait_ms':15000,'max_messages':20,'max_chars':12000,'max_batches':10,'max_pending_chars':120000}
 MODES=('legacy_per_message','natural_batch')
@@ -32,7 +33,8 @@ class IngressService:
     def policy(self,conn,persona_id,channel):
         if channel not in ('desktop','qq'):raise RuntimeErrorBase('unsupported_channel')
         row=conn.execute('SELECT p.* FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(persona_id,channel)).fetchone()
-        return dict(row) if row else {'id':None,'persona_id':persona_id,'channel':channel,'revision':0,'mode':'legacy_per_message','reply_mode':'legacy_full','data_json':encoded(PARAMS)}
+        result=dict(row) if row else {'id':None,'persona_id':persona_id,'channel':channel,'revision':0,'mode':'legacy_per_message','reply_mode':'legacy_full','data_json':encoded({**PARAMS,'context':DEFAULT_CONTEXT})}
+        return result|context_values(result)
 
     def current_policy(self,persona_id,channel):
         with self.store.connection() as conn:
@@ -52,26 +54,32 @@ class IngressService:
     def _remember(self,conn,persona,operation_id,fingerprint,result):
         conn.execute('INSERT INTO batch_operations VALUES (?,?,?,?,?,?)',(operation_id,persona,LOCAL_USER_ID,fingerprint,encoded(result),timestamp()))
 
-    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,reply_mode=None):
+    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,reply_mode=None,context_mode=None,cross_session=None):
         if mode not in MODES:raise RuntimeErrorBase('invalid_interaction_mode')
         if reply_mode is not None and reply_mode not in REPLY_MODES:raise RuntimeErrorBase('invalid_reply_mode')
+        if context_mode is not None and context_mode not in ('working_set','legacy_recent'):raise RuntimeErrorBase('invalid_context_mode')
+        if cross_session is not None and type(cross_session) is not bool:raise RuntimeErrorBase('invalid_cross_session')
         with self.store.connection(write=True) as conn:
             if self.store.current(conn)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
             current=self.policy(conn,persona_id,channel)
-            reply_mode=reply_mode or current['reply_mode']
-            value={'channel':channel,'mode':mode,'reply_mode':reply_mode,'expected_version':expected_version,'pending_action':pending_action}
+            value={'channel':channel,'mode':mode,'reply_mode':reply_mode,'context_mode':context_mode,'cross_session':cross_session,'expected_version':expected_version,'pending_action':pending_action}
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
-            pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall() if mode!=current['mode'] else []
+            reply_mode=reply_mode or current['reply_mode']
+            context_mode=context_mode or current['context_mode']
+            cross_session=current['cross_session'] if cross_session is None else cross_session
+            context_changed=(context_mode,cross_session)!=(current['context_mode'],current['cross_session'])
+            pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall() if mode!=current['mode'] or context_changed else []
             if pending and pending_action not in ('seal','cancel'):raise RuntimeErrorBase('pending_batch_resolution_required')
             for row in pending:
                 if pending_action=='seal':self._seal(conn,dict(row),'policy_changed')
                 else:conn.execute("UPDATE input_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE id=?",(timestamp(),row['id']))
-            if current['mode']==mode and current['reply_mode']==reply_mode:result=current
+            if current['mode']==mode and current['reply_mode']==reply_mode and not context_changed:result=current
             else:
                 vid=identifier()
-                conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',(vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,mode,encoded(PARAMS),timestamp(),reply_mode))
+                data=json.loads(current['data_json']);data['context']={'context_mode':context_mode,'cross_session':cross_session}
+                conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',(vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,mode,encoded(data),timestamp(),reply_mode))
                 conn.execute('INSERT INTO interaction_heads VALUES (?,?,?,?) ON CONFLICT(persona_id,channel) DO UPDATE SET version_id=excluded.version_id',(persona_id,LOCAL_USER_ID,channel,vid))
                 result=self.policy(conn,persona_id,channel)
             self._remember(conn,persona_id,operation_id,fp,result)
@@ -145,7 +153,7 @@ class IngressService:
             if conn.execute('SELECT 1 FROM turns WHERE source_key=?',(channel+':'+rid,)).fetchone():raise RuntimeErrorBase('legacy_submission_exists')
             pid=self.engine.service._persona(conn,value.get('persona_id'))['id']
             sid=self.engine._session(conn,pid,channel,value.get('session_id'))
-            pol=self.policy(conn,pid,channel);policy={**PARAMS,'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision']}
+            pol=self.policy(conn,pid,channel);policy={**PARAMS,'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol)}
             frozen=snapshot(conn,pid);character=character_head(conn,pid)
             scope=digest([pid,LOCAL_USER_ID,channel,bot,peer,sid,policy,frozen['core']['id'],frozen['expression']['id'],frozen['relationship']['id'],character['id']])
             # A change in settings or session seals collecting batches at the prior boundary.
@@ -207,6 +215,8 @@ class IngressService:
             origin=encoded({'bot':b['bot'],'sender':b['peer']}) if b['channel']=='qq' else 'null'
             policy=json.loads(b['policy_json'])
             conn.execute("INSERT INTO turns(id,source_key,persona_id,session_id,channel,user_event_id,status,model_snapshot,created_at,updated_at,profile_snapshot,character_snapshot,origin_json,input_batch_id,reply_mode_snapshot) VALUES (?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?)",(tid,'batch:'+b['id'],persona_id,b['session_id'],b['channel'],first,b['model_snapshot'],timestamp(),timestamp(),b['profile_snapshot'],b['character_snapshot'],origin,b['id'],policy.get('reply_mode','legacy_full')))
+            if policy.get('context') is not None:
+                conn.execute('UPDATE turns SET context_policy_snapshot=? WHERE id=?',(encoded(policy['context']),tid))
             if b['channel']=='qq':conn.execute("INSERT INTO deliveries VALUES (?,'pending',?)",(tid,timestamp()))
             record(conn,tid,'accepted');record(conn,tid,'queued')
             conn.execute("UPDATE input_batches SET state='linked',revision=revision+1,updated_at=? WHERE id=?",(timestamp(),b['id']))

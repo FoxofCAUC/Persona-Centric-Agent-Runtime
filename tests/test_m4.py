@@ -178,6 +178,10 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.org.summaries.list(), [])
 
     async def test_long_dialogue_summary_coverage_and_input_bound(self):
+        # Preserve the M4 near-ten/summary compatibility contract explicitly.
+        from persona_runtime.ingress import IngressService
+        ingress=IngressService(self.chat);policy=ingress.current_policy(self.persona['id'],'desktop')
+        ingress.update_policy(self.persona['id'],'desktop',policy['mode'],policy['id'],'m4-legacy',context_mode='legacy_recent')
         turns = await self.seed(32)
         session = turns[0]['session_id']
         for _ in range(3):
@@ -320,7 +324,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         finally:
             db.close()
         legacy.initialize()
-        self.assertEqual(legacy.status()['schema_version'], 11)
+        self.assertEqual(legacy.status()['schema_version'], 12)
         self.assertTrue(list((legacy.paths.home/'backups').glob('before-m4-*.sqlite3')))
 
     async def test_management_is_admin_only_and_public_config_masks_both_keys(self):
@@ -452,7 +456,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         candidate=self.org.candidates.list()[0]
         self.org.candidates.accept(candidate['id'],'accept')
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],8)
+        self.assertEqual(data['format_version'],9)
         self.assertEqual(len(data['candidate_reviews']),1)
         self.assertNotIn('encrypted_key',encoded(data))
         destination=Path(self.service.backup()['path'])

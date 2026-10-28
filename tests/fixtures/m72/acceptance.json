@@ -1,0 +1,726 @@
+{
+  "set": "acceptance",
+  "purpose": "人工构造的确定性上下文来源对照；不评价主观自然度",
+  "cases": [
+    {
+      "id": "acceptance-recent-01",
+      "family": "recent",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "青禾书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-recent-02",
+      "family": "recent",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "松月书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-recent-03",
+      "family": "recent",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "云栖书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-recent-04",
+      "family": "recent",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "竹影书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-recent-05",
+      "family": "recent",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "星澜书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-recent-06",
+      "family": "recent",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "听雨书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-old-01",
+      "family": "old",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "青禾书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-old-02",
+      "family": "old",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "松月书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-old-03",
+      "family": "old",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "云栖书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-old-04",
+      "family": "old",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "竹影书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-old-05",
+      "family": "old",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "星澜书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-old-06",
+      "family": "old",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "听雨书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-nonfirst-01",
+      "family": "nonfirst",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "青禾书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-nonfirst-02",
+      "family": "nonfirst",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "松月书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-nonfirst-03",
+      "family": "nonfirst",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "云栖书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-nonfirst-04",
+      "family": "nonfirst",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "竹影书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-nonfirst-05",
+      "family": "nonfirst",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "星澜书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-nonfirst-06",
+      "family": "nonfirst",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "听雨书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-unknown-01",
+      "family": "unknown",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "不可回答的陌生词 zzz_no_matching_literal",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-unknown-02",
+      "family": "unknown",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "不可回答的陌生词 zzz_no_matching_literal",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-unknown-03",
+      "family": "unknown",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "不可回答的陌生词 zzz_no_matching_literal",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-unknown-04",
+      "family": "unknown",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "不可回答的陌生词 zzz_no_matching_literal",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-unknown-05",
+      "family": "unknown",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "不可回答的陌生词 zzz_no_matching_literal",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-unknown-06",
+      "family": "unknown",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "不可回答的陌生词 zzz_no_matching_literal",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-scope-01",
+      "family": "scope",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "青禾书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-scope-02",
+      "family": "scope",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "松月书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": true
+    },
+    {
+      "id": "acceptance-scope-03",
+      "family": "scope",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "云栖书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-scope-04",
+      "family": "scope",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "竹影书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": true
+    },
+    {
+      "id": "acceptance-scope-05",
+      "family": "scope",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "星澜书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-scope-06",
+      "family": "scope",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "听雨书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": true
+    },
+    {
+      "id": "acceptance-withdrawn-01",
+      "family": "withdrawn",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "青禾书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-withdrawn-02",
+      "family": "withdrawn",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "松月书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-withdrawn-03",
+      "family": "withdrawn",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "云栖书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-withdrawn-04",
+      "family": "withdrawn",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "竹影书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-withdrawn-05",
+      "family": "withdrawn",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "星澜书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-withdrawn-06",
+      "family": "withdrawn",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "听雨书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-explicit-01",
+      "family": "explicit",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "青禾书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-explicit-02",
+      "family": "explicit",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "松月书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-explicit-03",
+      "family": "explicit",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "云栖书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-explicit-04",
+      "family": "explicit",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "竹影书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-explicit-05",
+      "family": "explicit",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "星澜书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-explicit-06",
+      "family": "explicit",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "听雨书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-budget-01",
+      "family": "budget",
+      "members": [
+        "虚构的青禾书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "青禾书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-budget-02",
+      "family": "budget",
+      "members": [
+        "虚构的松月书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "松月书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-budget-03",
+      "family": "budget",
+      "members": [
+        "虚构的云栖书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "云栖书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-budget-04",
+      "family": "budget",
+      "members": [
+        "虚构的竹影书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "竹影书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-budget-05",
+      "family": "budget",
+      "members": [
+        "虚构的星澜书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "星澜书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    },
+    {
+      "id": "acceptance-budget-06",
+      "family": "budget",
+      "members": [
+        "虚构的听雨书店需要阅读角。",
+        "预算三百元，偏好蓝色。",
+        "请结合两个条件提出建议。"
+      ],
+      "query": "听雨书店阅读角的预算和颜色是什么？",
+      "needles": [
+        "预算三百元",
+        "偏好蓝色"
+      ],
+      "cross_session": false
+    }
+  ]
+}

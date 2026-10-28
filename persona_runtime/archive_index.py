@@ -160,8 +160,9 @@ class ArchiveIndex:
             db.commit()
             return result
 
-    def candidates(self,spec,state,budget):
+    def candidates(self,spec,state,budget,*,any_terms=False,terms_override=None,include_literals=False):
         terms,literal=lexical(spec['query'])
+        if terms_override is not None:terms,literal=list(terms_override),bool(include_literals)
         use_fts=state['fts'] and terms and not literal
         with self.connection(budget=budget) as (db,meta):
             db.execute('BEGIN')
@@ -175,7 +176,7 @@ class ArchiveIndex:
                 raise SearchFailure('cache_corrupt')
             if use_fts:
                 sql='SELECT d.data_json FROM fts_documents JOIN documents d ON d.rowid=fts_documents.rowid WHERE fts_documents MATCH ? AND d.partition=?'
-                args=(' AND '.join('"'+t+'"' for t in encoded_terms(terms)),partition(spec))
+                args=((' OR ' if any_terms else ' AND ').join('"'+t+'"' for t in encoded_terms(terms)),partition(spec))
             else:
                 sql='SELECT data_json FROM documents WHERE partition=?'
                 args=(partition(spec),)

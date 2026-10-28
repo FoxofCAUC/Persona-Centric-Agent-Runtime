@@ -95,7 +95,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.7.1.dev1", "capabilities":["archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.7.2.dev1", "capabilities":["cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -264,6 +264,8 @@ def create_app(paths, client=None):
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
+        if action in ('context.preview','context.inspect'):
+            return web.json_response(await asyncio.to_thread(getattr(engine.cognitive,action.split('.')[1]),**args))
         search_handlers={"archive.search":archive_search.search,"archive.search-status":archive_search.status,
                          "archive.search-rebuild":archive_search.rebuild,"archive.working-set-preview":archive_search.preview}
         if action in search_handlers:

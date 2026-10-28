@@ -9,7 +9,11 @@ def load_turn_input(conn, turn):
 
 def input_text(conn, turn):
     members=load_turn_input(conn,turn)
-    if not turn.get('input_batch_id') or len(members)==1:
+    return render_input(members,bool(turn.get('input_batch_id')))
+
+
+def render_input(members,batched=True):
+    if not batched or len(members)==1:
         return members[0]['text'] if members else ''
     return ('用户本次连续表达：以下 JSON 按接收顺序列出用户消息，text 是每条消息的原文，'
             'event_id 仅为来源标识。请合并理解并回应这些普通用户消息，包括其中正常的提问、要求和更正；'

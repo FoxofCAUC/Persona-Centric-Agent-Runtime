@@ -23,6 +23,7 @@ from .desktop_delivery import DeliveryUI
 from .desktop_quotas import QuotaUI
 from .desktop_archive import ArchiveUI
 from .desktop_archive_search import ArchiveSearchUI
+from .desktop_context import ContextUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -64,7 +65,7 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
@@ -75,6 +76,7 @@ class Workbench(ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, Charac
                      ('delivery','回复投递','build_delivery'),
                      ('archive','原始档案','build_archive'),
                      ('archive-search','档案检索','build_archive_search'),
+                     ('context','认知上下文','build_context_page'),
                      ("diagnostics", "故障排查", "build_diagnostics"))
 
     def __init__(self, paths, *, managed_lifecycle=False, controller=None):
@@ -121,7 +123,8 @@ class Workbench(ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, Charac
         self.init_delivery_vars()
         self.init_archive_vars()
         self.init_archive_search_vars()
-        self.title("Persona-Centric Agent Runtime (PCAR) · M7.1")
+        self.init_context_vars()
+        self.title("Persona-Centric Agent Runtime (PCAR) · M7.2")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -229,6 +232,7 @@ class Workbench(ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, Charac
             self.refresh_organization()
         if key=='profile':self.refresh_profile()
         if key=='delivery':self.refresh_deliveries()
+        if key=='context':self.refresh_context_policy()
 
     def build_home(self, parent):
         ttk.Label(parent, text="运行状态", style="Title.TLabel").pack(anchor="w", pady=(0, 8))
@@ -531,6 +535,7 @@ class Workbench(ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, Charac
 
     def use_persona(self, persona_id):
         if not self.character_can_leave():return
+        self.invalidate_context()
         self.invalidate_search()
         self.invalidate_archive()
         self.clear_archive_reference()
@@ -672,6 +677,7 @@ class Workbench(ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, Charac
             if epoch != self.view_epoch:
                 return
             if self.persona_id != result[0]['persona_id']:
+                self.invalidate_context()
                 self.invalidate_search()
                 self.clear_archive_reference()
             self.session_id = result[0]["session_id"]

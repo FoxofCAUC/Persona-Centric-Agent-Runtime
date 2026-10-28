@@ -59,6 +59,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         self.engine = ChatEngine(self.store, self.cfg, self.model)
 
     async def asyncTearDown(self):
+        if self.model.gate:self.model.gate.set()
         await self.engine.wait()
 
     async def chat(self, text="我喜欢什么茶？", request_id="first", channel="desktop"):
@@ -66,7 +67,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         await self.engine.wait()
         return self.engine.get(turn["id"])
 
-    async def test_context_shared_memory_separate_channel_and_restart(self):
+    async def test_context_scope_separate_channel_and_restart(self):
         self.service.set_relationship("相互尊重的朋友")
         session = self.service.create_session()
         event = self.service.append_event(session["id"], "user", "我喜欢乌龙茶")
@@ -78,7 +79,10 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         desktop = self.model.calls[1][1]
         qq = self.model.calls[2][1]
         self.assertIn("相互尊重的朋友", qq[0]["content"])
-        self.assertIn("乌龙茶", qq[0]["content"])
+        # M7.2 tightens source scope: an unscoped desktop note is not silently
+        # promoted into QQ history or memory evidence. Identity stays shared.
+        self.assertNotIn("乌龙茶", qq[0]["content"])
+        self.assertIn("乌龙茶", self.model.calls[0][1][0]['content'])
         self.assertEqual(len(qq), 2)
         self.assertEqual(len(desktop), 4)
         fresh = ChatEngine(Store(self.paths), self.cfg, self.model)
@@ -144,7 +148,8 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
     async def test_queue_bound_and_serial_execution(self):
         self.model.gate = asyncio.Event()
         await self.engine.submit("desktop", "运行中", "active")
-        await asyncio.sleep(.01)
+        async with asyncio.timeout(5):
+            while not self.model.calls:await asyncio.sleep(.005)
         for i in range(10):
             await self.engine.submit("desktop", "等待中", f"queued-{i}")
         with self.assertRaisesRegex(RuntimeErrorBase, "queue_full"):

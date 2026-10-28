@@ -442,12 +442,21 @@ class OrganizationEngine:
                 conn.execute("UPDATE organization_tasks SET status='failed',error_code='organization_model_not_configured' WHERE id=?", (task["id"],))
                 conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task["id"], task["session_id"]))
                 return True
+            messages = [{"role": "user", "content": "Reply with OK."}] if task["mode"] == "test" else self.messages(payload)
             attempt_id = identifier()
+            conn.execute('SAVEPOINT cognitive_call')
             conn.execute("INSERT INTO organization_attempts VALUES (?,?,?,'running',NULL,NULL,?)", (attempt_id, task["id"], now, task["model_snapshot"]))
+            try:
+                self.chat.cognitive.reflection(conn,task,payload,messages,attempt_id)
+            except (RuntimeErrorBase,):
+                conn.execute('ROLLBACK TO cognitive_call');conn.execute('RELEASE cognitive_call')
+                conn.execute("UPDATE organization_tasks SET status='failed',error_code='context_manifest_storage_failed',updated_at=? WHERE id=?",(timestamp(),task['id']))
+                conn.execute('UPDATE organization_progress SET blocked_task=? WHERE session_id=?',(task['id'],task['session_id']))
+                return True
+            conn.execute('RELEASE cognitive_call')
             conn.execute("UPDATE organization_tasks SET status='running',updated_at=? WHERE id=?", (timestamp(), task["id"]))
         self.running = True
         try:
-            messages = [{"role": "user", "content": "Reply with OK."}] if task["mode"] == "test" else self.messages(payload)
             reply, usage = await self.client.complete(model, messages)
             with self.store.connection(write=True) as conn:
                 if task["mode"] != "test":

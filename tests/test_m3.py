@@ -77,7 +77,8 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_queued_never_calls_model(self):
         self.model.gate = asyncio.Event()
         running = await self.engine.submit("desktop", "running", "running")
-        await asyncio.sleep(.01)
+        async with asyncio.timeout(5):
+            while not self.model.calls:await asyncio.sleep(.005)
         queued = await self.engine.submit("desktop", "cancel-me", "cancel-me")
         cancelled = self.engine.cancel_queued(queued["id"])
         self.assertEqual(cancelled["phase"], "cancelled")
@@ -266,7 +267,7 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("cancelled_at", [r[1] for r in failed.execute("PRAGMA table_info(turns)")])
         failed.close()
         legacy.initialize()
-        self.assertEqual(legacy.status()["schema_version"], 11)
+        self.assertEqual(legacy.status()["schema_version"], 12)
         with legacy.connection() as migrated:
             self.assertEqual(migrated.execute("SELECT value FROM settings").fetchone()[0], "legacy-persona")
         self.assertTrue(list((legacy.paths.home / "backups").glob("before-m3-*.sqlite3")))
