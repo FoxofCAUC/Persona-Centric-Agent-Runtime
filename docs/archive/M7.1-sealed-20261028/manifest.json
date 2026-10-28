@@ -1,0 +1,14 @@
+[
+  {
+    "path": "docs/M7.1-中文全文与时间检索开工规划.md",
+    "baseline_commit": "47dabc3",
+    "uncommitted_original": true,
+    "sha256": "590776fbfafae99115720a558c70c0ae7445f51bbfc2cf8b9b3cf830a8b9d4ff"
+  },
+  {
+    "path": "docs/acceptance/M7.1-检索施工与验收清单.md",
+    "baseline_commit": "47dabc3",
+    "uncommitted_original": true,
+    "sha256": "d91401dd1ad93e0918c17a0b720bbcfdfd1c0fb631f997afcfe8528380b01ba6"
+  }
+]
