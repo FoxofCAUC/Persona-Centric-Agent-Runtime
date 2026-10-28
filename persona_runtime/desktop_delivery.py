@@ -89,8 +89,10 @@ class DeliveryUI:
             return
         if action == "skip" and not messagebox.askyesno("跳过片段", "将保留原记录，并跳过本回复批次的此片段和后续片段。是否继续？"):
             return
-        if action == "resolve" and not messagebox.askyesno("核对投递结果", "请先在 QQ 目标会话核对该片段，再记录为已处理。继续后将释放后续发送。"):
-            return
+        if action == "resolve":
+            outcome = "后续发送将继续。" if allow_continue else "后续发送仍将暂停，须显式解除队列阻塞。"
+            if not messagebox.askyesno("核对投递结果", "请先在 QQ 目标会话核对该片段，再记录为已处理。" + outcome):
+                return
         if action == "release" and not messagebox.askyesno("解除阻塞", "只有已核对或已跳过阻塞片段后才能解除队列阻塞。是否继续检查？"):
             return
         self._delivery_action(stream, part, action, allow_continue)

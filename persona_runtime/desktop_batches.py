@@ -93,7 +93,7 @@ class BatchUI:
         for mode,label,description in (
             ('legacy_full','兼容全文','保持现有完整文本回复行为。'),
             ('context_full','情境全文','使用本地情境线索和角色样例，仍返回完整文本。'),
-            ('context_structured','情境结构回复','一次主调用返回经校验的 1–3 段；仍以完整文本投递。'),
+            ('context_structured','情境结构回复','一次主调用返回经校验的 1–3 段；窗口显示正文，QQ按入口能力投递。'),
         ):
             row=ttk.Frame(body);row.pack(fill='x',anchor='w',pady=3)
             ttk.Radiobutton(row,text=label,value=mode,variable=value).pack(side='left')

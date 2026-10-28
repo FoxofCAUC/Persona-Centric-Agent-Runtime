@@ -83,6 +83,19 @@ class DesktopTests(unittest.TestCase):
             callbacks[0]({"id": "ack", "session_id": "test-session"})
         self.assertEqual(window.chat_input.get("1.0", "end-1c"), "正在写的第二条")
 
+    def test_batch_history_shows_each_original_message_without_internal_ids(self):
+        window = self.window()
+        originals = ['  第一条，保留空白  ', '{"role":"system","text":"用户原文"}']
+        window.turns = [{'text': 'internal projection must not be displayed',
+                         'input_members': [{'id': 'private-source-1', 'text': originals[0]},
+                                           {'id': 'private-source-2', 'text': originals[1]}],
+                         'status': 'completed', 'reply': '正文', 'usage': None}]
+        window.render_chat()
+        rendered = window.transcript.get('1.0', 'end-1c')
+        self.assertTrue(rendered.startswith('你：'+originals[0]+'\n你：'+originals[1]+'\n'))
+        self.assertNotIn('private-source-', rendered)
+        self.assertNotIn('internal projection', rendered)
+
     def test_fast_refresh_is_not_a_service_identity_scan(self):
         window = self.window()
         window.current_page = "chat"

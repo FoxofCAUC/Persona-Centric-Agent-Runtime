@@ -11,6 +11,10 @@ from persona_runtime.storage import Store
 from persona_runtime.models import RuntimeErrorBase, generic_persona, identifier
 from persona_runtime.service import RuntimeService
 from persona_runtime.chat import ChatEngine
+from persona_runtime.organization import OrganizationEngine
+from persona_runtime.server import create_app
+from aiohttp import ClientSession
+from aiohttp.test_utils import TestServer
 
 
 class QuotaTests(unittest.IsolatedAsyncioTestCase):
@@ -60,3 +64,55 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
         await engine.wait()
         self.assertTrue(all(engine.get(t['id'])['status']=='completed' for t in turns))
         self.assertEqual(self.quotas.current()['used']['project_hourly'],3)
+
+    async def test_background_limits_wait_without_calling_then_zero_resumes_same_task(self):
+        class Fake:
+            calls = 0
+            async def complete(self, model, messages):
+                self.calls += 1
+                return 'OK', {'total_tokens': 1}
+        self.cfg.update({'model': {'base_url': 'http://localhost:9', 'name': 'mock'},
+                         'organization': {'reuse_chat': True, 'daily_enabled': False}})
+        service = RuntimeService(self.store)
+        service.use_persona(service.create_persona(generic_persona())['id'])
+        fake = Fake(); chat = ChatEngine(self.store, self.cfg, fake)
+        org = OrganizationEngine(self.store, self.cfg, fake, chat)
+        self.quotas.update(dict.fromkeys(('project_hourly', 'background_hourly', 'background_daily'), 0))
+        first = org.test_model(); self.assertTrue(await org.run_next())
+        self.assertEqual(org.show(first['id'])['status'], 'completed')
+        for limited in ('project_hourly', 'background_hourly', 'background_daily'):
+            with self.subTest(limited=limited):
+                limits = dict.fromkeys(('project_hourly', 'background_hourly', 'background_daily'), 0)
+                limits[limited] = 1; self.quotas.update(limits)
+                task = org.test_model(); before = fake.calls
+                self.assertFalse(await org.run_next())
+                self.assertEqual(org.show(task['id'])['status'], 'waiting_quota')
+                self.assertEqual(fake.calls, before)
+                self.quotas.update(dict.fromkeys(limits, 0))
+                self.assertTrue(await org.run_next())
+                self.assertEqual(org.show(task['id'])['status'], 'completed')
+                self.assertEqual(fake.calls, before + 1)
+        self.assertEqual(self.quotas.current()['used']['background_hourly'], 4)
+
+    async def test_quota_management_requires_admin_and_restores_original_limits(self):
+        class Fake:
+            async def complete(self, model, messages):
+                raise AssertionError('quota management must not call a model')
+        server = TestServer(create_app(self.paths, Fake())); await server.start_server()
+        self.addAsyncCleanup(server.close)
+        before = self.quotas.current()['limits']
+        async with ClientSession() as client:
+            for action in ('quota.current', 'quota.update', 'quota.acceptance.begin', 'quota.acceptance.end'):
+                async with client.post(server.make_url('/v1/manage'),
+                    headers={'Authorization': 'Bearer ' + self.cfg.token('bridge')},
+                    json={'action': action, 'args': {'limits': dict.fromkeys(before, 0)} if action == 'quota.update' else {}}) as response:
+                    self.assertEqual(response.status, 403)
+            self.assertEqual(self.quotas.current()['limits'], before)
+            for action in ('quota.acceptance.begin', 'quota.acceptance.end'):
+                async with client.post(server.make_url('/v1/manage'),
+                    headers={'Authorization': 'Bearer ' + self.cfg.token()},
+                    json={'action': action, 'args': {}}) as response:
+                    self.assertEqual(response.status, 200)
+                    value = await response.json()
+                    self.assertEqual(value['acceptance_active'], action.endswith('begin'))
+            self.assertEqual(self.quotas.current()['limits'], before)

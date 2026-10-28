@@ -657,7 +657,12 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         self.transcript.configure(state="normal")
         self.transcript.delete("1.0", "end")
         for turn in self.turns:
-            self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
+            members = turn.get('input_members')
+            if members:
+                for member in members:
+                    self.transcript.insert("end", "你：" + member['text'] + "\n")
+            else:
+                self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
             if turn["status"] == "completed":
                 self.transcript.insert("end", "人格：" + (turn["reply"] or "") + "\n\n")
                 self.transcript.insert("end", "用量：" + (json.dumps(turn["usage"], ensure_ascii=False) if turn["usage"] else "未知") + "\n\n")
