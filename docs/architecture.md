@@ -1,5 +1,15 @@
 # 架构与实施基线：私聊陪伴主线
 
+> **M7.3当前进度（2026-10-28）：** M7.3规定范围验收完成，历史条件继续携带。0.7.3.dev1/主库13/导出10/桥接0.6.0；最终全量427项454.702秒通过，32/8人工集、迁移恢复、实际工作台与QQ通过。真实5次主要＋2次整理，共15,700 tokens、7份Manifest。长时门按用户修订采用受控截止模拟与5秒调度管线，未宣称真实30分钟通过。模拟退出，原人格、完整配置/30/6/20、每日整理及三服务停止初态恢复，无未决测试输入。仅准备M7.4；用户随后授权提交本地与远端，源码/测试/工具已归档为e7d45d5，文档独立提交并普通推送，实际结果见Git日志及D盘git-publication.json。 [阶段](M7.3.md) · [机器证据](acceptance/M7.3-机器验收结论.md)。下方旧编号及未实施表述按历史语境保留。
+
+## M7.3实际会话与来源链
+
+[sessions](../persona_runtime/sessions.py)成为新旧写入口的统一会话选择与封存服务，完整Scope活动指针、activity_revision及单调观察协调输入/生成/投递；[schema_m73](../persona_runtime/schema_m73.py)增量保留旧原列。SessionPackage只存来源ID/哈希/版本，原文仍由档案权威读取；回放与当前可用性分离。
+
+[session_organization](../persona_runtime/session_organization.py)把包内当前有效Event/part接入现有M4任务与Reflection Manifest；封存触发不自动调用，M8 Provider禁用。[topics](../persona_runtime/topics.py)维护人工版本和同Scope关联，不改变M7.2召回。[desktop_sessions](../persona_runtime/desktop_sessions.py)展示状态、阻塞、回放、整理及主题，保留草稿和响应代际校验。
+
+验收用注入时钟只作用于明确测试Session，复用原worker并写模拟证据标记；正常服务仍使用真实单调时钟。模拟不是新的管理API、用户参数或后台常驻服务。确认片sent与人工resolved保持区别，来源撤回穿透包展开及整理。
+
 ## M7.2实际任务上下文
 
 运行时0.7.2.dev1、主库12、导出9、桥接0.6.0。[cognitive](../persona_runtime/cognitive.py)协调准备、最终复核和追加式审计；[context_builders](../persona_runtime/context_builders.py)实现五类任务视图；[context_policy](../persona_runtime/context_policy.py)复用既有入口政策权威；[schema_m72](../persona_runtime/schema_m72.py)只增加请求快照和清单，不预建未来情绪/治理/Session实体。
