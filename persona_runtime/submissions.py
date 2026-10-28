@@ -25,14 +25,10 @@ class SubmissionJournal:
         with self.lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             lock_path = self.path.with_name(self.path.name + ".lock")
-            try:
-                with lock_path.open("xb") as initial:
-                    initial.write(b"0")
-            except FileExistsError:
-                pass
-            # Windows denies reading a byte locked by another handle. Open it
-            # directly and acquire the lock before inspecting protected data.
-            with lock_path.open("r+b") as file:
+            # A create-exclusive probe can return PermissionError on Windows
+            # when another writer already locks byte zero. Open/create without
+            # truncation, and acquire even a new file's lock before any I/O.
+            with lock_path.open("a+b") as file:
                 acquired = False
                 deadline = time.monotonic()+3
                 try:
@@ -45,6 +41,10 @@ class SubmissionJournal:
                             if time.monotonic() >= deadline:
                                 raise RuntimeErrorBase("Submission journal is busy; input has not been discarded") from None
                             time.sleep(.01)
+                    file.seek(0,2)
+                    if file.tell()==0:
+                        file.write(b"0")
+                        file.flush()
                     yield
                 finally:
                     if acquired:

@@ -77,6 +77,10 @@ async def main(home):
             logger.warning("SDK probe sensitive body must not be persisted")
     except TimeoutError:
         print(json.dumps({"probe_diagnostics": diagnostics[-12:]}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({'pending_task_locations':[
+            [{'file':Path(frame.f_code.co_filename).name,'function':frame.f_code.co_name,'line':frame.f_lineno}
+             for frame in pending.get_stack(limit=4)] for pending in asyncio.all_tasks() if pending is not asyncio.current_task()
+        ]}), file=sys.stderr)
         raise
     finally:
         stop.touch()

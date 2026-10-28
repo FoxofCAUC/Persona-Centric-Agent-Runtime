@@ -188,6 +188,22 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
             list(pool.map(write, range(20)))
         self.assertEqual(len(SubmissionJournal(self.paths, "qq").pending()), 20)
 
+    async def test_journal_waits_for_existing_byte_lock_without_creation_probe(self):
+        import threading
+        import time
+        first=SubmissionJournal(self.paths,'qq');second=SubmissionJournal(self.paths,'qq')
+        started=threading.Event()
+        def read():
+            started.set()
+            return second.pending()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with first._locked():
+                future=pool.submit(read)
+                self.assertTrue(started.wait(1))
+                time.sleep(.05)
+                self.assertFalse(future.done())
+            self.assertEqual(future.result(timeout=3),[])
+
     async def test_qq_reconcile_only_queries_matching_target_never_replays(self):
         bridge = QQBridge(self.paths)
         for request_id, sender in (("accepted", "456"), ("absent", "456"), ("old-target", "999")):

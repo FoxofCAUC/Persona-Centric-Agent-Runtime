@@ -1,0 +1,1782 @@
+{
+  "fixture_revision": "m71-artificial-v2",
+  "synthetic_only": true,
+  "turns": [
+    {
+      "id": "book",
+      "members": [
+        "青禾书店需要阅读角",
+        "预算三百元，偏好蓝色",
+        "请给两个建议"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": true
+    },
+    {
+      "id": "code",
+      "members": [
+        "Python_add 函数返回 a + b"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "cafe",
+      "members": [
+        "北辰咖啡店提供手冲咖啡"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "trip",
+      "members": [
+        "宁波旅行安排在周五"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "scarf",
+      "members": [
+        "紫色围巾放在抽屉"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "movie",
+      "members": [
+        "周五晚上看电影流浪地球"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "music",
+      "members": [
+        "巴赫钢琴作品适合练习"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "cook",
+      "members": [
+        "番茄牛腩需要小火慢炖"
+      ],
+      "day": "2026-10-20T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "number",
+      "members": [
+        "预算三百元用于购买书架"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "url",
+      "members": [
+        "数值3.14，地址https://example.invalid/a_b，文件report.md"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "wide",
+      "members": [
+        "ＡＢＣ 文档使用全角标识"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "spread",
+      "members": [
+        "阅读角附近保留通道，预算另行计算"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "hello",
+      "members": [
+        "普通问候：下午好"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "unknown",
+      "members": [
+        "血型未设置，不能猜测"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "fiction",
+      "members": [
+        "虚构世界的青龙不是昨日真实共同经历"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "emoji",
+      "members": [
+        "星空🙂咖啡与Résumé café"
+      ],
+      "day": "2026-10-21T04:00:00+00:00",
+      "normalized": false
+    },
+    {
+      "id": "withdrawn0",
+      "members": [
+        "撤回专用词归档甲0"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "withdrawn1",
+      "members": [
+        "撤回专用词归档甲1"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "withdrawn2",
+      "members": [
+        "撤回专用词归档甲2"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "withdrawn3",
+      "members": [
+        "撤回专用词归档甲3"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "withdrawn4",
+      "members": [
+        "撤回专用词归档甲4"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "withdrawn5",
+      "members": [
+        "撤回专用词归档甲5"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "withdrawn6",
+      "members": [
+        "撤回专用词归档甲6"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "withdrawn7",
+      "members": [
+        "撤回专用词归档甲7"
+      ],
+      "excluded": true
+    },
+    {
+      "id": "window00",
+      "members": [
+        "窗口专用标识 window_00"
+      ]
+    },
+    {
+      "id": "window01",
+      "members": [
+        "窗口专用标识 window_01"
+      ]
+    },
+    {
+      "id": "window02",
+      "members": [
+        "窗口专用标识 window_02"
+      ]
+    },
+    {
+      "id": "window03",
+      "members": [
+        "窗口专用标识 window_03"
+      ]
+    },
+    {
+      "id": "window04",
+      "members": [
+        "窗口专用标识 window_04"
+      ]
+    },
+    {
+      "id": "window05",
+      "members": [
+        "窗口专用标识 window_05"
+      ]
+    },
+    {
+      "id": "window06",
+      "members": [
+        "窗口专用标识 window_06"
+      ]
+    },
+    {
+      "id": "window07",
+      "members": [
+        "窗口专用标识 window_07"
+      ]
+    },
+    {
+      "id": "window08",
+      "members": [
+        "窗口专用标识 window_08"
+      ]
+    },
+    {
+      "id": "window09",
+      "members": [
+        "窗口专用标识 window_09"
+      ]
+    },
+    {
+      "id": "window10",
+      "members": [
+        "窗口专用标识 window_10"
+      ]
+    },
+    {
+      "id": "window11",
+      "members": [
+        "窗口专用标识 window_11"
+      ]
+    },
+    {
+      "id": "window12",
+      "members": [
+        "窗口专用标识 window_12"
+      ]
+    },
+    {
+      "id": "window13",
+      "members": [
+        "窗口专用标识 window_13"
+      ]
+    },
+    {
+      "id": "window14",
+      "members": [
+        "窗口专用标识 window_14"
+      ]
+    },
+    {
+      "id": "window15",
+      "members": [
+        "窗口专用标识 window_15"
+      ]
+    },
+    {
+      "id": "window16",
+      "members": [
+        "窗口专用标识 window_16"
+      ]
+    },
+    {
+      "id": "window17",
+      "members": [
+        "窗口专用标识 window_17"
+      ]
+    },
+    {
+      "id": "window18",
+      "members": [
+        "窗口专用标识 window_18"
+      ]
+    },
+    {
+      "id": "window19",
+      "members": [
+        "窗口专用标识 window_19"
+      ]
+    },
+    {
+      "id": "window20",
+      "members": [
+        "窗口专用标识 window_20"
+      ]
+    },
+    {
+      "id": "window21",
+      "members": [
+        "窗口专用标识 window_21"
+      ]
+    },
+    {
+      "id": "window22",
+      "members": [
+        "窗口专用标识 window_22"
+      ]
+    },
+    {
+      "id": "window23",
+      "members": [
+        "窗口专用标识 window_23"
+      ]
+    },
+    {
+      "id": "window24",
+      "members": [
+        "窗口专用标识 window_24"
+      ]
+    },
+    {
+      "id": "window25",
+      "members": [
+        "窗口专用标识 window_25"
+      ]
+    },
+    {
+      "id": "window26",
+      "members": [
+        "窗口专用标识 window_26"
+      ]
+    },
+    {
+      "id": "window27",
+      "members": [
+        "窗口专用标识 window_27"
+      ]
+    },
+    {
+      "id": "window28",
+      "members": [
+        "窗口专用标识 window_28"
+      ]
+    },
+    {
+      "id": "window29",
+      "members": [
+        "窗口专用标识 window_29"
+      ]
+    },
+    {
+      "id": "window30",
+      "members": [
+        "窗口专用标识 window_30"
+      ]
+    },
+    {
+      "id": "window31",
+      "members": [
+        "窗口专用标识 window_31"
+      ]
+    },
+    {
+      "id": "window32",
+      "members": [
+        "窗口专用标识 window_32"
+      ]
+    },
+    {
+      "id": "window33",
+      "members": [
+        "窗口专用标识 window_33"
+      ]
+    },
+    {
+      "id": "window34",
+      "members": [
+        "窗口专用标识 window_34"
+      ]
+    },
+    {
+      "id": "window35",
+      "members": [
+        "窗口专用标识 window_35"
+      ]
+    },
+    {
+      "id": "window36",
+      "members": [
+        "窗口专用标识 window_36"
+      ]
+    },
+    {
+      "id": "window37",
+      "members": [
+        "窗口专用标识 window_37"
+      ]
+    },
+    {
+      "id": "window38",
+      "members": [
+        "窗口专用标识 window_38"
+      ]
+    },
+    {
+      "id": "window39",
+      "members": [
+        "窗口专用标识 window_39"
+      ]
+    },
+    {
+      "id": "window40",
+      "members": [
+        "窗口专用标识 window_40"
+      ]
+    },
+    {
+      "id": "window41",
+      "members": [
+        "窗口专用标识 window_41"
+      ]
+    },
+    {
+      "id": "window42",
+      "members": [
+        "窗口专用标识 window_42"
+      ]
+    },
+    {
+      "id": "window43",
+      "members": [
+        "窗口专用标识 window_43"
+      ]
+    },
+    {
+      "id": "window44",
+      "members": [
+        "窗口专用标识 window_44"
+      ]
+    },
+    {
+      "id": "window45",
+      "members": [
+        "窗口专用标识 window_45"
+      ]
+    },
+    {
+      "id": "window46",
+      "members": [
+        "窗口专用标识 window_46"
+      ]
+    },
+    {
+      "id": "window47",
+      "members": [
+        "窗口专用标识 window_47"
+      ]
+    },
+    {
+      "id": "window48",
+      "members": [
+        "窗口专用标识 window_48"
+      ]
+    },
+    {
+      "id": "window49",
+      "members": [
+        "窗口专用标识 window_49"
+      ]
+    },
+    {
+      "id": "window50",
+      "members": [
+        "窗口专用标识 window_50"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "E01",
+      "query": "",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "book-e1"
+      }
+    },
+    {
+      "id": "E02",
+      "query": "",
+      "expected_group_ids": [
+        "code"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "code-e1"
+      }
+    },
+    {
+      "id": "E03",
+      "query": "",
+      "expected_group_ids": [
+        "cafe"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "cafe-e1"
+      }
+    },
+    {
+      "id": "E04",
+      "query": "",
+      "expected_group_ids": [
+        "trip"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "trip-e1"
+      }
+    },
+    {
+      "id": "E05",
+      "query": "",
+      "expected_group_ids": [
+        "scarf"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "scarf-e1"
+      }
+    },
+    {
+      "id": "E06",
+      "query": "",
+      "expected_group_ids": [
+        "movie"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "movie-e1"
+      }
+    },
+    {
+      "id": "E07",
+      "query": "",
+      "expected_group_ids": [
+        "music"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "music-e1"
+      }
+    },
+    {
+      "id": "E08",
+      "query": "",
+      "expected_group_ids": [
+        "cook"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "cook-e1"
+      }
+    },
+    {
+      "id": "E09",
+      "query": "",
+      "expected_group_ids": [
+        "number"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "number-e1"
+      }
+    },
+    {
+      "id": "E10",
+      "query": "",
+      "expected_group_ids": [
+        "url"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "url-e1"
+      }
+    },
+    {
+      "id": "E11",
+      "query": "",
+      "expected_group_ids": [
+        "wide"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "wide-e1"
+      }
+    },
+    {
+      "id": "E12",
+      "query": "",
+      "expected_group_ids": [
+        "spread"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "spread-e1"
+      }
+    },
+    {
+      "id": "E13",
+      "query": "",
+      "expected_group_ids": [
+        "hello"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "hello-e1"
+      }
+    },
+    {
+      "id": "E14",
+      "query": "",
+      "expected_group_ids": [
+        "unknown"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "unknown-e1"
+      }
+    },
+    {
+      "id": "E15",
+      "query": "",
+      "expected_group_ids": [
+        "fiction"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "fiction-e1"
+      }
+    },
+    {
+      "id": "E16",
+      "query": "",
+      "expected_group_ids": [
+        "emoji"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "path": "exact",
+      "target": {
+        "kind": "event",
+        "id": "emoji-e1"
+      }
+    },
+    {
+      "id": "C01",
+      "query": "青禾书店",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C02",
+      "query": "预算",
+      "expected_group_ids": [
+        "book",
+        "number",
+        "spread"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C03",
+      "query": "Python_add",
+      "expected_group_ids": [
+        "code"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C04",
+      "query": "手冲",
+      "expected_group_ids": [
+        "cafe"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C05",
+      "query": "蓝",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C06",
+      "query": "紫色围巾",
+      "expected_group_ids": [
+        "scarf"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C07",
+      "query": "巴赫",
+      "expected_group_ids": [
+        "music"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C08",
+      "query": "番茄牛腩",
+      "expected_group_ids": [
+        "cook"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C09",
+      "query": "3.14",
+      "expected_group_ids": [
+        "url"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C10",
+      "query": "https://example.invalid/a_b",
+      "expected_group_ids": [
+        "url"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C11",
+      "query": "ABC",
+      "expected_group_ids": [
+        "wide"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C12",
+      "query": "阅读角 预算",
+      "expected_group_ids": [
+        "spread"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C13",
+      "query": "Résumé",
+      "expected_group_ids": [
+        "emoji"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C14",
+      "query": "300元",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C15",
+      "query": "不存在的来源",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "C16",
+      "query": "星空🙂",
+      "expected_group_ids": [
+        "emoji"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "T01",
+      "query": "青禾书店",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "local_date": "2026-10-20"
+    },
+    {
+      "id": "T02",
+      "query": "青禾书店",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all",
+      "local_date": "2026-10-21"
+    },
+    {
+      "id": "T03",
+      "query": "青禾书店",
+      "expected_group_ids": [],
+      "expected_status": "coverage_gap",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "platform",
+      "window": "all",
+      "local_date": "2026-10-20"
+    },
+    {
+      "id": "T04",
+      "query": "青禾书店",
+      "expected_group_ids": [],
+      "expected_status": "coverage_gap",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "sent",
+      "window": "all",
+      "local_date": "2026-10-20"
+    },
+    {
+      "id": "T05",
+      "query": "紫色围巾",
+      "expected_group_ids": [
+        "scarf"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all",
+      "local_date": "2026-10-20"
+    },
+    {
+      "id": "T06",
+      "query": "紫色围巾",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all",
+      "local_date": "2026-10-21"
+    },
+    {
+      "id": "T07",
+      "query": "紫色围巾",
+      "expected_group_ids": [],
+      "expected_status": "coverage_gap",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "platform",
+      "window": "all",
+      "local_date": "2026-10-21"
+    },
+    {
+      "id": "T08",
+      "query": "紫色围巾",
+      "expected_group_ids": [],
+      "expected_status": "coverage_gap",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "sent",
+      "window": "all",
+      "local_date": "2026-10-21"
+    },
+    {
+      "id": "B01",
+      "query": "青禾书店",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "B02",
+      "query": "阅读角",
+      "expected_group_ids": [
+        "book",
+        "spread"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "B03",
+      "query": "预算三百元",
+      "expected_group_ids": [
+        "book",
+        "number"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "B04",
+      "query": "蓝色",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "B05",
+      "query": "两个建议",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "B06",
+      "query": "普通问候",
+      "expected_group_ids": [
+        "hello"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "B07",
+      "query": "血型未设置",
+      "expected_group_ids": [
+        "unknown"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "B08",
+      "query": "虚构世界",
+      "expected_group_ids": [
+        "fiction"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N01",
+      "query": "不应存在的记录 forbidden_0",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-0"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N02",
+      "query": "不应存在的记录 forbidden_1",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-1"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N03",
+      "query": "不应存在的记录 forbidden_2",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-2"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N04",
+      "query": "不应存在的记录 forbidden_3",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-3"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N05",
+      "query": "不应存在的记录 forbidden_4",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-4"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N06",
+      "query": "不应存在的记录 forbidden_5",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-5"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N07",
+      "query": "不应存在的记录 forbidden_6",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-6"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "N08",
+      "query": "不应存在的记录 forbidden_7",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "other-persona-secret-7"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R01",
+      "query": "撤回专用词归档甲0",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn0"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R02",
+      "query": "撤回专用词归档甲1",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn1"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R03",
+      "query": "撤回专用词归档甲2",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn2"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R04",
+      "query": "撤回专用词归档甲3",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn3"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R05",
+      "query": "撤回专用词归档甲4",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn4"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R06",
+      "query": "撤回专用词归档甲5",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn5"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R07",
+      "query": "撤回专用词归档甲6",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn6"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "R08",
+      "query": "撤回专用词归档甲7",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "withdrawn7"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "W01",
+      "query": "window_00",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "W02",
+      "query": "window_00",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "W03",
+      "query": "window_00",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "W04",
+      "query": "window_00",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "W05",
+      "query": "window_50",
+      "expected_group_ids": [
+        "window50"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "W06",
+      "query": "window_50",
+      "expected_group_ids": [
+        "window50"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "W07",
+      "query": "window_50",
+      "expected_group_ids": [
+        "window50"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "W08",
+      "query": "window_50",
+      "expected_group_ids": [
+        "window50"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "recent_50"
+    },
+    {
+      "id": "A01",
+      "query": "审计专用未完成 orphan_0",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "orphan0"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "A02",
+      "query": "审计专用未完成 orphan_1",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "orphan1"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "A03",
+      "query": "审计专用未完成 orphan_2",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "orphan2"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "A04",
+      "query": "审计专用未完成 orphan_3",
+      "expected_group_ids": [],
+      "expected_status": "no_matches",
+      "required_member_ids": [],
+      "matched_target_ids": [],
+      "forbidden_ids": [
+        "orphan3"
+      ],
+      "answerable": false,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "P01",
+      "query": "两个建议",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [
+        "book-e3"
+      ],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "P02",
+      "query": "两个建议",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [
+        "book-e3"
+      ],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "P03",
+      "query": "两个建议",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [
+        "book-e3"
+      ],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    },
+    {
+      "id": "P04",
+      "query": "两个建议",
+      "expected_group_ids": [
+        "book"
+      ],
+      "expected_status": "ok",
+      "required_member_ids": [
+        "book-e1",
+        "book-e2",
+        "book-e3"
+      ],
+      "matched_target_ids": [
+        "book-e3"
+      ],
+      "forbidden_ids": [],
+      "answerable": true,
+      "time_axis": "recorded",
+      "window": "all"
+    }
+  ],
+  "development_queries": [
+    {
+      "id": "DEV01",
+      "query": "书架"
+    },
+    {
+      "id": "DEV02",
+      "query": "宁波"
+    },
+    {
+      "id": "DEV03",
+      "query": "流浪地球"
+    },
+    {
+      "id": "DEV04",
+      "query": "慢炖"
+    },
+    {
+      "id": "DEV05",
+      "query": "抽屉"
+    },
+    {
+      "id": "DEV06",
+      "query": "钢琴"
+    },
+    {
+      "id": "DEV07",
+      "query": "report.md"
+    },
+    {
+      "id": "DEV08",
+      "query": "下午好"
+    },
+    {
+      "id": "DEV09",
+      "query": "青龙"
+    },
+    {
+      "id": "DEV10",
+      "query": "café"
+    },
+    {
+      "id": "DEV11",
+      "query": "window_15"
+    },
+    {
+      "id": "DEV12",
+      "query": "全文开发样例"
+    }
+  ]
+}
