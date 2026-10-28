@@ -113,6 +113,107 @@ class DesktopTests(unittest.TestCase):
             manage.assert_called_once_with("chat.snapshot", session_id="test-session", version=10)
             snapshot.assert_not_called()
 
+    def test_quiet_refresh_error_does_not_replace_foreground_notice(self):
+        window = self.window()
+        window.notice.set('刚刚保存成功')
+        with patch.object(window.client, 'manage', side_effect=ValueError('old refresh failed')):
+            window.run_task('静默刷新', {'conversation-refresh'},
+                            lambda _: window.client.manage('chat.snapshot'), quiet=True)
+            self.pump(window, lambda: not window.hub.active)
+        self.assertEqual(window.notice.get(), '刚刚保存成功')
+
+    def test_expired_session_read_error_preserves_new_view_and_draft(self):
+        import threading
+        window = self.window(); window.persona_id = 'A'
+        window.chat_input.insert('1.0', '保留新草稿')
+        entered = threading.Event(); release = threading.Event()
+        def manage(action, **kwargs):
+            if action == 'session.select':
+                return {'persona_id': 'A', 'session_id': 'old-session'}
+            entered.set(); release.wait(2)
+            raise ValueError('Record not found in the selected persona and user scope')
+        with patch.object(window.client, 'manage', side_effect=manage):
+            window.load_chat()
+            try:
+                self.assertTrue(entered.wait(1))
+                window.view_epoch += 1; window.persona_id = 'B'
+                window.notice.set('新人格已就绪')
+            finally:
+                release.set()
+            self.pump(window, lambda: not window.hub.active)
+        self.assertEqual(window.notice.get(), '新人格已就绪')
+        self.assertEqual(window.chat_input.get('1.0', 'end-1c'), '保留新草稿')
+
+    def test_expired_archive_read_and_reference_errors_keep_current_notice(self):
+        import threading
+        window = self.window(); window.persona_id = 'A'
+        for action in (lambda: window.archive_read('get'), window.choose_archive_reference):
+            with self.subTest(action=action):
+                window.archive_id.set('old-target')
+                entered = threading.Event(); release = threading.Event()
+                def fail(*args, **kwargs):
+                    entered.set(); release.wait(2); raise ValueError('old target error')
+                with patch.object(window.client, 'manage', side_effect=fail):
+                    action()
+                    try:
+                        self.assertTrue(entered.wait(1))
+                        window.archive_id.set('new-target')
+                        window.notice.set('正在查看新目标')
+                    finally:
+                        release.set()
+                    self.pump(window, lambda: not window.hub.active)
+                self.assertEqual(window.notice.get(), '正在查看新目标')
+                self.assertIsNone(window.chat_reference)
+
+    def test_save_and_service_failures_remain_visible_after_view_change(self):
+        import threading
+        window = self.window(); window.chat_input.insert('1.0', '未提交草稿')
+        for resources in ({'config'}, {'lifecycle'}, {'profile-edit'}):
+            with self.subTest(resources=resources):
+                entered = threading.Event(); release = threading.Event(); failed = Mock()
+                def action(_):
+                    entered.set(); release.wait(2); raise ValueError('explicit operation failed')
+                window.run_task('显式操作', resources, action, failure=failed)
+                try:
+                    self.assertTrue(entered.wait(1))
+                    window.view_epoch += 1
+                finally:
+                    release.set()
+                self.pump(window, lambda: not window.hub.active)
+                self.assertEqual(window.notice.get(), 'explicit operation failed')
+                failed.assert_called_once()
+        self.assertEqual(window.chat_input.get('1.0', 'end-1c'), '未提交草稿')
+
+    def test_explicit_archive_results_replace_old_error_without_claiming_found(self):
+        window = self.window(); window.persona_id = 'A'
+        for action, result, notice in (
+                ('list', {'items': []}, '档案列表已读取。'),
+                ('get', {'status': 'found'}, '档案已读取。'),
+                ('preview', {'status': 'found'}, '引用预览已完成。'),
+                ('preview', {'status': 'unavailable'}, '引用预览结果：来源不可用')):
+            with self.subTest(action=action, result=result):
+                window.notice.set('old error')
+                with patch.object(window.client, 'manage', return_value=result):
+                    window.archive_read(action)
+                    self.pump(window, lambda: not window.hub.active)
+                self.assertEqual(window.notice.get(), notice)
+
+    def test_explicit_persona_switch_and_session_read_replace_old_error(self):
+        window = self.window(); window.persona_id = 'A'
+        window.chat_input.insert('1.0', '保留草稿')
+        window.notice.set('old error')
+        with patch.object(window.client, 'manage', return_value={}), \
+                patch.object(window, 'load_chat'), patch.object(window, 'search_memory'):
+            window.use_persona('B')
+            self.pump(window, lambda: not window.hub.active)
+        self.assertEqual(window.notice.get(), '人格已切换，正在读取会话。')
+        with patch.object(window.client, 'manage', side_effect=[{'persona_id': 'B', 'session_id': 'new-session'}, []]):
+            window.load_chat()
+            self.pump(window, lambda: not window.hub.active)
+        self.assertEqual(window.notice.get(), '当前人格的窗口会话已读取。')
+        self.assertEqual(window.persona_id, 'B')
+        self.assertEqual(window.chat_input.get('1.0', 'end-1c'), '保留草稿')
+
     def test_interaction_controls_keep_new_behaviors_opt_in(self):
         window = self.window()
         self.assertFalse(window.allow_queue_cancel.get())
@@ -510,6 +611,44 @@ class DesktopTests(unittest.TestCase):
                 force.assert_called_once()
 
 
+    def test_qq_only_force_button_preserves_chat_and_uses_urgent_lane(self):
+        window = self.window()
+        buttons = [button for button, _ in window.buttons if button.cget('text') == '强制停止 QQ']
+        self.assertEqual(len(buttons), 2)
+        window.session_id = 'keep-session'
+        window.chat_input.insert('1.0', 'keep-draft')
+        with patch('persona_runtime.desktop.messagebox.askyesno', return_value=True), patch.object(window, 'run_task') as task:
+            window.force_stop_qq()
+            self.assertTrue(task.call_args.kwargs['urgent'])
+            with patch.object(window.controller, 'force_stop_qq', return_value={'success': True}) as force:
+                task.call_args.args[2](None)
+                force.assert_called_once()
+            task.call_args.args[3]({'success': True, 'report_file': 'report.json'})
+        self.assertEqual(window.session_id, 'keep-session')
+        self.assertEqual(window.chat_input.get('1.0', 'end-1c'), 'keep-draft')
+
+    def test_managed_console_close_stops_services_before_destroy(self):
+        window=self.window();window.managed_lifecycle=True
+        import threading
+        entered=threading.Event();release=threading.Event()
+        def stop(_):
+            entered.set();release.wait(2);return {'success':True,'report_file':'mock'}
+        with patch.object(window.controller,'end_console') as end, patch('persona_runtime.emergency.force_stop_all_elevated',side_effect=stop), patch.object(window,'destroy_console') as destroy:
+            window.close_window();self.assertTrue(entered.wait(1));self.assertTrue(window.winfo_exists())
+            window.finish_console_shutdown();destroy.assert_not_called()
+            release.set();self.pump(window,lambda:window.shutdown_result is not None)
+            window.finish_console_shutdown();destroy.assert_called();end.assert_called_once()
+        window.managed_lifecycle=False;window.shutdown_started=False;window.closed=False
+
+    def test_managed_console_denied_stop_keeps_window_for_retry(self):
+        window=self.window();window.managed_lifecycle=True
+        with patch.object(window.controller,'end_console'), patch('persona_runtime.emergency.force_stop_all_elevated',side_effect=RuntimeError('permission denied')), patch.object(window,'destroy_console') as destroy:
+            window.close_window();self.pump(window,lambda:window.shutdown_result is not None)
+            window.finish_console_shutdown();destroy.assert_not_called()
+            self.assertFalse(window.shutdown_started);self.assertTrue(window.winfo_exists())
+            self.assertIn('permission denied',window.notice.get())
+        window.managed_lifecycle=False;window.closed=False
+
     def test_m61_buffer_controls_and_stale_read(self):
         window=self.window();window.persona_id='persona-a';window.view_epoch=1
         callbacks=[]
@@ -528,6 +667,100 @@ class DesktopTests(unittest.TestCase):
             window.send_chat();window.chat_input.delete('1.0','end');window.chat_input.insert('1.0','next')
             callbacks[0]({'receipt_id':'r','batch_id':'b','turn_id':None,'session_id':'session-a','status':'collecting'})
         self.assertEqual(window.chat_input.get('1.0','end-1c'),'next');self.assertIsNone(window.selected_request)
+
+    def test_m70_archive_stale_response_cannot_fill_another_persona(self):
+        window=self.window();window.persona_id='A';callbacks=[]
+        with patch.object(window,'run_task',side_effect=lambda *a,**k:callbacks.append(a[3])):
+            window.archive_read('get')
+        window.persona_id='B';window.view_epoch+=1
+        callbacks[0]({'status':'found','private_marker':'must-not-render'})
+        self.assertNotIn('must-not-render',window.archive_output.get('1.0','end'))
+
+    def test_m70_initial_persona_read_enables_archive_without_creating_session(self):
+        window=self.window();callbacks=[];actions=[]
+        def capture(name,resources,action,success=None,**kwargs):
+            actions.append(action);callbacks.append(success)
+        with patch.object(window,'run_task',side_effect=capture), \
+                patch.object(window.client,'manage',return_value=[{'id':'A','name':'测试人格','selected':True}]) as manage, \
+                patch.object(window,'load_chat') as load:
+            Workbench.refresh_personas(window)
+            callbacks[0](actions[0](None))
+            self.assertEqual(window.persona_id,'A')
+            self.assertIsNone(window.session_id)
+            manage.assert_called_once_with('persona.list');load.assert_not_called()
+            window.archive_read('list')
+            actions[1](None)
+            self.assertEqual(manage.call_args.args,('archive.list',))
+            self.assertEqual(manage.call_args.kwargs['persona_id'],'A')
+
+    def test_m70_old_persona_list_cannot_initialize_or_relabel_new_selection(self):
+        window=self.window();callbacks=[]
+        with patch.object(window,'run_task',side_effect=lambda *a,**k:callbacks.append(a[3])):
+            Workbench.refresh_personas(window)
+        window.view_epoch+=1;window.persona_id='B';window.persona_choice.set('current B')
+        callbacks[0]([{'id':'A','name':'stale A','selected':True}])
+        self.assertEqual(window.persona_id,'B')
+        self.assertEqual(window.persona_choice.get(),'current B')
+        self.assertEqual(window.personas,[])
+
+    def test_m70_late_reference_preview_cannot_undo_clear_or_changed_selection(self):
+        window=self.window();window.persona_id='A'
+        changes=[('clear',window.clear_archive_reference),
+                 ('channel',lambda:window.archive_channel.set('qq')),
+                 ('bot',lambda:window.archive_bot.set('changed-bot')),
+                 ('peer',lambda:window.archive_peer.set('changed-peer')),
+                 ('audit',lambda:window.archive_audit.set(True)),
+                 ('kind',lambda:window.archive_kind.set('event')),
+                 ('target',lambda:window.archive_id.set('new-target'))]
+        for name,change in changes:
+            with self.subTest(change=name):
+                window.archive_channel.set('desktop');window.archive_audit.set(False)
+                window.archive_bot.set('bot');window.archive_peer.set('peer')
+                window.archive_kind.set('turn');window.archive_id.set('old-target');callbacks=[]
+                with patch.object(window,'run_task',side_effect=lambda *a,**k:callbacks.append(a[3])), \
+                        patch.object(window,'show_page') as page:
+                    window.choose_archive_reference()
+                    request_epoch=window.archive_epoch
+                    change()
+                    self.assertGreater(window.archive_epoch,request_epoch)
+                    callbacks[0]({'status':'found'})
+                    self.assertIsNone(window.chat_reference)
+                    page.assert_not_called()
+                    # Even switching back to the original values must not
+                    # revive a selection explicitly cancelled in between.
+                    window.archive_channel.set('desktop');window.archive_audit.set(False)
+                    window.archive_kind.set('turn');window.archive_id.set('old-target')
+                    callbacks[0]({'status':'found'})
+                    self.assertIsNone(window.chat_reference)
+                    self.assertEqual(window.reference_text.get(),'未选择引用')
+                    page.assert_not_called()
+        clear=next((button,resources) for button,resources in window.buttons if button.cget('text')=='清除引用')
+        self.assertNotIn('archive-read',clear[1])
+
+    def test_m70_valid_reference_preview_selects_current_target(self):
+        window=self.window();window.persona_id='A';window.archive_id.set('valid-target');callbacks=[];actions=[]
+        def capture(name,resources,action,success=None,**kwargs):
+            actions.append(action);callbacks.append(success)
+        with patch.object(window,'run_task',side_effect=capture), \
+                patch.object(window.client,'manage',return_value={'status':'found'}) as manage, \
+                patch.object(window,'show_page') as page:
+            window.choose_archive_reference();callbacks[0](actions[0](None))
+            manage.assert_called_once_with('archive.preview',persona_id='A',channel='desktop',target={'kind':'turn','id':'valid-target'})
+            self.assertEqual(window.chat_reference,{'persona_id':'A','target':{'kind':'turn','id':'valid-target'}})
+            page.assert_called_once_with('chat')
+
+    def test_m70_ack_keeps_new_reference_and_same_text_draft(self):
+        window=self.window();window.persona_id='A';window.session_id='s';window.chat_input.insert('1.0','same')
+        window.chat_reference={'persona_id':'A','target':{'kind':'turn','id':'old'}};callbacks=[]
+        with patch.object(window,'run_task',side_effect=lambda *a,**k:callbacks.append(a[3])),patch.object(window,'load_chat'),patch.object(window,'refresh_batches'):
+            window.send_chat();window.chat_reference={'persona_id':'A','target':{'kind':'turn','id':'new'}}
+            callbacks[0]({'receipt_id':'r','turn_id':None,'session_id':'s'})
+        self.assertEqual(window.chat_input.get('1.0','end-1c'),'same');self.assertEqual(window.chat_reference['target']['id'],'new')
+
+    def test_m70_reference_from_another_persona_cannot_be_submitted(self):
+        window=self.window();window.persona_id='B';window.chat_input.insert('1.0','same')
+        window.chat_reference={'persona_id':'A','target':{'kind':'turn','id':'old'}}
+        with patch.object(window,'run_task') as call:window.send_chat();call.assert_not_called()
 
     def test_m61_linked_batch_does_not_duplicate_old_collecting_view(self):
         window=self.window();window.persona_id='p';window.session_id='s'

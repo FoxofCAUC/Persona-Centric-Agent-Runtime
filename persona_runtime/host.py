@@ -1,4 +1,4 @@
-"""Detached service host, independent of the lifetime of the desktop window."""
+"""Window-bound service host. A dead/closed console ends its process group."""
 import argparse
 import asyncio
 import ctypes
@@ -8,14 +8,40 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import threading
 
 from .config import ConfigStore, atomic_json
 from .deployment import NO_WINDOW, child_environment, write_component_config, validate_onebot_config
-from .instance import InstanceLock
-from .lifecycle import listener, process_info, same_process
+from .instance import InstanceLock, ProcessIdentityHandle, bind_host_job
+from .lifecycle import listener, process_info, same_process, read_console, require_console
 from .logging_safe import setup, secure_astrbot_logging
 from .models import RuntimeErrorBase
 from .paths import RuntimePaths
+
+
+def start_console_watchdog(paths, token, *, exit_process=None, interval=.5):
+    lease = require_console(paths, token)
+    owner = ProcessIdentityHandle(lease["process"]["pid"], lease["process"])
+    finished = threading.Event()
+    exit_process = exit_process or os._exit
+    def watch():
+        try:
+            while not finished.wait(interval):
+                current = read_console(paths)
+                if (not owner.alive() or not current or current.get("state") != "active"
+                        or current.get("token") != token or current.get("process") != lease["process"]
+                        or current.get("instance_id") != lease["instance_id"]):
+                    # The host's non-inherited kill-on-close job handle causes
+                    # Windows to end its children (including detached QQ) too.
+                    exit_process(0)
+                    return
+        except Exception:
+            exit_process(1)  # A broken monitor cannot leave a resident service.
+        finally:
+            owner.close()
+    thread = threading.Thread(target=watch, name="console-lifetime", daemon=True)
+    thread.start()
+    return finished, thread
 
 
 async def run_astrbot(paths, stop):
@@ -23,6 +49,8 @@ async def run_astrbot(paths, stop):
     os.chdir(bot)
     sys.path.insert(0, str(bot))
     os.environ.update(ASTRBOT_ROOT=str(bot), ASTRBOT_CLI="1")
+    from .sdk_reference_guard import install
+    install()  # Before SDK accepts events; fail closed on incompatible conversion.
     from astrbot.cli.commands.cmd_run import run_astrbot as run
     secure_astrbot_logging(paths)
     task = asyncio.create_task(run(bot))
@@ -129,6 +157,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--role", choices=("service", "astrbot", "napcat", "configure"), required=True)
     parser.add_argument("--instance")
+    parser.add_argument("--console-token")
     args = parser.parse_args()
     paths = RuntimePaths.from_environment()
     cfg = ConfigStore(paths).initialize()
@@ -137,13 +166,20 @@ def main():
         return
     if args.instance != cfg["instance_id"]:
         raise RuntimeErrorBase("Instance identity mismatch")
+    if not args.console_token:
+        raise RuntimeErrorBase("缺少控制窗口标识，拒绝后台启动。")
+    require_console(paths, args.console_token)
     paths.initialize()
     lock = InstanceLock(paths.home / "runtime" / (args.role + ".host.lock"))
     stop = paths.home / "runtime" / (args.role + ".stop")
     stop.unlink(missing_ok=True)
-    record = {"instance_id": cfg["instance_id"], "role": args.role, "host": process_info(os.getpid())}
+    record = {"instance_id": cfg["instance_id"], "role": args.role, "host": process_info(os.getpid()),
+              "console_token": args.console_token}
     atomic_json(paths.home / "runtime" / (args.role + ".json"), record)
+    exit_code = 0
     try:
+        host_job = bind_host_job()
+        finished, watchdog = start_console_watchdog(paths, args.console_token)
         setup(paths, args.role)
         if args.role == "service":
             from .server import serve
@@ -155,9 +191,12 @@ def main():
     except Exception:
         import logging
         logging.getLogger("host").exception("host_failure")
-        raise SystemExit(1) from None
+        exit_code = 1
     finally:
         lock.close()
+        # SDK executor threads must not keep the host (and QQ) alive after a
+        # normal stop. Process exit also closes the final job handle.
+        os._exit(exit_code)
 
 
 if __name__ == "__main__":

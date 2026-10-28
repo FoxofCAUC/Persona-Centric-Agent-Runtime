@@ -73,7 +73,7 @@ class SubmissionJournal:
                 if row["payload"]["request_id"] == payload["request_id"]:
                     if row["payload"] != payload:raise RuntimeErrorBase("submission_conflict")
                     return row["payload"]
-                if match_draft and all(row["payload"].get(key) == payload.get(key) for key in ("text", "persona_id", "session_id", "channel")):
+                if match_draft and all(row["payload"].get(key) == payload.get(key) for key in ("text", "persona_id", "session_id", "channel", "reference")):
                     return row["payload"]
             rows.append({"payload": payload, "state": "unconfirmed"})
             self._write(rows)

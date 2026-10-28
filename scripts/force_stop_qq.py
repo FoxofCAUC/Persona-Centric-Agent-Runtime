@@ -1,0 +1,31 @@
+"""Fixed Windows elevated QQ-only helper; never starts/stops other services."""
+import argparse
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from persona_runtime.config import atomic_json
+from persona_runtime.emergency import force_stop_qq_processes, is_administrator
+from persona_runtime.paths import RuntimePaths
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--home", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    args = parser.parse_args()
+    paths = RuntimePaths(args.home.resolve())
+    report_file = args.report.resolve()
+    if report_file.parent != (paths.home / "logs").resolve() or not report_file.name.startswith("force-stop-qq-"):
+        parser.error("Invalid QQ stop report location")
+    if not is_administrator():
+        parser.error("Administrator permission required")
+    report = force_stop_qq_processes(paths, report_file=report_file)
+    report["elevated"] = True
+    atomic_json(report_file, report)
+    return 0 if report["success"] else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

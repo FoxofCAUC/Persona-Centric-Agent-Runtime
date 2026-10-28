@@ -76,10 +76,8 @@ def dispatch(args, paths: RuntimePaths):
             raise RuntimeErrorBase("相关进程未完全停止，报告：" + report["report_file"])
         return report
     if args.group == "serve":
-        import asyncio
-        from .server import serve
-        asyncio.run(serve(paths))
-        return {"stopped": True}
+        from .lifecycle import ServiceController
+        return ServiceController(paths).start('service')
     if args.group == "prepare":
         from .deployment import prepare
         return prepare(paths)

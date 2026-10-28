@@ -24,7 +24,9 @@ def build_context(engine, conn, turn):
     state=head(conn,turn['persona_id'],'state')
     state_active=active_state(state)
     text = input_text(conn, turn)
-    turns = eligible_turns(conn, turn['session_id'], ordinal-1)
+    from .references import prepare, ReferenceError
+    reference_block,reference_manifest=prepare(conn,turn)
+    turns = [t for t in eligible_turns(conn, turn['session_id'], ordinal-1) if t['id'] not in reference_manifest['turn_ids']]
     recent_queries = []
     for previous in turns[-2:]:
         recent_queries.append(input_text(conn,previous))
@@ -77,7 +79,7 @@ def build_context(engine, conn, turn):
     while True:
         reference = '\n已确认长期记忆：'+json.dumps([{'id': r[3]['id'], 'text': r[3]['text'], 'revision': r[3]['revision']} for r in memories], ensure_ascii=False)
         reference += '\n本会话有损摘要（仅作参考）：'+json.dumps(summary_items, ensure_ascii=False)
-        result = [{'role': 'system', 'content': base+render_parts(character_parts)+reference}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
+        result = [{'role': 'system', 'content': base+render_parts(character_parts)+reference+reference_block}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
         if sum(len(m['content']) for m in result) <= limit:
             break
         optional = next((i for i in range(len(character_parts)-1,-1,-1) if not character_parts[i]['required']), None)
@@ -94,10 +96,11 @@ def build_context(engine, conn, turn):
             summary_items.pop(0)
             removed.append({'kind': 'summary_item', 'reason': 'input_budget'})
         else:
+            if reference_block:raise ReferenceError('reference_budget_exceeded',reference_manifest)
             raise ModelError('context_limit_exceeded')
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
     return result, {'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
-                    'reply_mode':reply_mode,
+                    'references':reference_manifest,'reply_mode':reply_mode,
                     'behavior':{'resolver':behavior['resolver'],'signals':[item['act'] for item in behavior['signals']],
                                 'uncertainty':behavior['uncertainty'],'character_version_id':character['version_id'] if character else None,
                                 'profile_versions':{kind:{'id':version['id'],'revision':version['revision']} for kind,version in frozen.items()},

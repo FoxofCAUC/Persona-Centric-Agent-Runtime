@@ -129,7 +129,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         receipt=self.accept('代码修正')
         await self.engine.wait()
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],7);self.assertEqual(len(data['reply_batches']),1)
+        self.assertEqual(data['format_version'],8);self.assertEqual(len(data['reply_batches']),1)
         self.assertEqual(len(data['reply_segments']),2)
         self.assertNotIn('encrypted_key',json.dumps(data))
 
@@ -151,7 +151,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_batches'").fetchone());db.close()
         store.initialize();store.initialize()
         with store.connection() as conn:
-            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],10)
+            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],11)
             self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(conn.execute("SELECT dflt_value FROM pragma_table_info('interaction_policies') WHERE name='reply_mode'").fetchone()[0],"'legacy_full'")
         self.assertTrue(list((path.home/'backups').glob('before-m62-*.sqlite3')))

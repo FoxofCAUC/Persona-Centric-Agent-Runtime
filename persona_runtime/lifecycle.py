@@ -1,6 +1,7 @@
 """Project-owned services, process identity and safe Windows lifecycle."""
 from dataclasses import dataclass
 import json
+import math
 import os
 from pathlib import Path
 import socket
@@ -12,7 +13,27 @@ from typing import Protocol
 from .config import ConfigStore, atomic_json
 from .deployment import NO_WINDOW, REPO, child_environment, render_components
 from .desktop_client import LocalClient
-from .models import RuntimeErrorBase
+from .models import RuntimeErrorBase, identifier, timestamp
+from .instance import InstanceLock, current_process_identity, process_identity_alive
+
+
+def read_console(paths):
+    try:
+        value = json.loads((paths.home / "runtime/console.json").read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def require_console(paths, token=None):
+    """A stale file or a recycled PID cannot authorize background services."""
+    lease = read_console(paths)
+    if (not lease or lease.get("state") != "active" or not lease.get("token")
+            or token is not None and lease["token"] != token
+            or lease.get("instance_id") != ConfigStore(paths).load()["instance_id"]
+            or not process_identity_alive(lease.get("process"))):
+        raise RuntimeErrorBase("控制窗口未运行或已关闭，请先打开 PCAR 工作台。")
+    return lease
 
 
 def ps_json(script):
@@ -86,7 +107,48 @@ class ServiceController:
         self.processes = {}
         self.stop_generation = 0
         self.force_stopping = threading.Event()
+        self.console_lease = None
+        self.console_lock = None
         self.adapters = {role: ManagedService(self, role) for role in ("service", "astrbot", "napcat")}
+
+    def start_console(self):
+        if self.console_lease is not None:
+            return require_console(self.paths, self.console_lease["token"])
+        lock = InstanceLock(self.paths.home / "runtime/console.lock")
+        try:
+            previous = read_console(self.paths)
+            if previous and previous.get("state") == "active" and process_identity_alive(previous.get("process")):
+                raise RuntimeErrorBase("已有 PCAR 控制窗口运行，请返回现有窗口。")
+            lease = {"token": identifier(), "instance_id": self.config.load()["instance_id"],
+                     "process": current_process_identity(), "state": "active", "at": timestamp(),
+                     "previous_stale": bool(previous and previous.get("state") != "closed")}
+            atomic_json(self.paths.home / "runtime/console.json", lease)
+            self.console_lease, self.console_lock = lease, lock
+            return lease
+        except BaseException:
+            lock.close()
+            raise
+
+    def end_console(self):
+        lease = self.console_lease
+        try:
+            current = read_console(self.paths)
+            if lease and current and current.get("token") == lease["token"]:
+                atomic_json(self.paths.home / "runtime/console.json", current | {"state": "closed", "closed_at": timestamp()})
+        finally:
+            if self.console_lock is not None:
+                self.console_lock.close()
+            self.console_lock = self.console_lease = None
+
+    def has_resident_processes(self):
+        instance_id = self.config.load()["instance_id"]
+        for role in self.adapters:
+            saved = self.record(role)
+            if saved and saved.get("instance_id") == instance_id:
+                for key in ("host", "loader", "qq_listener", "qq_parent"):
+                    if same_process(saved.get(key)):
+                        return True
+        return False
 
     def record_path(self, role):
         return self.paths.home / "runtime" / (role + ".json")
@@ -129,10 +191,21 @@ class ServiceController:
             try:
                 proof = json.loads((self.paths.home / "runtime/astrbot-health.json").read_text(encoding="utf-8"))
                 saved = self.record(role)
-                if time.time()-proof["at"] < 15 and proof["instance_id"] == cfg["instance_id"] and proof["pid"] == saved["host"]["ProcessId"]:
-                    return result | {"state": "运行", "login": proof["verified"], "onebot": proof["online"]}
+                if proof["instance_id"] != cfg["instance_id"] or proof["pid"] != saved["host"]["ProcessId"]:
+                    return result | {"state":"等待验证", "login":None, "onebot":None,
+                                     "reason":"桥接心跳与当前消息服务不匹配，QQ 登录状态未知。"}
+                age = time.time()-proof["at"]
+                if age >= 15 or age < -5:
+                    return result | {"state":"等待验证", "login":None, "onebot":None,
+                                     "heartbeat_stale":True, "heartbeat_age_seconds":max(0,round(age)),
+                                     "reason":"桥接心跳已过期，QQ 登录状态未知；请检查消息服务。"}
+                if proof.get('error_type'):
+                    return result | {"state":"等待验证", "login":None, "onebot":None,
+                                     "reason":"桥接状态检查失败，QQ 登录状态未知；请查看元数据诊断日志。"}
+                return result | {"state": "运行", "login": proof["verified"], "onebot": proof["online"]}
             except (OSError, ValueError, KeyError, TypeError):
-                pass
+                return result | {"state":"等待验证", "login":None, "onebot":None,
+                                 "reason":"桥接心跳暂不可读取，QQ 登录状态未知；请检查消息服务。"}
         else:
             saved = self.record(role)
             if saved and same_process(saved.get("qq_listener")):
@@ -167,14 +240,55 @@ class ServiceController:
             url += "/webui/?token=" + quote(token, safe="")
         return url
 
+    def _start_ready(self, role, state):
+        """Startup dependency readiness is not proof of a QQ login.
+
+        AstrBot must be ready before NapCat starts. An unavailable OneBot API
+        at that point is expected, but only a live, current host with both of
+        its listeners and a fresh bridge heartbeat may unblock the sequence.
+        Leave health()'s unknown/offline login and connection values intact.
+        """
+        if role != 'astrbot':
+            return state['state'] == '运行'
+        if not state.get('owned') or not self.owned(role):
+            return False
+        try:
+            cfg = self.config.load()
+            saved = self.record(role)
+            if not isinstance(saved, dict) or saved.get('instance_id') != cfg['instance_id']:
+                return False
+            expected = saved.get('host')
+            if (not isinstance(expected, dict) or type(expected.get('ProcessId')) is not int
+                    or not expected.get('Created') or not expected.get('ExecutablePath')):
+                return False
+            proof = json.loads((self.paths.home / 'runtime/astrbot-health.json').read_text(encoding='utf-8'))
+            if (not isinstance(proof, dict) or proof.get('instance_id') != cfg['instance_id']
+                    or type(proof.get('pid')) is not int or proof['pid'] != expected['ProcessId']
+                    or type(proof.get('at')) not in (int, float) or not math.isfinite(proof['at'])
+                    or not -5 <= time.time() - proof['at'] < 15
+                    or type(proof.get('verified')) is not bool or type(proof.get('online')) is not bool):
+                return False
+            error = proof.get('error_type')
+            if error is not None and (error != 'ApiNotAvailable' or proof.get('error_stage') != 'probe'):
+                return False
+            for port in (cfg['astrbot_port'], cfg['onebot_port']):
+                actual = listener(port)
+                if not isinstance(actual, dict) or any(actual.get(key) != expected[key]
+                                                      for key in ('ProcessId', 'Created', 'ExecutablePath')):
+                    return False
+            return True
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+
     def start(self, role):
         if self.force_stopping.is_set():
             raise RuntimeErrorBase("强制停止正在执行，不能同时启动服务。")
         generation = self.stop_generation
         if role not in self.adapters:
             raise RuntimeErrorBase("Unknown service role")
+        console = require_console(self.paths)
         health = self.health(role)
-        if health["state"] == "运行":
+        if self._start_ready(role, health):
             return health
         if health["owned"] or port_open(health["port"]):
             raise RuntimeErrorBase("服务仍在运行或端口被占用，请先查看诊断。")
@@ -201,8 +315,9 @@ class ServiceController:
         self.notify("正在启动：" + role)
         if generation != self.stop_generation or self.force_stopping.is_set():
             raise RuntimeErrorBase("启动已被强制停止操作取消。")
+        require_console(self.paths, console["token"])
         self.processes[role] = subprocess.Popen([str(python), "-B", "-m", "persona_runtime.host", "--role", role,
-                          "--instance", cfg["instance_id"]], cwd=REPO, env=child_environment(self.paths),
+                          "--instance", cfg["instance_id"], "--console-token", console["token"]], cwd=REPO, env=child_environment(self.paths),
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
         deadline = time.monotonic()+60
         while time.monotonic() < deadline:
@@ -210,7 +325,7 @@ class ServiceController:
                 raise RuntimeErrorBase("启动已被强制停止操作取消。")
             time.sleep(.5)
             state = self.health(role)
-            if state["state"] == "运行":
+            if self._start_ready(role, state):
                 return state
         raise RuntimeErrorBase("启动未完成；请检查组件、端口或 QQ 登录，已启动的进程保留供诊断。")
 
@@ -271,10 +386,19 @@ class ServiceController:
         return {role: self.health(role) for role in self.adapters}
 
     def force_stop_all(self):
-        from .emergency import force_stop_related
+        from .emergency import force_stop_all_elevated
         self.force_stopping.set()
         self.stop_generation += 1
         try:
-            return force_stop_related(self.paths, self.notify)
+            return force_stop_all_elevated(self.paths, self.notify)
+        finally:
+            self.force_stopping.clear()
+
+    def force_stop_qq(self):
+        from .emergency import force_stop_qq_elevated
+        self.force_stopping.set()
+        self.stop_generation += 1
+        try:
+            return force_stop_qq_elevated(self.paths, self.notify)
         finally:
             self.force_stopping.clear()

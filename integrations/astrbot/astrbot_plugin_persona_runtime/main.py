@@ -1,20 +1,18 @@
 """Minimal owner-only adapter; all model calls belong to Persona Runtime."""
 import asyncio
 from contextlib import suppress
-import os
-import time
 
 from astrbot.api import logger
 from astrbot.api.event import filter
 from astrbot.api.star import Star, register
 
-from persona_runtime.config import ConfigStore, atomic_json
+from persona_runtime.config import ConfigStore
 from persona_runtime.logging_safe import setup
 from persona_runtime.paths import RuntimePaths
 from persona_runtime.qq_bridge import QQBridge
 
 
-@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.5.0")
+@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.6.0")
 class PersonaRuntimePlugin(Star):
     def __init__(self, context):
         super().__init__(context)
@@ -61,24 +59,8 @@ class PersonaRuntimePlugin(Star):
             await asyncio.sleep(1)
 
     async def health(self):
-        while True:
-            verified = online = False
-            cfg = self.config.load()
-            for platform in self.context.platform_manager.platform_insts:
-                if platform.meta().name != "aiocqhttp" or platform.meta().id != "persona-onebot":
-                    continue
-                try:
-                    client = platform.get_client()
-                    login = await asyncio.wait_for(client.get_login_info(), 3)
-                    verified = str(login.get("user_id", "")) == cfg["bot_qq"]
-                    status = await asyncio.wait_for(client.get_status(), 3)
-                    online = verified and bool(status.get("online"))
-                except Exception:
-                    pass
-            atomic_json(self.paths.home / "runtime/astrbot-health.json", {
-                "at": time.time(), "pid": os.getpid(), "instance_id": cfg["instance_id"],
-                "verified": verified, "online": online, "plugin_version": "0.5.0"})
-            await asyncio.sleep(5)
+        from persona_runtime.bridge_health import heartbeat_loop
+        await heartbeat_loop(self.paths, self.config, lambda:self.context.platform_manager.platform_insts)
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=10000)
     async def receive(self, event):

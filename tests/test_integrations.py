@@ -35,6 +35,7 @@ class IntegrationTests(unittest.TestCase):
             port += 1
         cfg.update({"service_port": port})
         controller = ServiceController(self.paths)
+        controller.start_console()
         try:
             state = controller.start("service")
             self.assertEqual(state["state"], "运行")
@@ -46,8 +47,11 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(client.manage("persona.show")["id"], persona["id"])
             self.assertEqual(client.call("GET", "/v1/health")["instance_id"], cfg.load()["instance_id"])
         finally:
-            if controller.owned("service"):
-                controller.stop("service")
+            try:
+                if controller.owned("service"):
+                    controller.stop("service")
+            finally:
+                controller.end_console()
         self.assertFalse(controller.owned("service"))
 
     @unittest.skipUnless(SDK_PYTHON.exists(), "Run prepare to install the independent AstrBot SDK")

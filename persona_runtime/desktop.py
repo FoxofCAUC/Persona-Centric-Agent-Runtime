@@ -21,6 +21,7 @@ from .desktop_character import CharacterUI
 from .desktop_batches import BatchUI, BATCH_LABELS
 from .desktop_delivery import DeliveryUI
 from .desktop_quotas import QuotaUI
+from .desktop_archive import ArchiveUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -28,7 +29,7 @@ ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重�
           "provider_http_429": "模型提供商限流，请稍后手动重试。", "queue_full": "等待队列已满，请稍后再试。",
           "provider_network_error": "模型网络连接失败。", "context_limit_exceeded": "人格、关系与消息超过输入长度限制。",
           "service_restarted": "请求因服务重启而中断，未自动重试。"}
-ERRORS.update({"buffer_full":"输入缓冲已满，本条未受理；请先处理已有批次。", "unresolved_input_batches":"仍有未处理输入，请到输入与缓冲页继续或取消后再停止。", "runtime_upgrade_required":"人格服务版本不兼容，请先升级服务。", "only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
+ERRORS.update({"reference_not_found":"引用目标未找到，本批未调用模型；请更换或清除引用。", "reference_unavailable":"引用来源不可用，本批未调用模型。", "reference_ambiguous":"引用目标不唯一，本批未调用模型。", "reference_budget_exceeded":"完整引用超出预算，本批未调用模型。", "reference_source_changed":"引用来源已变化，本批未调用模型。", "buffer_full":"输入缓冲已满，本条未受理；请先处理已有批次。", "unresolved_input_batches":"仍有未处理输入，请到输入与缓冲页继续或取消后再停止。", "runtime_upgrade_required":"人格服务版本不兼容，请先升级服务。", "only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
                "queue_cancellation_disabled": "排队取消尚未开启，可在模型页的私聊交互设置中显式开启。",
                "submission_conflict": "此请求标识已用于其他内容；请先找回原消息，不能覆盖。",
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
@@ -62,7 +63,7 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
@@ -71,16 +72,20 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
                      ('character','角色资料','build_character'),
                      ('batches','输入与缓冲','build_batches'),
                      ('delivery','回复投递','build_delivery'),
+                     ('archive','原始档案','build_archive'),
                      ("diagnostics", "故障排查", "build_diagnostics"))
 
-    def __init__(self, paths):
+    def __init__(self, paths, *, managed_lifecycle=False, controller=None):
         super().__init__()
         self.paths = paths
         self.config = ConfigStore(paths)
         self.config.initialize()
         self.client = LocalClient(self.config)
         self.hub = TaskHub()
-        self.controller = ServiceController(paths, self.hub.progress)
+        self.controller = controller or ServiceController(paths, self.hub.progress)
+        self.controller.notify = self.hub.progress
+        self.managed_lifecycle = managed_lifecycle
+        self.shutdown_started = False
         self.closed = False
         self.buttons = []
         self.personas = []
@@ -112,7 +117,8 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         self.init_character_vars()
         self.init_batch_vars()
         self.init_delivery_vars()
-        self.title("Persona-Centric Agent Runtime (PCAR) · M6.3")
+        self.init_archive_vars()
+        self.title("Persona-Centric Agent Runtime (PCAR) · M7.0")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -126,14 +132,19 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         self.after(1200,self.poll_batches)
         self.after(1500,self.poll_deliveries)
 
-    def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None):
+    def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None, error_current=None):
+        if self.closed and self.managed_lifecycle:
+            return None
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
             if not quiet:
                 self.notice.set("强制停止正在执行，请等待完成。")
             return None
         def report_failure(error):
-            text = ERRORS.get(str(error), str(error))
-            self.notice.set(text)
+            # Background refreshes must not overwrite a foreground result.
+            # Reads can also expire with their view/target; writes and service
+            # operations keep their normal diagnostics and editor callbacks.
+            if not quiet and (error_current is None or error_current()):
+                self.notice.set(ERRORS.get(str(error), str(error)))
             if failure:
                 failure(error)
         operation = self.hub.start(name, resources, lambda cancel: action(cancel), success=success, failure=report_failure, quiet=quiet, urgent=urgent)
@@ -224,6 +235,7 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         self.button(bar, "启动服务", lambda: self.run_task("启动服务", {"lifecycle", "config"}, self.controller.start_all), {"lifecycle", "config"}, True)
         self.button(bar, "停止服务", lambda: self.run_task("停止服务", {"lifecycle", "config"}, lambda _: self.controller.stop_all()), {"lifecycle", "config"})
         self.button(bar, "强制停止全部相关程序", self.force_stop_everything, {"emergency"})
+        self.button(bar, "强制停止 QQ", self.force_stop_qq, {"emergency"})
         bar = self.bar(parent)
         bar.pack(fill="x")
         self.button(bar, "只启动人格服务", lambda: self.start_one("service"), {"lifecycle"})
@@ -249,6 +261,9 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         self.button(bar, "选择已有会话", self.choose_session, {"chat"})
         self.transcript = scrolledtext.ScrolledText(parent, height=17, wrap="word", state="disabled", font=("Microsoft YaHei UI", 10))
         self.transcript.pack(fill="both", expand=True, pady=8)
+        reference_bar=ttk.Frame(parent);reference_bar.pack(fill='x')
+        ttk.Label(reference_bar,textvariable=self.reference_text).pack(side='left')
+        self.button(reference_bar,'清除引用',self.clear_archive_reference)
         self.chat_input = scrolledtext.ScrolledText(parent, height=4, wrap="word")
         self.chat_input.pack(fill="x")
         bar = self.bar(parent)
@@ -346,6 +361,7 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         bar.pack(fill="x", pady=8)
         self.button(bar, "全部停止（含 QQ）", self.stop_everything, {"lifecycle", "config"})
         self.button(bar, "强制停止全部相关程序", self.force_stop_everything, {"emergency"})
+        self.button(bar, "强制停止 QQ", self.force_stop_qq, {"emergency"})
         self.button(bar, "备份数据库", lambda: self.api_action("data.backup"), {"backup"})
         self.button(bar, "导出当前人格", lambda: self.api_action("data.export"), {"backup"})
         self.button(bar, "备份加密配置", self.backup_config, {"config"})
@@ -417,6 +433,18 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
                 self.notice.set("仍有程序未结束：" + remaining + "。查看停止报告；可能需要管理员权限。")
         self.run_task("强制停止全部相关程序", {"emergency"}, lambda _: self.controller.force_stop_all(), done, urgent=True)
 
+    def force_stop_qq(self):
+        if not messagebox.askyesno("强制停止 QQ", "将以管理员权限强制结束全部 QQ（包括普通 QQ）、NapCat 和 QQ 启动进程，包含外部进程。\n\n人格服务与消息服务保持运行；聊天草稿保留。出现 Windows 管理员授权时请确认。完成后需重新启动 QQ 并登录。确定执行？"):
+            return
+        def done(report):
+            if report["success"]:
+                self.notice.set("QQ 已强制停止；人格服务与消息服务保持运行。请在故障排查页启动 QQ 连接并重新登录。记录：" + report["report_file"])
+            else:
+                remaining = ", ".join(f"{p['name']} (PID {p['pid']})" for p in report["remaining"])
+                self.notice.set("QQ 强停后仍有进程：" + remaining + "。请查看报告：" + report["report_file"])
+            self.after(500, lambda: self.poll(force=True))
+        self.run_task("强制停止 QQ", {"emergency"}, lambda _: self.controller.force_stop_qq(), done, urgent=True)
+
     def save_connection(self):
         values = {k: v.get().strip() for k, v in self.qq_vars.items()}
         try:
@@ -459,13 +487,20 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
             self.notice.set("模型测试成功，用量：" + json.dumps(turn["usage"], ensure_ascii=False) if turn["status"] == "completed" else ERRORS.get(turn["error_code"], turn["error_code"]))
 
     def refresh_personas(self):
+        epoch = self.view_epoch
         def done(rows):
+            if self.closed or epoch != self.view_epoch:
+                return
             self.personas = rows
             self.persona_list.delete(0, "end")
             for row in rows:
                 self.persona_list.insert("end", ("● " if row["selected"] else "○ ") + row["name"] + " · " + row["id"][:8])
             self.chat_persona["values"] = [p["name"] + " · " + p["id"][:8] for p in rows]
             selected = next((p for p in rows if p["selected"]), None)
+            # Archive reads need the active identity even before any chat
+            # session has been selected. Reading the list creates no session.
+            if self.persona_id is None and selected:
+                self.persona_id = selected["id"]
             self.persona_choice.set(selected["name"] + " · " + selected["id"][:8] if selected else "")
         self.run_task("读取人格", {"persona-read"}, lambda _: self.client.manage("persona.list"), done, quiet=True)
 
@@ -493,6 +528,8 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
 
     def use_persona(self, persona_id):
         if not self.character_can_leave():return
+        self.invalidate_archive()
+        self.clear_archive_reference()
         self.view_epoch += 1
         self.delivery_rows = []
         self.delivery_tree.delete(*self.delivery_tree.get_children())
@@ -500,6 +537,7 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         def done(_):
             self.session_id = None
             self.turns = []
+            self.notice.set("人格已切换，正在读取会话。")
             self.refresh_personas()
             self.load_chat()
             self.search_memory()
@@ -634,7 +672,9 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
             self.chat_version = None
             self.turns = result[1]
             self.render_chat()
-        self.run_task("读取会话", {"chat"}, action, done)
+            self.notice.set("当前人格的窗口会话已读取。")
+        self.run_task("读取会话", {"chat"}, action, done,
+                      error_current=lambda: not self.closed and epoch == self.view_epoch)
 
     def choose_session(self):
         def done(rows):
@@ -704,6 +744,10 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         if not persona_id:
             self.notice.set("请先选中人格并恢复或新建会话。")
             return
+        selected_reference=getattr(self,"chat_reference",None)
+        if selected_reference and selected_reference["persona_id"]!=persona_id:
+            self.notice.set("引用属于原人格，请清除或重新选择。");return
+        if selected_reference:payload["reference"]=dict(selected_reference["target"])
         payload["persona_id"] = persona_id
         if self.session_id:
             payload["session_id"] = self.session_id
@@ -713,8 +757,9 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
                 self.notice.set("消息已提交给原人格；切回该人格可查看结果。")
                 return
             # A user may already be typing the next message while HTTP is in flight.
-            if self.chat_input.get("1.0", "end-1c") == text:
+            if self.chat_input.get("1.0", "end-1c") == text and getattr(self,"chat_reference",None)==selected_reference:
                 self.chat_input.delete("1.0", "end")
+                if selected_reference:self.clear_archive_reference()
             self.session_id = turn["session_id"]
             self.selected_request = turn.get("turn_id") if "receipt_id" in turn else turn["id"]
             self.load_chat(session_id=self.session_id)
@@ -996,8 +1041,9 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
             self.refresh_quotas()
             self.status_text.set("\n".join(LABELS[role] + "：" + value["state"] for role, value in states.items()))
             bot = states["astrbot"]
-            self.login_text.set("QQ 账号：" + ("已核对" if bot.get("login") else "等待登录／核对") +
-                                "　OneBot：" + ("在线" if bot.get("onebot") else "未连接"))
+            self.login_text.set("QQ 账号：" + ("已核对" if bot.get("login") else "等待核对") +
+                                "　OneBot：" + ("在线" if bot.get("onebot") else "未连接" if "onebot" in bot else "状态待核对") +
+                                ("（" + bot["reason"] + "）" if bot.get("reason") else ""))
             ready = states["service"]["state"] == "运行"
             if ready and not self.last_ready:
                 self.refresh_personas()
@@ -1042,7 +1088,46 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
         self.after(100, self.tick)
 
     def close_window(self):
+        if self.shutdown_started:
+            return
         if not self.character_can_leave():return
+        if self.managed_lifecycle:
+            self.shutdown_started = True
+            self.closed = True
+            self.notice.set('正在强制停止全部服务，完成后关闭控制台。')
+            for button, _ in self.buttons:
+                if button.winfo_exists():button.configure(state='disabled')
+            for operation in self.hub.active.values():
+                operation.cancel.set()
+            for timer in self.tk.splitlist(self.tk.call('after', 'info')):
+                self.tk.call('after', 'cancel', timer)
+            self.shutdown_result = None
+            def stop():
+                try:
+                    self.controller.end_console()
+                    from .emergency import force_stop_all_elevated
+                    report = force_stop_all_elevated(self.paths)
+                    self.shutdown_result = (bool(report['success']), report)
+                except Exception as exc:
+                    self.shutdown_result = (False, str(exc))
+            threading.Thread(target=stop, name='console-shutdown', daemon=True).start()
+            self.after(100, self.finish_console_shutdown)
+            return
+        self.destroy_console()
+
+    def finish_console_shutdown(self):
+        if self.shutdown_result is None:
+            self.after(100, self.finish_console_shutdown)
+            return
+        success, result = self.shutdown_result
+        if success:
+            self.destroy_console()
+        else:
+            self.shutdown_started = False
+            self.notice.set('全部服务尚未停止，控制台保留。请再次关闭以重试。' +
+                            (str(result.get('report_file', '')) if isinstance(result, dict) else str(result)))
+
+    def destroy_console(self):
         self.closed = True
         self.hub.close()
         for timer in self.tk.splitlist(self.tk.call("after", "info")):
@@ -1051,9 +1136,55 @@ class Workbench(QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, Organizati
 
 
 def run(paths):
-    paths.initialize()
-    lock = InstanceLock(paths.home / "runtime/desktop.lock")
+    import os
+    from .emergency import force_stop_all_elevated
+    from .workbench_errors import report_failure
+    lock = controller = window = None
+    stage = 'initialize_paths'
+    failed = False
     try:
-        Workbench(paths).mainloop()
+        paths.initialize()
+        stage = 'instance_lock'
+        lock = InstanceLock(paths.home / "runtime/desktop.lock")
+        stage = 'console_lease'
+        controller = ServiceController(paths)
+        lease = controller.start_console()
+        # Pre-lease hosts and a crashed console must not obstruct the new one.
+        stage = 'resident_check'
+        legacy_running = controller.has_resident_processes()
+        if lease.get('previous_stale') or legacy_running:
+            stage = 'cleanup_legacy'
+            report = force_stop_all_elevated(paths)
+            if not report['success']:
+                raise RuntimeError('遗留服务未完全停止：' + report['report_file'])
+        stage = 'create_workbench'
+        window = Workbench(paths, managed_lifecycle=True, controller=controller)
+        stage = 'mainloop'
+        window.mainloop()
+    except Exception as exc:
+        failed = True
+        report_failure(paths, exc, stage)
+        raise
     finally:
-        lock.close()
+        try:
+            if controller is not None:
+                controller.end_console()
+            if window is not None and not window.shutdown_started:
+                force_stop_all_elevated(paths)
+        except Exception as exc:
+            failed = True
+            report_failure(paths, exc, 'console_cleanup')
+            raise
+        finally:
+            try:
+                if lock is not None:
+                    lock.close()
+            except Exception as exc:
+                failed = True
+                report_failure(paths, exc, 'lock_release')
+                raise
+            finally:
+                # No worker thread may leave a headless process after the window,
+                # including an unexpected Tk mainloop failure.
+                if window is not None:
+                    os._exit(0 if window.shutdown_started and not failed else 1)

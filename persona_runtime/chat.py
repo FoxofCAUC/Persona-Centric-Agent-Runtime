@@ -294,6 +294,7 @@ class ChatEngine:
         async with self.locks[initial["persona_id"]]:
             attempt_id = None
             usage = None
+            reference_manifest = None
             try:
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
@@ -301,6 +302,7 @@ class ChatEngine:
                         return
                     model = json.loads(turn["model_snapshot"])
                     messages = self._context(conn, turn)
+                    reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
                     from .memory_policy import project_calls
@@ -314,6 +316,8 @@ class ChatEngine:
                     conn.execute("INSERT INTO context_uses VALUES (?,?,?,?,?,?)", (attempt_id, turn_id, turn["persona_id"], LOCAL_USER_ID,
                                  json.dumps(turn["_context_details"], ensure_ascii=False), timestamp()))
                     conn.execute("UPDATE turns SET status='running', updated_at=? WHERE id=?", (timestamp(), turn_id))
+                    from .references import record_check
+                    record_check(conn,turn,turn["_context_details"].get("references",{}),attempt_id=attempt_id)
                     record_progress(conn, turn_id, "provider_started", attempt_id)
                 from .reply_batch import ReplySchemaError, validate_reply
                 raw_reply, usage = await self.client.complete(model, messages)
@@ -341,10 +345,18 @@ class ChatEngine:
             except BaseException as error:
                 interrupted = isinstance(error, asyncio.CancelledError)
                 from .reply_batch import ReplySchemaError
-                code = str(error) if isinstance(error, (ModelError,ReplySchemaError)) else ("request_interrupted" if interrupted else "request_failed")
+                from .references import ReferenceError,record_check
+                code = str(error) if isinstance(error, (ModelError,ReplySchemaError,ReferenceError)) else ("request_interrupted" if interrupted else "request_failed")
                 with self.store.connection(write=True) as conn:
                     if attempt_id and not conn.execute("SELECT 1 FROM attempts WHERE id=?", (attempt_id,)).fetchone():
                         attempt_id = None
+                    if isinstance(error,ReferenceError):record_check(conn,initial,error.manifest,error=str(error))
+                    elif attempt_id is None and reference_manifest:
+                        # Valid references were checked before model/limit
+                        # preflight failed. Preserve that check after rollback
+                        # without creating an attempt or marking sources invalid.
+                        manifest={**reference_manifest,'check_status':'passed','execution_blocked':code}
+                        record_check(conn,initial,manifest,error=code)
                     record_progress(conn, turn_id, "interrupted" if interrupted else "failed", attempt_id)
                     encoded=json.dumps(usage) if usage is not None else None
                     conn.execute("UPDATE turns SET status=?,error_code=?,usage_json=?,updated_at=? WHERE id=?",

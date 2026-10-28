@@ -37,6 +37,8 @@ def create_app(paths, client=None):
     organization.recover()
     profiles=ProfileService(store)
     characters=CharacterService(store)
+    from .archive import ArchiveService
+    archive=ArchiveService(store)
     admin, bridge = config.token(), config.token("bridge")
 
     @web.middleware
@@ -91,7 +93,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.6.4.dev1", "capabilities":["durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.7.0.dev1", "capabilities":["archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -306,6 +308,7 @@ def create_app(paths, client=None):
                 checked.append(row | {"turn": turn})
             return web.json_response(checked)
         handlers = {
+            **{"archive."+name:getattr(archive,name) for name in ("list","get","resolve","preview")},
             'quota.current': lambda: QuotaService(store, config).current(),
             'quota.update': lambda limits: QuotaService(store, config).update(limits),
             'quota.acceptance.begin': lambda: QuotaService(store, config).begin_acceptance(),
