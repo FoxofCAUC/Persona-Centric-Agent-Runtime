@@ -1,6 +1,26 @@
 # 架构与实施基线：私聊陪伴主线
 
-> **M7.2开工安排（2026-10-28）：** 用户已批准[实施合同](M7.2-CognitiveContext与工作集实施计划.md)，并要求M7.1提交推送确认后立即实施。当前[阶段入口](M7.2.md)仅记录授权/计划，现有运行时仍0.7.1.dev1/主库11/导出8；不把目标自动召回、五Builder或结构12写成已上线能力。
+## M7.2实际任务上下文
+
+运行时0.7.2.dev1、主库12、导出9、桥接0.6.0。[cognitive](../persona_runtime/cognitive.py)协调准备、最终复核和追加式审计；[context_builders](../persona_runtime/context_builders.py)实现五类任务视图；[context_policy](../persona_runtime/context_policy.py)复用既有入口政策权威；[schema_m72](../persona_runtime/schema_m72.py)只增加请求快照和清单，不预建未来情绪/治理/Session实体。
+
+```mermaid
+flowchart LR
+  A[受理及首成员政策快照] --> B[线程中读取同Scope最多50完整回合]
+  B --> C[派生缓存任一词项召回与来源复核]
+  C --> D[Dialogue硬软分区与整组字符预算]
+  D --> E[短写事务复核来源 状态 引用 额度]
+  E --> F[原子保存attempt与Manifest]
+  F --> G[提交后一次主要调用]
+  H[既有M4整理与来源guard] --> I[Reflection与Manifest]
+  I --> J[原整理模型及审阅授权]
+```
+
+普通召回过期/故障可回退安全基础上下文，明确引用失效停止、零主要调用。检索不持主库写事务，历史/缓存不成为第二正文权威。输入哈希对应实际messages序列；清单只保存元数据，原文展开重新鉴权。全局连通性主调用的清单scope为null，可由管理员在desktop检查明确ID，不能假装属于当前人格或经QQ范围读取。
+
+Dialogue和Reflection接入真实调用；Affect/Director/Planning仅返回未就绪合同，不创建状态或任务。新工作台页调用管理员context.preview/inspect；后台刷新及迟到响应受人格/入口/目标代次保护。旧context_uses保留兼容字段并关联context_id。实际行为与边界见[M7.2](M7.2.md)，下方为此前架构快照。
+
+> **M7.2当前收尾（2026-10-28）：** M7.2规定范围验收完成，历史条件继续携带。0.7.2.dev1/主库12/导出9/桥接0.6.0；自动召回默认开启、跨会话另开、明确引用失败零调用，缓冲及回复模式保持。最终全量390项161.670秒通过，48/16人工集、两条副本恢复及实际Tk通过；真实8次固定主要＋1次整理＋1次修复复验，共20,340 tokens，实际QQ一片纯文本sent可追溯。原R01中文句号漏召回及SDK超时现场保留；R01已修复复验关闭。原人格、完整配置/30/6/20、每日整理开关及三服务停止初态恢复，无未决输入/新片段。 [实现与使用](M7.2.md) · [机器结论](acceptance/M7.2-机器验收结论.md) · [M7.3准备](M7.3-开工输入与待定事项.md)。下方旧版本及未实施描述保留为历史，不代表当前状态。
 
 > **M7.1已实现（2026-10-28）：** 0.7.1.dev1，主库11/导出8/桥接0.6.0保持。权威批量投影与精确read_exact共用project_turn，快照A → 派生分区事务 → 查询 → 快照B/digest及候选正文复核；普通QQ只投影确认sent文本。archive_query/corpus/index/search及desktop_archive_search组成管理员检索/只读recent_50工作集。四个管理action在线程执行，桥接拒绝；单派生库有路径/ACL、维护锁、实例/代次CAS和幂等。没有主库change-log、后台续建、自动聊天召回或CognitiveContext。见[阶段实现](M7.1.md)与[机器结论](acceptance/M7.1-机器验收结论.md)。
 >
