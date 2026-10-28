@@ -2,7 +2,7 @@
 import asyncio
 from pathlib import Path
 import tempfile
-import time
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -43,14 +43,29 @@ class SearchAPITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_long_search_does_not_block_health_and_invalid_fields_are_safe(self):
         args={'persona_id':self.pid,'channel':'desktop','query':'青禾书店'}
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
         def slow(*values):
-            time.sleep(.2);return capture(*values)
+            entered.set()
+            try:
+                if not release.wait(5):
+                    raise AssertionError('Search blocked the event loop or health request')
+                return capture(*values)
+            finally:
+                finished.set()
         with patch('persona_runtime.archive_search.capture',side_effect=slow):
             task=asyncio.create_task(self.manage('archive.search',args))
-            await asyncio.sleep(.05);begin=time.perf_counter()
-            response=await self.client.get(self.server.make_url('/v1/health'),headers={'Authorization':'Bearer '+self.app['config'].token()})
-            self.assertEqual(response.status,200);self.assertLess(time.perf_counter()-begin,.15)
-            self.assertIn('archive_search_v1',(await response.json())['capabilities'])
-            searched=await task;self.assertEqual((await searched.json())['status'],'ok')
+            try:
+                self.assertTrue(await asyncio.to_thread(entered.wait, 5))
+                # Prove health completes while search is still held, independent
+                # of desktop/CI scheduling jitter in a 150 ms wall-clock cutoff.
+                self.assertFalse(finished.is_set())
+                response=await asyncio.wait_for(self.client.get(self.server.make_url('/v1/health'),headers={'Authorization':'Bearer '+self.app['config'].token()}), 3)
+                self.assertEqual(response.status,200)
+                self.assertFalse(finished.is_set())
+                self.assertIn('archive_search_v1',(await response.json())['capabilities'])
+            finally:
+                release.set()
+                searched=await task
+            self.assertEqual((await searched.json())['status'],'ok')
         invalid=await self.manage('archive.search',args|{'audit':True})
         self.assertEqual((await invalid.json())['status'],'invalid_query')

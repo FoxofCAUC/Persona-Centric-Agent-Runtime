@@ -152,7 +152,7 @@ class IngressService:
             # A v1 intent cannot be silently replayed through v2 after upgrade.
             if conn.execute('SELECT 1 FROM turns WHERE source_key=?',(channel+':'+rid,)).fetchone():raise RuntimeErrorBase('legacy_submission_exists')
             pid=self.engine.service._persona(conn,value.get('persona_id'))['id']
-            sid=self.engine._session(conn,pid,channel,value.get('session_id'))
+            sid=self.engine._session(conn,pid,channel,value.get('session_id'),origin={'bot':bot,'sender':peer})
             pol=self.policy(conn,pid,channel);policy={**PARAMS,'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol)}
             frozen=snapshot(conn,pid);character=character_head(conn,pid)
             scope=digest([pid,LOCAL_USER_ID,channel,bot,peer,sid,policy,frozen['core']['id'],frozen['expression']['id'],frozen['relationship']['id'],character['id']])

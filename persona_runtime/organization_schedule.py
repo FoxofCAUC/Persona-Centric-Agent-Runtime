@@ -177,7 +177,7 @@ class OrganizationSchedule:
             try:
                 task = self.engine.submit(preview, 'daily-'+identifier(), automatic=2, fixed_persona=row["persona_id"])
             except RuntimeErrorBase as error:
-                if str(error) == 'organization_queue_full':
+                if str(error) in ('organization_queue_full','organization_session_busy'):
                     self._save('running', payload)
                     return
                 payload["error"] = str(error)

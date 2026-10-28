@@ -24,6 +24,7 @@ from .desktop_quotas import QuotaUI
 from .desktop_archive import ArchiveUI
 from .desktop_archive_search import ArchiveSearchUI
 from .desktop_context import ContextUI
+from .desktop_sessions import SessionUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -31,7 +32,7 @@ ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重�
           "provider_http_429": "模型提供商限流，请稍后手动重试。", "queue_full": "等待队列已满，请稍后再试。",
           "provider_network_error": "模型网络连接失败。", "context_limit_exceeded": "人格、关系与消息超过输入长度限制。",
           "service_restarted": "请求因服务重启而中断，未自动重试。"}
-ERRORS.update({"reference_not_found":"引用目标未找到，本批未调用模型；请更换或清除引用。", "reference_unavailable":"引用来源不可用，本批未调用模型。", "reference_ambiguous":"引用目标不唯一，本批未调用模型。", "reference_budget_exceeded":"完整引用超出预算，本批未调用模型。", "reference_source_changed":"引用来源已变化，本批未调用模型。", "buffer_full":"输入缓冲已满，本条未受理；请先处理已有批次。", "unresolved_input_batches":"仍有未处理输入，请到输入与缓冲页继续或取消后再停止。", "runtime_upgrade_required":"人格服务版本不兼容，请先升级服务。", "only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
+ERRORS.update({"session_sealed":"此会话已封存。草稿保留，请在会话与主题页新建接续会话后明确发送。", "session_has_pending_work":"会话还有未决输入或投递，请先处置。", "session_version_conflict":"会话版本已变化，请重新读取后操作。", "organization_session_busy":"此会话已有整理任务，请等待或处置后继续。","reference_not_found":"引用目标未找到，本批未调用模型；请更换或清除引用。", "reference_unavailable":"引用来源不可用，本批未调用模型。", "reference_ambiguous":"引用目标不唯一，本批未调用模型。", "reference_budget_exceeded":"完整引用超出预算，本批未调用模型。", "reference_source_changed":"引用来源已变化，本批未调用模型。", "buffer_full":"输入缓冲已满，本条未受理；请先处理已有批次。", "unresolved_input_batches":"仍有未处理输入，请到输入与缓冲页继续或取消后再停止。", "runtime_upgrade_required":"人格服务版本不兼容，请先升级服务。", "only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
                "queue_cancellation_disabled": "排队取消尚未开启，可在模型页的私聊交互设置中显式开启。",
                "submission_conflict": "此请求标识已用于其他内容；请先找回原消息，不能覆盖。",
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
@@ -65,7 +66,7 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
@@ -77,6 +78,7 @@ class Workbench(ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, Batc
                      ('archive','原始档案','build_archive'),
                      ('archive-search','档案检索','build_archive_search'),
                      ('context','认知上下文','build_context_page'),
+                     ('sessions','会话与主题','build_sessions_page'),
                      ("diagnostics", "故障排查", "build_diagnostics"))
 
     def __init__(self, paths, *, managed_lifecycle=False, controller=None):
@@ -124,7 +126,8 @@ class Workbench(ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, Batc
         self.init_archive_vars()
         self.init_archive_search_vars()
         self.init_context_vars()
-        self.title("Persona-Centric Agent Runtime (PCAR) · M7.2")
+        self.init_session_vars()
+        self.title("Persona-Centric Agent Runtime (PCAR) · M7.3")
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -677,8 +680,11 @@ class Workbench(ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, Batc
             if epoch != self.view_epoch:
                 return
             if self.persona_id != result[0]['persona_id']:
+                self.invalidate_sessions()
                 self.invalidate_context()
                 self.invalidate_search()
+                self.clear_archive_reference()
+            if self.session_id != result[0]["session_id"]:
                 self.clear_archive_reference()
             self.session_id = result[0]["session_id"]
             self.persona_id = result[0]["persona_id"]
@@ -699,10 +705,11 @@ class Workbench(ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, Batc
                 listing.insert("end", row["created_at"] + " · " + row["id"])
             def select():
                 if listing.curselection():
-                    self.load_chat(session_id=rows[listing.curselection()[0]]["id"])
+                    selected_id=rows[listing.curselection()[0]]["id"]
+                    self.run_task("只读历史", {"history-read"}, lambda _: self.client.manage("chat.history",session_id=selected_id),lambda value:self.show_json("历史会话（只读）",value))
                     dialog.destroy()
             ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=1, padx=(0, 8))
-            ttk.Button(footer, text="载入窗口会话", command=select).grid(row=0, column=2)
+            ttk.Button(footer, text="只读查看历史", command=select).grid(row=0, column=2)
         self.run_task("读取会话列表", {"chat"}, lambda _: self.client.manage("chat.sessions"), done)
 
     def render_chat(self):

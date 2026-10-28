@@ -113,6 +113,14 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
 
     async def test_old_qq_session_cannot_be_reused_by_desktop(self):
         turn = await self.chat(channel="qq", request_id="old-qq-thread")
+        from persona_runtime.delivery import DeliveryService
+        from persona_runtime.models import identifier
+        delivery=DeliveryService(self.store)
+        stream=delivery.by_batch(turn['reply_batch']['id'])
+        for part in stream['parts']:
+            stream=delivery.get(stream['id'])
+            claim=delivery.claim(stream['id'],part['id'],stream['revision'],identifier())
+            delivery.result(stream['id'],part['id'],claim['claim_token'],'sent',claim['part_revision'],identifier(),platform_message_id='offline-'+part['id'])
         self.engine.session("qq", fresh=True)
         with self.assertRaises(RuntimeErrorBase):
             self.engine.session("desktop", session_id=turn["session_id"])

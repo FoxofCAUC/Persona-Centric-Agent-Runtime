@@ -84,11 +84,19 @@ class RuntimeService:
     def create_session(self, scope: str = "private") -> dict:
         if scope != "private":
             raise RuntimeErrorBase("Only local single-user private scope is supported")
-        with self.store.connection(write=True) as conn:
+        from .sessions import SessionService, select
+        with self.store.connection() as conn:
             persona_id = self._persona(conn)["id"]
-            session_id = identifier()
-            conn.execute("INSERT INTO sessions VALUES (?, ?, ?, ?, ?)",
-                         (session_id, persona_id, LOCAL_USER_ID, scope, timestamp()))
+        lifecycle = SessionService(self.store)
+        current = lifecycle.current(persona_id)
+        if current['session_id']:
+            result = lifecycle.seal(current['session_id'],persona_id,current['revision'],identifier(),reason='new_session')
+            if result['state'] != 'sealed':
+                raise RuntimeErrorBase('session_has_pending_work')
+        with self.store.connection(write=True) as conn:
+            if self._persona(conn)['id'] != persona_id:
+                raise RuntimeErrorBase('persona_selection_conflict')
+            session_id = select(conn,persona_id,'desktop')
             return self._owned(conn, "sessions", session_id, persona_id)
 
     def list_sessions(self) -> list[dict]:
@@ -114,6 +122,8 @@ class RuntimeService:
         with self.store.connection(write=True) as conn:
             persona_id = self._persona(conn)["id"]
             self._owned(conn, "sessions", session_id, persona_id)
+            from .sessions import assert_writable
+            assert_writable(conn,session_id)
             event_id = identifier()
             conn.execute("INSERT INTO events (id, session_id, persona_id, user_id, role, text, created_at) "
                          "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -204,7 +214,7 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 9, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 10, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
@@ -213,6 +223,9 @@ class RuntimeService:
                     (persona["id"], LOCAL_USER_ID))]
             for table in ("summaries", "candidates", "candidate_reviews", "source_exclusions", "organization_progress", "automation", "context_uses", "input_references", "reference_checks", "context_manifests"):
                 payload[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid", (persona["id"], LOCAL_USER_ID))]
+            from .schema_m73 import TABLES13
+            for table in TABLES13:
+                payload[table]=[dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid",(persona["id"],LOCAL_USER_ID))]
             payload["memory_sources"] = [dict(r) for r in conn.execute("SELECT s.* FROM memory_sources s JOIN memories m ON m.id=s.memory_id WHERE m.persona_id=? AND m.user_id=?", (persona["id"], LOCAL_USER_ID))]
             for table in ('profile_versions','relationship_proposals'):
                 payload[table]=[dict(r) for r in conn.execute(f'SELECT * FROM {table} WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]

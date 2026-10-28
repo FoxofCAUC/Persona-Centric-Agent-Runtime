@@ -34,7 +34,7 @@ class M5Tests(unittest.IsolatedAsyncioTestCase):
         root=RuntimePaths.from_environment().home/'tmp';root.mkdir(parents=True,exist_ok=True)
         self.temp=tempfile.TemporaryDirectory(prefix='m5-test-',dir=root);self.addCleanup(self.temp.cleanup)
         self.paths=RuntimePaths(Path(self.temp.name));self.cfg=ConfigStore(self.paths);self.cfg.initialize()
-        self.cfg.update({'model':{'base_url':'http://127.0.0.1:1','name':'offline','hourly_limit':1000}})
+        self.cfg.update({'bot_qq':'12345','owner_qq':'67890','model':{'base_url':'http://127.0.0.1:1','name':'offline','hourly_limit':1000}})
         self.store=Store(self.paths);self.store.initialize();self.service=RuntimeService(self.store)
         self.persona=self.service.create_persona(generic_persona());self.service.use_persona(self.persona['id'])
         self.profile=ProfileService(self.store);self.model=Model();self.chat=ChatEngine(self.store,self.cfg,self.model)
@@ -229,7 +229,7 @@ class M5Tests(unittest.IsolatedAsyncioTestCase):
     async def test_export_and_backup_include_versions_but_not_credentials(self):
         self.edit('expression',{'style':'可导出的虚构风格'})
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],9);self.assertEqual(len(data['profile_versions']),5)
+        self.assertEqual(data['format_version'],10);self.assertEqual(len(data['profile_versions']),5)
         self.assertNotIn('encrypted_key',json.dumps(data))
         db=sqlite3.connect(self.service.backup()['path'])
         try:self.assertEqual(db.execute('SELECT count(*) FROM profile_heads').fetchone()[0],4)

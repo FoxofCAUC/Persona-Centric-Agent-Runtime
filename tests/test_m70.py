@@ -149,7 +149,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
     async def test_export_and_reinitialization(self):
         r=self.accept('引用',reference={'kind':'turn','id':'missing'});await self.engine.wait();self.store.initialize()
         value=json.loads(__import__('pathlib').Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],9);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
+        self.assertEqual(value['format_version'],10);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
 
     async def test_draft_dedup_includes_reference(self):
         journal=SubmissionJournal(self.paths,'desktop');p={'channel':'desktop','persona_id':self.pid,'text':'same','request_id':'one','reference':{'kind':'event','id':'A'}}
@@ -254,18 +254,24 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
     async def test_schema10_failure_rolls_back_new_tables_and_version(self):
         from contextlib import closing
         with closing(sqlite3.connect(self.store.path)) as conn:
+            from persona_runtime.schema_m73 import TABLES13
+            for trigger, in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
+                conn.execute('DROP TRIGGER "'+trigger+'"')
+            for table in reversed(TABLES13):conn.execute('DROP TABLE "'+table+'"')
+            conn.execute('ALTER TABLE summaries DROP COLUMN source_refs_json')
             conn.executescript('DROP TABLE context_manifests; ALTER TABLE turns DROP COLUMN context_policy_snapshot; DROP TABLE reference_checks; DROP TABLE input_references; DROP INDEX raw_platform_reference; DROP INDEX sent_platform_reference; PRAGMA user_version=10;');conn.commit()
         with patch('persona_runtime.storage.SCHEMA11','CREATE TABLE partial_m70(x); INSERT INTO table_missing VALUES (1);'):
             with self.assertRaises(sqlite3.Error):self.store.initialize()
         with closing(sqlite3.connect(self.store.path)) as conn:
             self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],10)
             self.assertFalse(conn.execute("SELECT 1 FROM sqlite_master WHERE name='partial_m70'").fetchone())
-        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],12)
+        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],13)
 
     async def test_legacy_standalone_event_audit_reports_unknown_scope_without_fabrication(self):
-        session=self.service.create_session();eid=identifier()
+        session={'id':identifier()};eid=identifier()
         from persona_runtime.models import LOCAL_USER_ID,timestamp
         with self.store.connection(write=True) as conn:
+            conn.execute('INSERT INTO sessions VALUES(?,?,?,?,?)',(session['id'],self.pid,LOCAL_USER_ID,'private',timestamp()))
             conn.execute('INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES (?,?,?,?,?,?,?)',(eid,session['id'],self.pid,LOCAL_USER_ID,'user','旧规范化原文',timestamp()))
         api=ArchiveService(self.store);args={'persona_id':self.pid,'channel':'desktop','target':{'kind':'event','id':eid}}
         self.assertEqual(api.get(**args)['status'],'not_found')

@@ -35,6 +35,11 @@ def create_app(paths, client=None):
     ingress.recover()
     organization = OrganizationEngine(store, config, engine.client, engine)
     organization.recover()
+    from .sessions import SessionService
+    from .topics import TopicService
+    from .session_organization import SessionOrganization
+    sessions=SessionService(store);sessions.restart_observation()
+    topics=TopicService(store);session_organization=SessionOrganization(organization)
     profiles=ProfileService(store)
     characters=CharacterService(store)
     from .archive import ArchiveService
@@ -74,6 +79,7 @@ def create_app(paths, client=None):
     app = web.Application(middlewares=[guard], client_max_size=256*1024)
     app["engine"], app["config"], app["store"] = engine, config, store
     app["organization"] = organization
+    app["sessions"] = sessions
     app["ingress"] = ingress
     app["stop"] = asyncio.Event()
 
@@ -95,7 +101,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.7.2.dev1", "capabilities":["cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.7.3.dev1", "capabilities":["session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -188,7 +194,7 @@ def create_app(paths, client=None):
         with store.connection() as conn:
             for row in conn.execute("SELECT t.id FROM turns t JOIN deliveries d ON d.turn_id=t.id "
                                     "WHERE t.status='completed' AND d.state='pending' "
-                                    "AND NOT EXISTS (SELECT 1 FROM reply_delivery_parts p WHERE p.turn_id=t.id) ORDER BY t.rowid LIMIT 100"):
+                                    "AND NOT EXISTS (SELECT 1 FROM reply_delivery_parts p WHERE p.turn_id=t.id) AND NOT EXISTS(SELECT 1 FROM legacy_delivery_dispositions x WHERE x.turn_id=t.id) ORDER BY t.rowid LIMIT 100"):
                 turn = engine._view(conn, row[0])
                 if turn["origin"] == {"sender": cfg["owner_qq"], "bot": cfg["bot_qq"]}:
                     rows.append(turn)
@@ -317,6 +323,21 @@ def create_app(paths, client=None):
                     journal.forget(payload["request_id"])
                 checked.append(row | {"turn": turn})
             return web.json_response(checked)
+        if action.startswith('session.') and action not in ('session.select',):
+            names={'current':sessions.current,'list':sessions.list,'show':sessions.show,'seal':sessions.seal,
+                   'reopen':sessions.reopen,'package':sessions.package,'replay':sessions.replay,'triggers':sessions.triggers,
+                   'delivery.abandon':sessions.abandon_delivery,'organization.preview':session_organization.preview,
+                   'organization.submit':session_organization.submit}
+            name=action[len('session.'):]
+            # Old M1/M4 reads keep their response; explicit scope selects lifecycle DTOs.
+            if name in names and (name not in ('list','show') or 'persona_id' in args):
+                if any(k.startswith('_') for k in args):raise RuntimeErrorBase('invalid_session_field')
+                return web.json_response(await asyncio.to_thread(names[name],**args))
+        if action.startswith(('topic.','thread.')):
+            kind,name=action.split('.',1)
+            if name=='link' and kind=='thread':return web.json_response(await asyncio.to_thread(topics.link,**args))
+            if name in ('list','show','create','update'):
+                return web.json_response(await asyncio.to_thread(getattr(topics,name),kind=kind,**args))
         handlers = {
             **{"archive."+name:getattr(archive,name) for name in ("list","get","resolve","preview")},
             'quota.current': lambda: QuotaService(store, config).current(),
@@ -397,12 +418,17 @@ def create_app(paths, client=None):
     app.router.add_post("/v1/control/{operation}", control)
 
     async def startup(_):
+        app["session_worker"] = asyncio.create_task(sessions.worker())
         app["organization_worker"] = asyncio.create_task(organization.worker())
         app["ingress_worker"] = asyncio.create_task(ingress.worker())
     app.on_startup.append(startup)
 
     async def cleanup(_):
         engine.draining = True
+        session_worker=app.get("session_worker")
+        if session_worker:
+            session_worker.cancel()
+            await asyncio.gather(session_worker,return_exceptions=True)
         ingress_worker=app.get("ingress_worker")
         if ingress_worker:
             ingress_worker.cancel()
@@ -422,6 +448,7 @@ def pending_deliveries(store, delivery=None):
         rows=[dict(row) for row in conn.execute(
             "SELECT d.turn_id,d.state,t.persona_id,t.session_id,t.status FROM deliveries d "
             "JOIN turns t ON t.id=d.turn_id WHERE d.state!='sent' "
+            "AND NOT EXISTS (SELECT 1 FROM legacy_delivery_dispositions x WHERE x.turn_id=t.id) "
             "AND NOT EXISTS (SELECT 1 FROM reply_delivery_parts p WHERE p.turn_id=t.id) ORDER BY d.updated_at DESC")]
         if delivery:
             for stream in delivery.pending():

@@ -153,7 +153,7 @@ class CognitiveService:
             if not row or row['channel']!=channel and not (row['mode']=='test' and channel=='desktop'):raise RuntimeErrorBase('context_unavailable')
             if channel=='qq':
                 events=json.loads(row['payload_json']).get('events',[])
-                if not events or any(read_exact(conn,selected,{'kind':'event','id':e['id']})['status']!='found' for e in events):raise RuntimeErrorBase('context_unavailable')
+                if not events or any(read_exact(conn,selected,{'kind':e.get('kind','event'),'id':e['id']})['status']!='found' for e in events):raise RuntimeErrorBase('context_unavailable')
         return dict(row)
 
     def preview(self,persona_id,channel,task_type='dialogue',turn_id=None,task_id=None,bot='',peer=''):
@@ -174,7 +174,8 @@ class CognitiveService:
             from .organization import OrganizationEngine
             payload=json.loads(owner['payload_json']);messages=OrganizationEngine.messages(payload)
             with self.store.connection() as conn:
-                valid=owner['mode']=='test' or payload.get('guard')==OrganizationEngine.guard(conn,persona_id,owner['session_id'])
+                from .session_organization import valid as source_valid
+                valid=owner['mode']=='test' or (payload.get('guard')==OrganizationEngine.guard(conn,persona_id,owner['session_id']) and source_valid(conn,payload))
             manifest=ReflectionBuilder.build(owner,payload,messages)|{'task_type':task_type,'persisted':False}
             if not valid:manifest['missing_data'].append('organization_source_changed')
             return {'status':'ok' if valid else 'not_ready','manifest':manifest,'creates_request':False}

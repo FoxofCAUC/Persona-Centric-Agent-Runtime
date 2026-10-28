@@ -89,7 +89,9 @@ class Acceptance:
                 if 'R04' not in self.state['calls']:
                     self.use(b);self.send('R04','我之前说过的虚构青禾书店预算是多少？请只据你可用的资料回答，没有资料不要猜。',self.session());self.use(a)
                 if 'R05' not in self.state['calls']:
-                    self.send('R05','请根据明确引用的完整回合，说明虚构远山书店的预算与偏好颜色。',self.state['long_session'],{'kind':'event','id':'m72-real-outside-e3'})
+                    # M7.3 seals the previous session when a fresh one is selected.
+                    # Explicit references still recover that source from a new target.
+                    self.send('R05','请根据明确引用的完整回合，说明虚构远山书店的预算与偏好颜色。',self.session(),{'kind':'event','id':'m72-real-outside-e3'})
                 if 'R06' not in self.state['calls']:
                     from tests.m71_fixtures import seed_turn
                     sid=self.session()

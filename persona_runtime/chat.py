@@ -112,34 +112,26 @@ class ChatEngine:
         DeliveryService(self.store).recover()
 
     @staticmethod
-    def _session(conn, persona_id, channel, session_id=None, fresh=False):
-        if session_id:
-            RuntimeService._owned(conn, "sessions", session_id, persona_id)
-            other = conn.execute("SELECT channel FROM channel_sessions WHERE session_id=? AND channel!=?",
-                                 (session_id, channel)).fetchone()
-            historic_channel = conn.execute("SELECT channel FROM turns WHERE session_id=? AND channel!=? LIMIT 1",
-                                              (session_id, channel)).fetchone()
-            if other or historic_channel:
-                raise RuntimeErrorBase("Session belongs to a different channel")
-        else:
-            row = conn.execute("SELECT session_id FROM channel_sessions WHERE persona_id=? AND channel=?",
-                               (persona_id, channel)).fetchone()
-            session_id = row[0] if row and not fresh else None
-        if not session_id:
-            session_id = identifier()
-            conn.execute("INSERT INTO sessions VALUES (?, ?, ?, 'private', ?)",
-                         (session_id, persona_id, LOCAL_USER_ID, timestamp()))
-        conn.execute("INSERT INTO channel_sessions VALUES (?, ?, ?, ?) ON CONFLICT(persona_id,channel) "
-                     "DO UPDATE SET session_id=excluded.session_id", (persona_id, channel, LOCAL_USER_ID, session_id))
-        return session_id
+    def _session(conn, persona_id, channel, session_id=None, fresh=False, origin=None):
+        from .sessions import select
+        if fresh:
+            raise RuntimeErrorBase('use_session_service_for_new_session')
+        return select(conn,persona_id,channel,session_id,origin)
 
     def session(self, channel="desktop", session_id=None, fresh=False):
-        if channel not in ("desktop", "qq"):
-            raise RuntimeErrorBase("Unsupported channel")
+        from .sessions import SessionService
+        if channel not in ('desktop','qq'):raise RuntimeErrorBase('Unsupported channel')
+        cfg=self.config.load();origin={'bot':cfg['bot_qq'],'sender':cfg['owner_qq']} if channel=='qq' else None
+        with self.store.connection() as conn:pid=self.service._persona(conn)['id']
+        service=SessionService(self.store)
+        if fresh:
+            current=service.current(pid,channel,(origin or {}).get('bot',''),(origin or {}).get('sender',''))
+            if current['session_id']:
+                result=service.seal(current['session_id'],pid,current['revision'],identifier(),channel,(origin or {}).get('bot',''),(origin or {}).get('sender',''),reason='new_session')
+                if result['state']!='sealed':raise RuntimeErrorBase('session_has_pending_work')
+            session_id=None
         with self.store.connection(write=True) as conn:
-            persona_id = self.service._persona(conn)["id"]
-            return {"session_id": self._session(conn, persona_id, channel, session_id, fresh),
-                    "persona_id": persona_id, "channel": channel}
+            return {'session_id':self._session(conn,pid,channel,session_id,origin=origin),'persona_id':pid,'channel':channel}
 
     def desktop_sessions(self):
         with self.store.connection() as conn:
@@ -177,7 +169,7 @@ class ChatEngine:
             if waiting >= 10:
                 raise RuntimeErrorBase("queue_full")
             if not test:
-                session_id = self._session(conn, persona_id, channel, session_id)
+                session_id = self._session(conn, persona_id, channel, session_id, origin=origin or ({'bot':self.config.load()['bot_qq'],'sender':self.config.load()['owner_qq']} if channel=='qq' else None))
             event_id = None if test else identifier()
             if event_id:
                 conn.execute("INSERT INTO events (id,session_id,persona_id,user_id,role,text,created_at) "
@@ -387,6 +379,8 @@ class ChatEngine:
             turn = self._view(conn, turn_id)
             if turn["status"] not in ("failed", "interrupted"):
                 return turn
+            from .sessions import assert_writable
+            assert_writable(conn,turn["session_id"])
             waiting = conn.execute("SELECT count(*) FROM turns WHERE persona_id IS ? AND status='queued'",
                                    (turn["persona_id"],)).fetchone()[0]
             if waiting >= 10:
@@ -451,9 +445,10 @@ class ChatEngine:
                     "SELECT 1 FROM turns t LEFT JOIN deliveries d ON d.turn_id=t.id "
                     "WHERE t.channel='qq' AND t.origin_json=? "
                     "AND t.rowid < (SELECT rowid FROM turns WHERE id=?) "
-                    "AND (t.status IN ('queued','running') OR (t.status='completed' AND d.state IN ('pending','sending'))) LIMIT 1",
+                    "AND NOT EXISTS(SELECT 1 FROM legacy_delivery_dispositions x WHERE x.turn_id=t.id) AND (t.status IN ('queued','running') OR (t.status='completed' AND d.state IN ('pending','sending'))) LIMIT 1",
                     (origin, turn_id)).fetchone()
-                allowed = state == "pending" and not previous
+                abandoned = conn.execute("SELECT 1 FROM legacy_delivery_dispositions WHERE turn_id=?",(turn_id,)).fetchone()
+                allowed = state == "pending" and not previous and not abandoned
                 if allowed:
                     conn.execute("UPDATE deliveries SET state='sending',updated_at=? WHERE turn_id=?", (timestamp(), turn_id))
                     record_progress(conn, turn_id, "delivery_started")

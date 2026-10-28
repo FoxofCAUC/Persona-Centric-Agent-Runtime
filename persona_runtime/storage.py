@@ -16,15 +16,16 @@ from .schema_m63 import SCHEMA10, TABLES10, refresh_development_scope_trigger
 
 from .schema_m70 import SCHEMA11, TABLES11
 from .schema_m72 import SCHEMA12, TABLES12
+from .schema_m73 import SCHEMA13, TABLES13
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
 M2_TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
 M3_TABLES = M2_TABLES + ("request_activity", "service_notices")
 M4_TABLES = M3_TABLES + TABLES5
 M5_TABLES = M4_TABLES + TABLES6
 M6_TABLES = M5_TABLES + TABLES7
-TABLES = M6_TABLES + TABLES8 + TABLES9 + TABLES10 + TABLES11 + TABLES12
+TABLES = M6_TABLES + TABLES8 + TABLES9 + TABLES10 + TABLES11 + TABLES12 + TABLES13
 
 SCHEMA = """
 CREATE TABLE users (
@@ -187,11 +188,12 @@ class Store:
         conn = self._connect(create=True)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11):
+            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not set(M1_TABLES).issubset(tables):
                     raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
                 prefix = "before-m72" if version == 11 else "before-m70" if version == 10 else "before-m63" if version == 9 else "before-m62" if version == 8 else "before-m61" if version == 7 else "before-m6" if version == 6 else ("before-m5" if version == 5 else ("before-m4" if version == 4 else ("before-m3" if version == 3 else "before-m2")))
+                prefix = 'before-m73' if version == 12 else prefix
                 backup = self.paths.home / "backups" / f"{prefix}-{uuid4()}.sqlite3"
                 target = sqlite3.connect(backup)
                 try:
@@ -240,7 +242,9 @@ class Store:
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif version == 10 and set(M6_TABLES + TABLES8 + TABLES9 + TABLES10).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            elif version == 11 and set(TABLES[:-len(TABLES12)]).issubset(tables):
+            elif version == 11 and set(TABLES[:-len(TABLES12)-len(TABLES13)]).issubset(tables):
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            elif version == 12 and set(TABLES[:-len(TABLES13)]).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
@@ -264,6 +268,10 @@ class Store:
                 execute_schema(conn, SCHEMA12)
                 from .context_policy import initialize
                 initialize(conn)
+            if version < 13:
+                execute_schema(conn, SCHEMA13)
+                from .schema_m73 import initialize as initialize_sessions
+                initialize_sessions(conn)
             refresh_development_scope_trigger(conn)
             self._check(conn)
             conn.commit()

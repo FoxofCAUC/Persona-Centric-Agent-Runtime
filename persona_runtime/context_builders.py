@@ -180,12 +180,12 @@ class ReflectionBuilder:
     """M4 organization adapter, not autonomous reflection or session sealing."""
     @staticmethod
     def build(task,payload,messages):
-        evidence=[{'kind':'event','id':e['id'],'hash':fingerprint(e['text'])} for e in payload.get('events',[])]
+        evidence=[{'kind':e.get('kind','event'),'id':e['id'],'hash':fingerprint(e['text'])} for e in payload.get('events',[])]
         previous=payload.get('previous')
         refs=([{'kind':'summary','id':previous['id'],'revision':previous['revision']}] if previous else [])
         refs += [{'kind':'memory','id':m['id'],'revision':m['revision']} for m in payload.get('existing_memories',[])]
         return {'purpose':'provider_probe' if task['mode']=='test' else 'memory_organization','evidence_refs':evidence,
-                'included_state_refs':refs,'missing_data':['session_sealing_not_implemented','belief_state_not_implemented'],
+                'included_state_refs':refs,'missing_data':['belief_state_not_implemented'], 'session_package_id':payload.get('package_id'),
                 'hard_constraints':['source_guard','exact_source_quotes','existing_M4_approval_policy'],
                 'soft_tendencies':[],'input_snapshot_hash':fingerprint(messages),'builder_version':BUILDER_VERSION}
 
