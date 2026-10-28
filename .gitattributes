@@ -1,3 +1,4 @@
-# Preserve the user-provided design baseline byte-for-byte, including its
-# intentional Markdown hard line breaks.
+# Preserve guidance line endings and intentional Markdown hard line breaks.
+# The archived v1.0 baseline must retain its recorded byte hash across checkouts.
 docs/pcar_project_plan_zh.md -text whitespace=-blank-at-eol
+docs/archive/pcar-project-plan-v1.0-20261029/pcar_project_plan_zh.md -text whitespace=-blank-at-eol

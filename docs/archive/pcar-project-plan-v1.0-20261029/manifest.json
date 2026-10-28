@@ -1,0 +1,9 @@
+{
+  "archived_on": "2026-10-29",
+  "source_path": "docs/pcar_project_plan_zh.md",
+  "source_commit": "33eccf23698d76e5a22b980ec29888b256d01a66",
+  "version": "1.0",
+  "bytes": 46404,
+  "sha256": "8c6ed72526a6e41bf4cb4b65636a1009d7315800fce2ba1bf264af199ae41b03",
+  "reason": "Preserve original user guidance before unattended-companion-first revision; new revision requires user review before commit/push."
+}
