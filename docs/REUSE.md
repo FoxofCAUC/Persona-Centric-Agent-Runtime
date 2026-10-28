@@ -1,5 +1,7 @@
 # 本地代码复用记录
 
+PCAR 于2026-10-28按项目所有者决定采用 [MIT 许可证](../LICENSE)。以下复用来源记录继续保留；第三方组件及资源的原有许可不由本项目声明替代。
+
 来源：用户授权复用的 `D:\AIPoweredTRPGinQQ\AIPoweredTRPG\integrations\manager`（面板 1.2）。
 
 - `manager_tasks.py` → `persona_runtime/reused/tasks.py`：后台任务、资源互斥和 UI 事件队列。
