@@ -2,3 +2,6 @@
 # The archived v1.0 baseline must retain its recorded byte hash across checkouts.
 docs/pcar_project_plan_zh.md -text whitespace=-blank-at-eol
 docs/archive/pcar-project-plan-v1.0-20261029/pcar_project_plan_zh.md -text whitespace=-blank-at-eol
+
+# Preserve the user-supplied M7.5 plan and its recorded hash.
+docs/PCAR-M7.5-角色语义激活开发指导与施工计划.md -text whitespace=-blank-at-eol
