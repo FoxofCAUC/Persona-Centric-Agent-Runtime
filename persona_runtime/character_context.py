@@ -7,7 +7,7 @@ ALIASES = {
     'appearance.height_cm': ('身高','多高'), 'appearance.weight_kg': ('体重','多重'),
     'appearance.blood_type': ('血型',), 'appearance.hair_color': ('发色','头发颜色'),
     'appearance.eye_color': ('瞳色','眼睛颜色'), 'appearance.description': ('外貌','长什么样'),
-    'age.birthday': ('生日',), 'age.years': ('几岁','年龄','多大了'),
+    'age.birthday': ('生日',), 'age.years': ('几岁','年龄','多大'),
     'biography.occupation': ('职业','做什么工作'), 'biography.hometown': ('家乡','哪里人'),
     'biography.education': ('学历','教育经历'), 'biography.family': ('家人','家庭'),
     'biography.relationships': ('背景关系',), 'identity.species': ('物种',),

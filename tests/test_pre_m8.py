@@ -38,6 +38,21 @@ CASES=[
 
 
 class PlainTests(unittest.TestCase):
+    def test_colloquial_age_uses_calendar_fact_in_both_selectors(self):
+        from datetime import date
+        from unittest.mock import patch
+        from persona_runtime.character_context import select_context
+        from persona_runtime.character_retrieval import assemble
+        data=empty_character()
+        data['age'].update(policy='calendar',birth_date='2000-06-02',birthday='06-02')
+        version={'id':'artificial-version','revision':1,'data':data}
+        with patch('persona_runtime.character.today_shanghai',return_value=date(2025,6,2)):
+            for question in ('你多大呀？','你今年多大啦？','你现在多大了？'):
+                for result in (select_context(version,question),assemble(version,[question],{'lore':[],'example':[]},2)):
+                    self.assertIn('age.years',result['fact_paths'])
+                    fact=next(p for p in result['parts'] if p['id']=='age.years')
+                    self.assertEqual(json.loads(fact['text'])['data']['value'],25)
+
     def test_private_workbench_model_factory_precedes_activation(self):
         from types import SimpleNamespace
         from unittest.mock import patch
