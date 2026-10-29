@@ -143,7 +143,9 @@ class CharacterRuntime:
                 data=json.loads(row['policy_json'])
                 policy=read(data.get('context',{}))
                 if policy['mode'] in ('hybrid','hybrid_llm'):needs.append((row['persona_id'],json.loads(row['character_snapshot'])['id'],policy))
-        return [self.enqueue(*n) for n in needs]
+        with self.store.connection() as conn:
+            deleted={r[0] for r in conn.execute('SELECT persona_id FROM persona_lifecycle WHERE deleted_at IS NOT NULL')}
+        return [self.enqueue(*n) for n in needs if n[0] not in deleted]
 
     def notify(self,persona_id):
         try:

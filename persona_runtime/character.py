@@ -219,6 +219,8 @@ class CharacterService:
             raise RuntimeErrorBase('character_selection_conflict')
 
     def _version(self, conn, persona_id, version_id=None):
+        from .persona_management import active
+        active(conn,persona_id)
         self._check(conn,persona_id)
         if version_id is None:
             return head(conn,persona_id)

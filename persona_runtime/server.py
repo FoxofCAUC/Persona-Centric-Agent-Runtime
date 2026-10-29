@@ -22,6 +22,7 @@ from .ingress import IngressService
 from .delivery import DeliveryService
 from .reply_service import ReplyService
 from .quotas import QuotaService
+from .persona_management import PersonaManagement
 
 
 def create_app(paths, client=None):
@@ -102,7 +103,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.7.5.dev3", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "capabilities":["character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.7.5.dev4", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "capabilities":["character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -368,6 +369,8 @@ def create_app(paths, client=None):
             "persona.create": lambda spec=None: service.create_persona(PersonaSpec.from_dict(spec) if spec is not None else generic_persona()),
             "persona.list": service.list_personas, "persona.show": service.show_persona,
             "persona.use": service.use_persona, "relationship.set": service.set_relationship,
+            **{"persona."+name:getattr(PersonaManagement(store),name)
+               for name in ('inspect','clone','trash','restore')},
             "relationship.show": service.show_relationship, "session.list": service.list_sessions,
             "session.show": service.show_session, "session.select": engine.session,
             "event.append": service.append_event,

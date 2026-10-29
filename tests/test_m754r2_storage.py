@@ -22,7 +22,7 @@ class StorageTests(unittest.TestCase):
                     db.execute(f'PRAGMA user_version={version}')
                 store.initialize();store.initialize()
                 with store.connection() as db:
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],15)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],16)
                     self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
                     self.assertEqual(db.execute('SELECT count(*) FROM character_selection_attempts').fetchone()[0],0)
 

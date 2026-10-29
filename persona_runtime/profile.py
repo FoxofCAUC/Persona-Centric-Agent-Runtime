@@ -13,6 +13,8 @@ def encode(value):
 
 
 def check_persona(conn, persona_id):
+    from .persona_management import active
+    active(conn,persona_id)
     if not conn.execute('SELECT 1 FROM personas WHERE id=?', (persona_id,)).fetchone():
         raise RuntimeErrorBase('Persona not found')
 

@@ -306,7 +306,7 @@ class SessionService:
 
     def tick(self, *, _session_ids=None, _clock_evidence=None):
         with self.store.connection() as conn:
-            rows=[dict(r) for r in conn.execute("SELECT * FROM session_lifecycle WHERE state='active'")]
+            rows=[dict(r) for r in conn.execute("SELECT s.* FROM session_lifecycle s WHERE s.state='active' AND NOT EXISTS(SELECT 1 FROM persona_lifecycle p WHERE p.persona_id=s.persona_id AND p.deleted_at IS NOT NULL)")]
         result=[]
         for row in rows:
             if _session_ids is not None and row['session_id'] not in _session_ids:continue

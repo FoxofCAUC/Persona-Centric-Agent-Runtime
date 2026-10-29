@@ -158,7 +158,7 @@ class CharacterTests(unittest.TestCase):
             self.assertEqual(Store.current(conn),self.pid)
         self.assertEqual(self.characters.fact(other['id'],'appearance.height_cm')['value'],162)
         full=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(full['format_version'],12);self.assertIn('character_versions',full)
+        self.assertEqual(full['format_version'],13);self.assertIn('character_versions',full)
 
     def test_migrations_one_through_six_preserve_old_columns(self):
         schemas=[SCHEMA,SCHEMA2,SCHEMA3,SCHEMA4,SCHEMA5,SCHEMA6]
@@ -179,7 +179,7 @@ class CharacterTests(unittest.TestCase):
                 store.initialize();store.initialize()
                 with store.connection() as conn:
                     self.assertEqual([tuple(r) for r in conn.execute('SELECT * FROM personas')],[tuple(r) for r in before])
-                    self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],15)
+                    self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],16)
                     self.assertEqual(conn.execute('PRAGMA integrity_check').fetchone()[0],'ok')
                     self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
                     self.assertEqual(conn.execute('SELECT actor FROM character_versions').fetchone()[0],'migration')

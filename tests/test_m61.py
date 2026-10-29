@@ -142,7 +142,7 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.fake.messages,[])
     async def test_export_native_character_separation(self):
         self.natural();self.accept();full=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(full['format_version'],12);self.assertEqual(len(full['ingress_receipts']),1);self.assertNotIn('model_snapshot',full['input_batches'][0])
+        self.assertEqual(full['format_version'],13);self.assertEqual(len(full['ingress_receipts']),1);self.assertNotIn('model_snapshot',full['input_batches'][0])
     async def test_v1_v2_no_replay(self):
         self.accept(rid='v2')
         with self.assertRaisesRegex(RuntimeErrorBase,'v2_submission_exists'):await self.engine.submit('desktop','第一条','v2')
@@ -215,7 +215,7 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(c.execute("SELECT name FROM sqlite_master WHERE name='ingress_receipts'").fetchone());c.close()
         store.initialize();store.initialize()
         with store.connection() as c:
-            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],15);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],16);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(c.execute('SELECT count(*) FROM ingress_receipts').fetchone()[0],0)
 
     async def test_server_stop_rejects_unresolved_and_no_bridge_management(self):

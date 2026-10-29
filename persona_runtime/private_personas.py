@@ -91,7 +91,24 @@ class PrivatePersonas:
         self.save_record(record);return record
 
     def protected(self,persona_id):
-        return any(r.get('persona_id')==persona_id and persona_id for r in self.load()['records'])
+        return bool(persona_id and self.record_for_persona(persona_id))
+
+    def record_for_persona(self,persona_id):
+        records=self.load()['records']
+        direct=next((r for r in records if r.get('persona_id')==persona_id and persona_id),None)
+        if direct:return direct
+        from .storage import Store
+        import sqlite3
+        from contextlib import closing
+        path=Store(self.paths).path
+        if not path.exists():return None
+        with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=.2)) as db:
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='persona_lifecycle'").fetchone():return None
+            row=db.execute('SELECT privacy_root FROM persona_lifecycle WHERE persona_id=?',(persona_id,)).fetchone()
+        if not row or not row[0]:return None
+        record=next((r for r in records if r.get('persona_id')==row[0]),None)
+        if not record:raise RuntimeErrorBase('private_registry_unavailable')
+        return record
 
     def assert_acceptance(self,persona_id):
         if self.protected(persona_id):raise RuntimeErrorBase('private_persona_acceptance_forbidden')
@@ -124,11 +141,12 @@ class PrivatePersonas:
         record['state']='ready';self.save_record(record)
         return record
 
-    def check(self,store,private_id):
+    def check(self,store,private_id,persona_id=None):
         from .service import RuntimeService
         from .character import CharacterService
         from .profile import head
-        record=self.record(private_id);package=self.package(record);pid=record.get('persona_id')
+        record=self.record(private_id);package=self.package(record);pid=persona_id or record.get('persona_id')
+        if persona_id and self.record_for_persona(persona_id)!=record:raise RuntimeErrorBase('private_scope_mismatch')
         archive=safe(self.root/private_id/'source-archive.md',self.root)
         if sha(archive.read_bytes())!=record['archive_sha256']:raise RuntimeErrorBase('private_original_changed')
         if not pid:raise RuntimeErrorBase('private_persona_not_imported')
@@ -186,7 +204,7 @@ def guard_acceptance_write(store,persona_id):
 
 
 def guard_cloud_dispatch(store,persona_id,kind,model):
-    policy=next((r for r in PrivatePersonas(store.paths).load()['records'] if r.get('persona_id')==persona_id and persona_id),None)
+    policy=PrivatePersonas(store.paths).record_for_persona(persona_id)
     copied=store.paths.home/'runtime/private-copy-policy.json'
     if policy is None and copied.exists():
         candidate=json.loads(copied.read_text(encoding='utf-8'))
@@ -268,7 +286,7 @@ def install_hook(paths,repo):
     if hook.exists() and marker not in hook.read_text(encoding='utf-8'):
         previous=gitdir/('pre-push.before-private-'+identifier());shutil.copy2(hook,previous)
     q=lambda x:shlex.quote(str(x).replace('\\','/'))
-    code='#!/bin/sh\n'+marker+'\ninput=$(cat)\nprintf "%s\\n" "$input" | '+q(sys.executable)+' '+q(repo/'scripts/private_publication_guard.py')+' --repo '+q(repo)+' --home '+q(paths.home)+' --outgoing\nstatus=$?\n[ "$status" -eq 0 ] || exit "$status"\n'
+    code='#!/bin/sh\n'+marker+'\ninput=$(cat)\nprintf "%s\\n" "$input" | '+q(sys.executable)+' -B '+q(repo/'scripts/private_publication_guard.py')+' --repo '+q(repo)+' --home '+q(paths.home)+' --outgoing\nstatus=$?\n[ "$status" -eq 0 ] || exit "$status"\n'
     if previous:code+='printf "%s\\n" "$input" | '+q(previous)+' "$@"\n'
     hook.write_text(code,encoding='utf-8');hook.chmod(0o755)
     atomic_json(meta,{'previous':str(previous) if previous else None})

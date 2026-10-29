@@ -20,6 +20,8 @@ class RuntimeService:
         row = conn.execute("SELECT * FROM personas WHERE id=?", (persona_id,)).fetchone()
         if not row:
             raise RuntimeErrorBase("Persona not found")
+        from .persona_management import active
+        active(conn,persona_id)
         result = dict(row)
         result["spec"] = json.loads(result.pop("spec_json"))
         return result
@@ -48,13 +50,15 @@ class RuntimeService:
             initialize_context_policies(conn,persona_id)
             return self._persona(conn, persona_id)
 
-    def list_personas(self) -> list[dict]:
+    def list_personas(self,include_deleted=False) -> list[dict]:
+        if type(include_deleted) is not bool:raise RuntimeErrorBase('invalid_include_deleted')
         from .private_personas import PrivatePersonas
         private=PrivatePersonas(self.store.paths)
         with self.store.connection() as conn:
             current = Store.current(conn, required=False)
-            return [dict(row) | {"selected": row["id"] == current,'private_protected':private.protected(row['id'])} for row in conn.execute(
-                "SELECT id, name, format_version, created_at FROM personas ORDER BY created_at, id")]
+            return [dict(row) | {"selected": row["id"] == current,'deleted':bool(row['deleted_at']),
+                    'private_protected':private.protected(row['id'])} for row in conn.execute(
+                "SELECT p.id,p.name,p.format_version,p.created_at,l.copy_of,l.deleted_at,coalesce(l.revision,0) AS revision FROM personas p LEFT JOIN persona_lifecycle l ON l.persona_id=p.id WHERE (? OR l.deleted_at IS NULL) ORDER BY p.created_at,p.id",(include_deleted,))]
 
     def show_persona(self, persona_id: str | None = None) -> dict:
         with self.store.connection() as conn:
@@ -222,8 +226,10 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 12, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 13, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
+            payload['persona_lifecycle']=[dict(r) for r in conn.execute('SELECT * FROM persona_lifecycle WHERE persona_id=?',(persona['id'],))]
+            payload['persona_operations']=[dict(r) for r in conn.execute("SELECT * FROM persona_operations WHERE json_extract(result_json,'$.id')=?",(persona['id'],))]
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
                 payload[table] = [dict(r) for r in conn.execute(

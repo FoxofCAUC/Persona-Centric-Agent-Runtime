@@ -245,7 +245,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         t,s=await self.make();self.assertEqual(self.fake.calls,1);self.assertTrue(t['reply_batch']['fallback_reason'])
         self.assertEqual(len(s['parts']),1);self.assertEqual(t['usage']['total_tokens'],3)
         payload=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(payload['format_version'],12);self.assertIn('wait_ms',payload['reply_segments'][0])
+        self.assertEqual(payload['format_version'],13);self.assertIn('wait_ms',payload['reply_segments'][0])
         self.assertNotIn('claim_token',payload['reply_delivery_parts'][0])
 
     async def test_unsafe_batch_fails_before_any_send(self):

@@ -417,6 +417,8 @@ class ChatEngine:
             raise RuntimeErrorBase("service_draining")
         with self.store.connection(write=True) as conn:
             turn = self._view(conn, turn_id)
+            from .persona_management import active
+            if turn['persona_id']:active(conn,turn['persona_id'])
             if turn["status"] not in ("failed", "interrupted"):
                 return turn
             from .sessions import assert_writable

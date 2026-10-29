@@ -181,7 +181,7 @@ class M63Tests(unittest.IsolatedAsyncioTestCase):
         part=self.stream["parts"][0];claim=self.claim(part)
         exported=self.service.export_persona()
         payload=Path(exported["path"]).read_text(encoding="utf-8")
-        self.assertIn('"format_version": 12',payload)
+        self.assertIn('"format_version": 13',payload)
         self.assertNotIn(claim["claim_token"],payload)
         self.assertIn('"reply_delivery_parts"',payload)
         self.assertIn('"reply_delivery_attempts"',payload)
@@ -226,7 +226,7 @@ class M63Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_delivery_parts'").fetchone());db.close()
         store.initialize();store.initialize()
-        self.assertEqual(store.status()['schema_version'],15)
+        self.assertEqual(store.status()['schema_version'],16)
         self.assertTrue(list((path.home/'backups').glob('before-m63-*.sqlite3')))
 
     async def test_v2_api_bridge_scope_admin_resolution_and_legacy_rejection(self):

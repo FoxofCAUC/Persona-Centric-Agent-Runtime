@@ -149,7 +149,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
     async def test_export_and_reinitialization(self):
         r=self.accept('引用',reference={'kind':'turn','id':'missing'});await self.engine.wait();self.store.initialize()
         value=json.loads(__import__('pathlib').Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],12);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
+        self.assertEqual(value['format_version'],13);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
 
     async def test_draft_dedup_includes_reference(self):
         journal=SubmissionJournal(self.paths,'desktop');p={'channel':'desktop','persona_id':self.pid,'text':'same','request_id':'one','reference':{'kind':'event','id':'A'}}
@@ -263,6 +263,8 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
             for trigger, in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
                 conn.execute('DROP TRIGGER "'+trigger+'"')
             # Remove the later selector schema before simulating a genuine v10 DB.
+            conn.execute('DROP TABLE persona_operations')
+            conn.execute('DROP TABLE persona_lifecycle')
             conn.execute('DROP TABLE quota_reservations')
             conn.execute('DROP TABLE character_selection_attempts')
             conn.execute('ALTER TABLE turns DROP COLUMN execution_revision')
@@ -276,7 +278,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
         with closing(sqlite3.connect(self.store.path)) as conn:
             self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],10)
             self.assertFalse(conn.execute("SELECT 1 FROM sqlite_master WHERE name='partial_m70'").fetchone())
-        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],15)
+        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],16)
 
     async def test_legacy_standalone_event_audit_reports_unknown_scope_without_fabrication(self):
         session={'id':identifier()};eid=identifier()

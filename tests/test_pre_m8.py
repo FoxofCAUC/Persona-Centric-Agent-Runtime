@@ -177,6 +177,7 @@ class PrivateTests(unittest.TestCase):
         meta=json.loads((hook.parent/'pcar-private-guard.json').read_text())
         self.assertEqual(Path(meta['previous']).read_text(),'#!/bin/sh\nexit 0\n')
         self.assertIn(meta['previous'].replace('\\','/'),hook.read_text())
+        self.assertIn(' -B ',hook.read_text())
 
 
 class DialogueTests(unittest.IsolatedAsyncioTestCase):

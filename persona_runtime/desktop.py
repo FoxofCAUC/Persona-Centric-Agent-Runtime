@@ -118,6 +118,9 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.closed = False
         self.buttons = []
         self.personas = []
+        self.persona_rows = None
+        self.persona_read_sequence = 0
+        self.show_deleted_personas = tk.BooleanVar(value=False)
         self.session_id = None
         self.persona_id = None
         self.chat_version = None
@@ -322,9 +325,14 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         bar = self.bar(parent)
         bar.pack(fill="x")
         for label, action in (("创建通用模板", self.create_template), ("导入人格 JSON", self.import_persona),
+                              ("复制选中人格",lambda:self.manage_selected_persona('clone')),
+                              ("删除到回收站",lambda:self.manage_selected_persona('trash')),
+                              ("恢复选中人格",lambda:self.manage_selected_persona('restore')),
                               ("切换选中人格", self.use_selected_persona), ("查看设定", self.show_persona),
                               ("关系说明", self.edit_relationship),('私有兼容检查',self.check_private_compatibility)):
             self.button(bar, label, action, {"persona"})
+        ttk.Checkbutton(parent,text='显示回收站中的人格',variable=self.show_deleted_personas,
+                        command=self.refresh_personas).pack(anchor='w')
         ttk.Separator(parent).pack(fill="x", pady=14)
         row = ttk.Frame(parent)
         row.pack(fill="x")
@@ -530,21 +538,59 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
 
     def refresh_personas(self):
         epoch = self.view_epoch
+        self.persona_read_sequence += 1
+        sequence=self.persona_read_sequence
+        include_deleted=self.show_deleted_personas.get()
+        previous=self.selected_persona()
         def done(rows):
-            if self.closed or epoch != self.view_epoch:
+            if self.closed or epoch != self.view_epoch or sequence!=self.persona_read_sequence or include_deleted!=self.show_deleted_personas.get():
                 return
-            self.personas = rows
+            self.persona_rows=rows
+            self.personas = [r for r in rows if not r.get('deleted')]
             self.persona_list.delete(0, "end")
             for row in rows:
-                self.persona_list.insert("end", ("● " if row["selected"] else "○ ") + row["name"] + " · " + row["id"][:8]+(' · 个人私有／禁止原体验收' if row.get('private_protected') else ''))
-            self.chat_persona["values"] = [p["name"] + " · " + p["id"][:8] for p in rows]
+                self.persona_list.insert("end", ("● " if row["selected"] else "○ ") + row["name"] + " · " + row["id"][:8]+(' · 副本' if row.get('copy_of') else '')+(' · 已删除' if row.get('deleted') else '')+(' · 个人私有／禁止原体验收' if row.get('private_protected') else ''))
+            if previous:
+                match=next((i for i,r in enumerate(rows) if r['id']==previous['id']),None)
+                if match is not None:self.persona_list.selection_set(match)
+            self.chat_persona["values"] = [p["name"] + " · " + p["id"][:8] for p in self.personas]
             selected = next((p for p in rows if p["selected"]), None)
             # Archive reads need the active identity even before any chat
             # session has been selected. Reading the list creates no session.
             if self.persona_id is None and selected:
                 self.persona_id = selected["id"]
             self.persona_choice.set(selected["name"] + " · " + selected["id"][:8] if selected else "")
-        self.run_task("读取人格", {"persona-read"}, lambda _: self.client.manage("persona.list"), done, quiet=True)
+        self.run_task("读取人格", {"persona-read"}, lambda _: self.client.manage("persona.list",**({'include_deleted':True} if include_deleted else {})), done, quiet=True)
+
+    def manage_selected_persona(self,action):
+        row=self.selected_persona()
+        if not row:return
+        epoch=self.view_epoch;target=row['id']
+        def current():
+            selected=self.selected_persona()
+            return not self.closed and epoch==self.view_epoch and selected and selected['id']==target
+        def ready(value):
+            if not current():return
+            if action=='trash' and value['private_original']:
+                self.notice.set('正式私有人格受到保护，不能删除；请使用独立副本。');return
+            if action=='trash' and value['selected']:
+                self.notice.set('请先切换到另一个人格，再删除当前人格。');return
+            if action=='clone' and value['deleted']:
+                self.notice.set('请先恢复回收站人格，再建立副本。');return
+            if action=='restore' and not value['deleted']:
+                self.notice.set('该人格未被删除，无需恢复。');return
+            descriptions={'clone':'建立独立ID，复制核心、表达和角色资料；不继承聊天、记忆、临时状态或入口政策。私有副本保留原始初始关系及隐私保护，测试仍需独立运行目录。',
+                'trash':'移入回收站并隐藏，历史记录保留，可恢复。未决任务会阻止删除。',
+                'restore':'从回收站恢复原身份及历史，不自动切换当前人格或运行任务。'}
+            if not messagebox.askyesno('确认人格操作',value['name']+' · '+target[:8]+'\n\n'+descriptions[action],default='no'):return
+            args={'persona_id':target,'operation_id':identifier(),'expected_selected':value['current_persona_id']}
+            if action=='clone':args['expected_versions']=value['versions']
+            else:args['expected_revision']=value['revision']
+            def saved(_):
+                self.notice.set({'clone':'副本已建立，当前人格保持不变。','trash':'人格已移入回收站，历史记录保留。','restore':'人格已恢复。'}[action])
+                self.refresh_personas()
+            self.run_task('保存人格操作',{'persona'},lambda _:self.client.manage('persona.'+action,**args),saved)
+        self.run_task('核对选中人格',{'persona-read'},lambda _:self.client.manage('persona.inspect',persona_id=target),ready,error_current=current)
 
     def create_template(self):
         self.run_task("创建模板", {"persona"}, lambda _: self.client.manage("persona.create"), lambda _: self.refresh_personas())
@@ -556,8 +602,8 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
             from .private_personas import PrivatePersonas
             from .storage import Store
             private=PrivatePersonas(self.paths)
-            record=next((r for r in private.load()['records'] if r.get('persona_id')==row['id']),None)
-            return private.check(Store(self.paths),record['id']) if record else {'private':False,'message':'本机未登记为受保护的个人角色。'}
+            record=private.record_for_persona(row['id'])
+            return private.check(Store(self.paths),record['id'],persona_id=row['id']) if record else {'private':False,'message':'本机未登记为受保护的个人角色。'}
         self.run_task('私有角色只读检查',{'persona-read'},read,lambda value:self.show_json('私有兼容检查（零模型调用）',value))
 
     def import_persona(self):
@@ -567,11 +613,14 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
 
     def selected_persona(self):
         selection = self.persona_list.curselection()
-        return self.personas[selection[0]] if selection else None
+        rows=self.persona_rows if self.persona_rows is not None else self.personas
+        return rows[selection[0]] if selection and selection[0]<len(rows) else None
 
     def use_selected_persona(self):
         row = self.selected_persona()
         if row:
+            if row.get('deleted'):
+                self.notice.set('请先恢复该人格，再切换使用。');return
             self.use_persona(row["id"])
 
     def select_persona(self):
