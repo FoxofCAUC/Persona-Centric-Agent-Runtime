@@ -43,6 +43,28 @@ PHASES = {"character_local":"正在本地召回", "character_selection":"正在�
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
 
 
+class ScrollNavigation(ttk.Frame):
+    """A bounded viewport: adding pages never pushes navigation off screen."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.canvas = tk.Canvas(self, width=150, highlightthickness=0,
+                                background='#f4f6f8', yscrollincrement=24)
+        self.scrollbar = ttk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
+        self.scrollbar.pack(side='right', fill='y')
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.pack(side='left', fill='both', expand=True)
+        self.body = ttk.Frame(self.canvas, padding=12)
+        item = self.canvas.create_window((0, 0), window=self.body, anchor='nw')
+        def resized(_):
+            self.canvas.configure(scrollregion=self.canvas.bbox('all'),
+                                  width=max(150, self.body.winfo_reqwidth()))
+        self.body.bind('<Configure>', resized)
+        self.canvas.bind('<Configure>', lambda e: self.canvas.itemconfigure(item, width=e.width))
+
+    def contains(self, widget):
+        return widget is not None and (widget == self or str(widget).startswith(str(self)+'.'))
+
+
 class ScrollPage(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
@@ -203,13 +225,16 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         ttk.Label(header, text="Persona-Centric Agent Runtime (PCAR)", font=("Microsoft YaHei UI", 14, "bold")).pack(side="left")
         shell = ttk.Frame(self)
         shell.pack(fill="both", expand=True)
-        nav = ttk.Frame(shell, padding=12)
-        nav.pack(side="left", fill="y")
+        self.navigation = ScrollNavigation(shell)
+        self.navigation.pack(side="left", fill="y")
+        self.navigation_buttons = {}
         host = ttk.Frame(shell)
         host.pack(side="left", fill="both", expand=True)
         self.pages = {}
         for key, label, builder in self.PAGE_REGISTRY:
-            ttk.Button(nav, text=label, command=lambda page=key: self.show_page(page)).pack(fill="x", pady=5)
+            button = ttk.Button(self.navigation.body, text=label, command=lambda page=key: self.show_page(page))
+            button.pack(fill="x", pady=5)
+            self.navigation_buttons[key] = button
             self.pages[key] = ScrollPage(host)
             getattr(self, builder)(self.pages[key].body)
         self.pages["home"].pack(fill="both", expand=True)
@@ -218,6 +243,11 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
 
     def scroll_page(self, event):
         widget = self.winfo_containing(event.x_root, event.y_root)
+        if self.navigation.contains(widget):
+            if event.delta:
+                units = max(1, int(abs(event.delta)/120))
+                self.navigation.canvas.yview_scroll(-units if event.delta > 0 else units, 'units')
+            return 'break'
         if widget and not isinstance(widget, (tk.Text, ttk.Treeview, ttk.Combobox)):
             self.pages[self.current_page].canvas.yview_scroll(int(-event.delta/120), "units")
 
