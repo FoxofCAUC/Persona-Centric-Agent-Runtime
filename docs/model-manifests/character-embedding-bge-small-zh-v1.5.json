@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "model_id": "BAAI/bge-small-zh-v1.5",
+  "artifact_repository": "Qdrant/bge-small-zh-v1.5",
+  "revision": "46fbe35fd4374a00fee7de77dfddaeb6dd6a2c59",
+  "dimension": 512,
+  "encoding": "plain-no-prefix-l2-f32-v1",
+  "packages": {
+    "fastembed": "0.9.1",
+    "onnxruntime": "1.31.1",
+    "numpy": "2.5.4",
+    "tokenizers": "0.23.3"
+  },
+  "files": {
+    "config.json": "9088751d39abbf86ec3d19ffca92ad62ad19075f7e59712e6c71217fa125d1d3",
+    "model_optimized.onnx": "1294ea4b6331115a353d81f96b85e8c8d7fdcc284453d5b2fab5b016230aad38",
+    "ort_config.json": "97e78d1d21c2eb719e865b018f17915df6a12ed987446eb7f3f3a783a5afb1e1",
+    "special_tokens_map.json": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+    "tokenizer.json": "48cea5d44424912a6fd1ea647bf4fe50b55ab8b1e5879c3275f80e339e8fae26",
+    "tokenizer_config.json": "e6f3b96db926a37d4039995fbf5ad17de158dfb8f6343d607e4dbaad18d75f5a",
+    "vocab.txt": "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c",
+    "README.md": "d8d7a46d41a1a37fe4f0a5f637bf55c649310185329127d8a2204632e480be17"
+  },
+  "license": "MIT",
+  "upstream": "https://huggingface.co/BAAI/bge-small-zh-v1.5",
+  "artifact_source": "https://huggingface.co/Qdrant/bge-small-zh-v1.5/tree/46fbe35fd4374a00fee7de77dfddaeb6dd6a2c59",
+  "fingerprint": "9604d8e7728c59a3396c7afc1e363f29ec775ed4ca59cb329bafa11831ae4be3"
+}
