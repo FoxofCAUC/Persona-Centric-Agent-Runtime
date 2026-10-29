@@ -38,6 +38,17 @@ CASES=[
 
 
 class PlainTests(unittest.TestCase):
+    def test_private_workbench_model_factory_precedes_activation(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from scripts.private_copy_workbench import configure_embedding
+        runtime=SimpleNamespace(indexes={});formal=RuntimePaths(Path('D:/artificial-private-model-test'))
+        with patch('scripts.private_copy_workbench.CharacterEmbeddingProvider',return_value='provider'),patch('scripts.private_copy_workbench.CharacterSemanticIndex',return_value='local-index') as index:
+            configure_embedding(runtime,'store',formal)
+            self.assertEqual(runtime.index_factory({}),'local-index');index.assert_called_once_with('store','provider')
+        runtime.indexes={'old':'wrong-path'}
+        with self.assertRaisesRegex(RuntimeError,'private_copy_embedding_setup_order'):configure_embedding(runtime,'store',formal)
+
     def test_displayed_persona_must_match_send_target(self):
         from persona_runtime.presentation import chat_target_matches
         rows=[{'id':'new'}]

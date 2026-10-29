@@ -45,6 +45,13 @@ class BoundedClient:
         return text,usage
 
 
+def configure_embedding(runtime,store,formal):
+    if runtime.indexes:raise RuntimeError('private_copy_embedding_setup_order')
+    provider=CharacterEmbeddingProvider(formal,formal.home/'models/character-embedding'/load_config()['model_fingerprint'])
+    runtime.index_factory=lambda _:CharacterSemanticIndex(store,provider)
+    return provider
+
+
 def main(private_id):
     formal=RuntimePaths.from_environment();private=PrivatePersonas(formal)
     copy=private.create_sandbox(private_id);paths=RuntimePaths(Path(copy['home']));store=Store(paths)
@@ -57,13 +64,14 @@ def main(private_id):
     try:
         async def start():
             app=create_app(paths,client);engine=app['engine'];policies=app['ingress'];pid=copy['persona_id']
+            configure_embedding(engine.cognitive.characters,store,formal)
+            version=CharacterService(store).current(pid)
+            await asyncio.to_thread(engine.cognitive.characters.index(load_config()).build,pid,version['id'])
             for channel in ('desktop','qq'):
                 old=policies.current_policy(pid,channel)
                 policies.update_policy(pid,channel,'legacy_per_message',old['id'],identifier(),reply_mode='natural_structured',context_mode='working_set',cross_session=False,character_retrieval_mode='hybrid_llm')
-            provider=CharacterEmbeddingProvider(formal,formal.home/'models/character-embedding'/load_config()['model_fingerprint'])
-            engine.cognitive.characters.index_factory=lambda _:CharacterSemanticIndex(store,provider)
-            version=CharacterService(store).current(pid)
-            await asyncio.to_thread(CharacterSemanticIndex(store,provider).build,pid,version['id'])
+            policy=policies.current_policy(pid,'desktop')['character_retrieval']
+            await asyncio.to_thread(engine.cognitive.characters.local_pool,version,policy,['你好'])
             runner=web.AppRunner(app);await runner.setup();site=web.TCPSite(runner,'127.0.0.1',0);await site.start()
             cfg.update({'service_port':site._server.sockets[0].getsockname()[1]})
             return runner
@@ -94,6 +102,7 @@ def main(private_id):
                 zero_memories=db.execute('SELECT count(*) FROM memories').fetchone()[0]==0)
         if thread.is_alive():raise RuntimeError('private_sandbox_api_not_stopped')
         audit.update(private.cleanup_sandbox(paths.home))
+        atomic_json(private.root/private_id/('copy-acceptance-'+paths.home.name+'.json'),audit)
         atomic_json(private.root/private_id/'copy-acceptance-audit.json',audit)
         (private.root/private_id/'copy-window-state.json').unlink(missing_ok=True)
 
