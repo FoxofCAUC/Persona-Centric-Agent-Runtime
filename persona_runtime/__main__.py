@@ -24,6 +24,8 @@ def parser() -> argparse.ArgumentParser:
         groups.add_parser(name)
     commands = {
         "db": ("init", "status"),
+        "selector": ("status", "records"),
+        "quota": ("status",),
         "persona": ("create", "list", "show", "use"),
         "relationship": ("set", "show"),
         "session": ("create", "list", "show"),
@@ -92,6 +94,17 @@ def dispatch(args, paths: RuntimePaths):
     store = Store(paths)
     service = RuntimeService(store)
     group, action = args.group, args.action
+    if group == 'selector':
+        from .config import ConfigStore
+        from .desktop_client import LocalClient
+        client=LocalClient(ConfigStore(paths))
+        if action=='status':return client.manage('character.selector-status')
+        with store.connection() as conn:pid=store.current(conn)
+        return client.manage('character.selector-records',persona_id=pid)
+    if group=='quota':
+        from .config import ConfigStore
+        from .quotas import QuotaService
+        return QuotaService(store,ConfigStore(paths)).current()
     if group == "db":
         if action == "init":
             store.initialize()

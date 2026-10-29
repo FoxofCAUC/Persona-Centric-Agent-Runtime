@@ -210,6 +210,9 @@ class CharacterService:
         self.store = store
 
     def _check(self, conn, persona_id, write=False):
+        if write:
+            from .private_personas import guard_acceptance_write
+            guard_acceptance_write(self.store,persona_id)
         if not conn.execute('SELECT 1 FROM personas WHERE id=?',(persona_id,)).fetchone():
             raise RuntimeErrorBase('Persona not found')
         if write and self.store.current(conn) != persona_id:
@@ -276,12 +279,18 @@ class CharacterService:
 
     def update(self, persona_id, data, expected_version, operation_id):
         with self.store.connection(write=True) as conn:
-            return self._write(conn,persona_id,data,expected_version,operation_id)
+            result=self._write(conn,persona_id,data,expected_version,operation_id)
+        callback=getattr(self.store,'character_committed',None)
+        if callback:callback(persona_id)
+        return result
 
     def restore(self, persona_id, version_id, expected_version, operation_id):
         with self.store.connection(write=True) as conn:
             data = self._version(conn,persona_id,version_id)['data']
-            return self._write(conn,persona_id,data,expected_version,operation_id,version_id)
+            result=self._write(conn,persona_id,data,expected_version,operation_id,version_id)
+        callback=getattr(self.store,'character_committed',None)
+        if callback:callback(persona_id)
+        return result
 
     def fact(self, persona_id, path, version_id=None):
         with self.store.connection() as conn:
@@ -333,4 +342,7 @@ class CharacterService:
             initialize_profiles(conn,new_id,actor='create')
             version=append(conn,new_id,data,'import')
             conn.execute('INSERT INTO character_operations VALUES (?,?,?,?,?)',(operation_id,new_id,LOCAL_USER_ID,fingerprint,version['id']))
-            return RuntimeService._persona(conn,new_id)
+            result=RuntimeService._persona(conn,new_id)
+        callback=getattr(self.store,'character_committed',None)
+        if callback:callback(new_id)
+        return result

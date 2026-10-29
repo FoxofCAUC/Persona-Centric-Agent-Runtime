@@ -93,6 +93,8 @@ class ChatEngine:
         from .cognitive import CognitiveService
         self.cognitive=CognitiveService(store,self)
         self.client = client or ChatCompletionsClient()
+        from .character_selector import SelectorService
+        self.selector=SelectorService(store,config,self.client,self.cognitive.characters)
         self.service = RuntimeService(store)
         self.tasks = {}
         self.locks = defaultdict(asyncio.Lock)
@@ -100,6 +102,7 @@ class ChatEngine:
 
     def recover(self):
         with self.store.connection(write=True) as conn:
+            self.selector.recover(conn)
             for row in conn.execute("SELECT id FROM turns WHERE status IN ('queued','running')").fetchall():
                 record_progress(conn, row[0], "interrupted")
             for row in conn.execute("SELECT turn_id FROM deliveries WHERE state='sending'").fetchall():
@@ -164,6 +167,8 @@ class ChatEngine:
                     raise RuntimeErrorBase("submission_conflict")
                 return previous
             persona_id = None if test else self.service._persona(conn, persona_id)["id"]
+            from .private_personas import guard_acceptance_write
+            guard_acceptance_write(self.store,persona_id)
             waiting = conn.execute("SELECT count(*) FROM turns WHERE persona_id IS ? AND status='queued'",
                                    (persona_id,)).fetchone()[0]
             if waiting >= 10:
@@ -187,7 +192,7 @@ class ChatEngine:
                 from .character import head as character_head
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,persona_id),ensure_ascii=False),turn_id))
                 from .context_policy import current as context_policy
-                conn.execute('UPDATE turns SET context_policy_snapshot=? WHERE id=?',(json.dumps(context_policy(conn,persona_id,channel)),turn_id))
+                conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=1 WHERE id=?',(json.dumps(context_policy(conn,persona_id,channel)),json.dumps(self.config.load()['character_selector']),turn_id))
             if channel == "qq":
                 identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
                 conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
@@ -214,6 +219,7 @@ class ChatEngine:
         if not row:
             raise RuntimeErrorBase("Request not found")
         value = dict(row)
+        value.pop("selector_model_snapshot",None)
         value.pop("model_snapshot")
         value.pop('profile_snapshot',None)
         value.pop('character_snapshot',None)
@@ -229,6 +235,7 @@ class ChatEngine:
             value["raw_message_count"]=len(value["input_members"])
         delivery = conn.execute("SELECT state FROM deliveries WHERE turn_id=?", (turn_id,)).fetchone()
         value["delivery"] = delivery[0] if delivery else None
+        value['selection_attempts']=[{k:v for k,v in dict(r).items() if k!='model_snapshot'} for r in conn.execute('SELECT * FROM character_selection_attempts WHERE turn_id=? ORDER BY rowid',(turn_id,))]
         value["attempt_count"] = conn.execute("SELECT count(*) FROM attempts WHERE turn_id=?", (turn_id,)).fetchone()[0]
         reply_batch=conn.execute('SELECT * FROM reply_batches WHERE turn_id=? ORDER BY created_at DESC LIMIT 1',(turn_id,)).fetchone()
         if reply_batch:
@@ -237,6 +244,9 @@ class ChatEngine:
             for key in ('persona_id','user_id','attempt_id','raw_fingerprint'):batch.pop(key,None)
             value['reply_batch']=batch
         else:value['reply_batch']=None
+        from .presentation import batch_view
+        value['display_reply'],value['presentation']=batch_view(value['reply'],
+            value['reply_batch']['segments'] if value['reply_batch'] else None,historical=True)
         delivery_stream=conn.execute('SELECT s.id,s.state,s.revision,s.blocked_reason,s.blocked_part_id,count(p.id) AS part_count,sum(CASE WHEN p.state="sent" THEN 1 ELSE 0 END) AS sent_count FROM reply_delivery_streams s JOIN reply_delivery_parts p ON p.stream_id=s.id WHERE p.turn_id=? GROUP BY s.id',(turn_id,)).fetchone()
         value['delivery_stream']=dict(delivery_stream) if delivery_stream else None
         context = conn.execute("SELECT details_json FROM context_uses WHERE turn_id=? ORDER BY rowid DESC LIMIT 1", (turn_id,)).fetchone()
@@ -298,22 +308,28 @@ class ChatEngine:
             usage = None
             reference_manifest = None
             try:
-                prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id)
+                latest=self.get(turn_id)
+                if latest['status']!='queued' or latest['execution_revision']!=initial['execution_revision']:return
+                selection=await self.selector.prepare(turn_id)
+                prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id,selection)
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
-                    if turn["status"] != "queued" or turn["cancelled_at"]:
+                    if turn["status"] != "queued" or turn["cancelled_at"] or turn["execution_revision"]!=initial["execution_revision"]:
                         return
                     model = json.loads(turn["model_snapshot"])
+                    from .private_personas import guard_cloud_dispatch
+                    guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
                     prepared=self.cognitive.finalize(conn,turn,prepared)
                     messages=prepared['messages'];turn['_context_details']=prepared['details']
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
-                    from .memory_policy import project_calls
-                    count = project_calls(conn, time.time()-3600)
+                    from .memory_policy import project_capacity_used
+                    count = project_capacity_used(conn, time.time()-3600, turn_id)
                     limit = self.config.load()["model"]["hourly_limit"]
                     if limit and count >= limit:
                         raise ModelError("hourly_limit_reached")
+                    conn.execute("UPDATE quota_reservations SET state='consumed' WHERE turn_id=? AND execution_revision=? AND state='active'",(turn_id,turn['execution_revision']))
                     attempt_id = identifier()
                     conn.execute("INSERT INTO attempts VALUES (?,?,?,'running',NULL,NULL,?)",
                                  (attempt_id, turn_id, time.time(), turn["model_snapshot"]))
@@ -337,7 +353,13 @@ class ChatEngine:
                                  (json.dumps(details,ensure_ascii=False),attempt_id))
                 reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
                 reply=reply_batch.text
+                from dataclasses import asdict
+                from .presentation import batch_view
+                _, presentation=batch_view(reply,[asdict(s) for s in reply_batch.segments])
                 with self.store.connection(write=True) as conn:
+                    details['presentation']=presentation
+                    conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
+                                 (json.dumps(details,ensure_ascii=False),attempt_id))
                     record_progress(conn, turn_id, "generated", attempt_id)
                     event_id = identifier() if turn["channel"] != "test" else None
                     if event_id:
@@ -361,7 +383,7 @@ class ChatEngine:
                 interrupted = isinstance(error, asyncio.CancelledError)
                 from .reply_batch import ReplySchemaError
                 from .references import ReferenceError,record_check
-                code = str(error) if isinstance(error, (ModelError,ReplySchemaError,ReferenceError)) else ("request_interrupted" if interrupted else "request_failed")
+                code = str(error) if isinstance(error, (RuntimeErrorBase,ModelError,ReplySchemaError,ReferenceError)) else ("request_interrupted" if interrupted else "request_failed")
                 with self.store.connection(write=True) as conn:
                     if attempt_id and not conn.execute("SELECT 1 FROM attempts WHERE id=?", (attempt_id,)).fetchone():
                         attempt_id = None
@@ -383,6 +405,9 @@ class ChatEngine:
                         conn.execute("UPDATE attempts SET status='failed',error_code=?,usage_json=? WHERE id=?", (code,encoded,attempt_id))
                 if interrupted:
                     raise
+
+            finally:
+                self.selector.release(turn_id)
 
     async def retry(self, turn_id):
         if self.draining:
@@ -409,7 +434,7 @@ class ChatEngine:
                 from .reply_batch import expression_snapshot
                 conn.execute('UPDATE turns SET reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',(reply_mode,json.dumps(expression_snapshot(reply_mode)),turn_id))
                 from .context_policy import current as context_policy
-                conn.execute('UPDATE turns SET context_policy_snapshot=? WHERE id=?',(json.dumps(context_policy(conn,turn['persona_id'],turn['channel'])),turn_id))
+                conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=execution_revision+1 WHERE id=?',(json.dumps(context_policy(conn,turn['persona_id'],turn['channel'])),json.dumps(self.config.load()['character_selector']),turn_id))
             record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
         return self.get(turn_id)

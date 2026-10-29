@@ -49,9 +49,11 @@ class RuntimeService:
             return self._persona(conn, persona_id)
 
     def list_personas(self) -> list[dict]:
+        from .private_personas import PrivatePersonas
+        private=PrivatePersonas(self.store.paths)
         with self.store.connection() as conn:
             current = Store.current(conn, required=False)
-            return [dict(row) | {"selected": row["id"] == current} for row in conn.execute(
+            return [dict(row) | {"selected": row["id"] == current,'private_protected':private.protected(row['id'])} for row in conn.execute(
                 "SELECT id, name, format_version, created_at FROM personas ORDER BY created_at, id")]
 
     def show_persona(self, persona_id: str | None = None) -> dict:
@@ -59,6 +61,8 @@ class RuntimeService:
             return self._persona(conn, persona_id)
 
     def use_persona(self, persona_id: str) -> dict:
+        from .private_personas import guard_acceptance_write
+        guard_acceptance_write(self.store,persona_id)
         with self.store.connection(write=True) as conn:
             persona = self._persona(conn, persona_id)
             conn.execute("INSERT INTO settings VALUES ('current_persona', ?) "
@@ -121,6 +125,8 @@ class RuntimeService:
             raise RuntimeErrorBase("Unsupported event role")
         with self.store.connection(write=True) as conn:
             persona_id = self._persona(conn)["id"]
+            from .private_personas import guard_acceptance_write
+            guard_acceptance_write(self.store,persona_id)
             self._owned(conn, "sessions", session_id, persona_id)
             from .sessions import assert_writable
             assert_writable(conn,session_id)
@@ -136,6 +142,8 @@ class RuntimeService:
             raise RuntimeErrorBase("Unsupported memory category")
         with self.store.connection(write=True) as conn:
             persona_id = self._persona(conn)["id"]
+            from .private_personas import guard_acceptance_write
+            guard_acceptance_write(self.store,persona_id)
             self._owned(conn, "events", source_event_id, persona_id)
             memory_id = identifier()
             now = timestamp()
@@ -214,7 +222,7 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 11, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 12, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             for table in ("relationships", "sessions", "events", "memories"):
                 order = "seq" if table == "events" else "rowid"
@@ -246,7 +254,10 @@ class RuntimeService:
                 result.pop('claim_token',None)
                 operation['result_json']=json.dumps(result,ensure_ascii=False)
             # Model snapshots contain encrypted credentials and are never included in portable exports.
-            for row in payload['input_batches']:row.pop('model_snapshot',None)
+            for row in payload['input_batches']:
+                row.pop('model_snapshot',None);row.pop('selector_model_snapshot',None)
+            payload['character_selection_attempts']=[{k:v for k,v in dict(r).items() if k!='model_snapshot'} for r in conn.execute('SELECT * FROM character_selection_attempts WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
+            payload['quota_reservations']=[dict(r)|{'restore_active':False} for r in conn.execute('SELECT * FROM quota_reservations WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['turn_input_batches']=[dict(r) for r in conn.execute('SELECT id,input_batch_id FROM turns WHERE persona_id=?',(persona['id'],))]
             payload['profile_heads']=[dict(r) for r in conn.execute('SELECT * FROM profile_heads WHERE persona_id=?',(persona['id'],))]
         path = self._output_path("exports", name, ".json")

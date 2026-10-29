@@ -25,6 +25,7 @@ from .desktop_archive import ArchiveUI
 from .desktop_archive_search import ArchiveSearchUI
 from .desktop_context import ContextUI
 from .desktop_sessions import SessionUI
+from .desktop_selector import SelectorUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
@@ -37,7 +38,7 @@ ERRORS.update({"session_sealed":"此会话已封存。草稿保留，请在会�
                "submission_conflict": "此请求标识已用于其他内容；请先找回原消息，不能覆盖。",
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
                "request_failed": "本机处理失败，请查看请求详情和诊断记录。"})
-PHASES = {"queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
+PHASES = {"character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
 
@@ -66,7 +67,7 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
@@ -292,7 +293,7 @@ class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, Deliv
         bar.pack(fill="x")
         for label, action in (("创建通用模板", self.create_template), ("导入人格 JSON", self.import_persona),
                               ("切换选中人格", self.use_selected_persona), ("查看设定", self.show_persona),
-                              ("关系说明", self.edit_relationship)):
+                              ("关系说明", self.edit_relationship),('私有兼容检查',self.check_private_compatibility)):
             self.button(bar, label, action, {"persona"})
         ttk.Separator(parent).pack(fill="x", pady=14)
         row = ttk.Frame(parent)
@@ -356,6 +357,7 @@ class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, Deliv
         self.button(bar, "保存私聊设置", self.save_interaction, {"config"})
         ttk.Label(group, text="默认逐条有序；可到“输入与缓冲”按入口显式开启五秒缓冲。窗口显示完整回复。取消只作用于未开始的请求，不中断远端模型。", wraplength=650).pack(anchor="w", pady=6)
         self.build_organization_model(parent)
+        self.build_selector(parent)
 
     def build_diagnostics(self, parent):
         self.heading(parent, "故障排查", "正常停止核对归属；强制停止会退出全部 QQ 与相关服务，不核对托管来源。日志仅含元数据。")
@@ -504,7 +506,7 @@ class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, Deliv
             self.personas = rows
             self.persona_list.delete(0, "end")
             for row in rows:
-                self.persona_list.insert("end", ("● " if row["selected"] else "○ ") + row["name"] + " · " + row["id"][:8])
+                self.persona_list.insert("end", ("● " if row["selected"] else "○ ") + row["name"] + " · " + row["id"][:8]+(' · 个人私有／禁止原体验收' if row.get('private_protected') else ''))
             self.chat_persona["values"] = [p["name"] + " · " + p["id"][:8] for p in rows]
             selected = next((p for p in rows if p["selected"]), None)
             # Archive reads need the active identity even before any chat
@@ -516,6 +518,17 @@ class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, Deliv
 
     def create_template(self):
         self.run_task("创建模板", {"persona"}, lambda _: self.client.manage("persona.create"), lambda _: self.refresh_personas())
+
+    def check_private_compatibility(self):
+        row=self.selected_persona()
+        if not row:return
+        def read(_):
+            from .private_personas import PrivatePersonas
+            from .storage import Store
+            private=PrivatePersonas(self.paths)
+            record=next((r for r in private.load()['records'] if r.get('persona_id')==row['id']),None)
+            return private.check(Store(self.paths),record['id']) if record else {'private':False,'message':'本机未登记为受保护的个人角色。'}
+        self.run_task('私有角色只读检查',{'persona-read'},read,lambda value:self.show_json('私有兼容检查（零模型调用）',value))
 
     def import_persona(self):
         path = filedialog.askopenfilename(initialdir=self.paths.home / "config", filetypes=[("人格 JSON", "*.json")])
@@ -724,7 +737,7 @@ class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, Deliv
             else:
                 self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
             if turn["status"] == "completed":
-                self.transcript.insert("end", "人格：" + (turn["reply"] or "") + "\n\n")
+                self.transcript.insert("end", "人格：" + (turn.get('display_reply',turn["reply"]) or "") + "\n\n")
                 self.transcript.insert("end", "用量：" + (json.dumps(turn["usage"], ensure_ascii=False) if turn["usage"] else "未知") + "\n\n")
             else:
                 phase = turn.get("phase", turn["status"])
@@ -763,6 +776,10 @@ class Workbench(SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, Deliv
         persona_id = self.persona_id or next((p["id"] for p in self.personas if p["selected"]), None)
         if not persona_id:
             self.notice.set("请先选中人格并恢复或新建会话。")
+            return
+        from .presentation import chat_target_matches
+        if not chat_target_matches(persona_id,self.personas,self.chat_persona.current()):
+            self.notice.set('人格选择与会话不同步，草稿已保留。请先点击恢复当前会话或重新选择人格。')
             return
         selected_reference=getattr(self,"chat_reference",None)
         if selected_reference and selected_reference["persona_id"]!=persona_id:

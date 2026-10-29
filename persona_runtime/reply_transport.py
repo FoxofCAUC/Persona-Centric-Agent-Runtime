@@ -1,13 +1,13 @@
 """Deterministic QQ rendering and lossless bounded transport, without model repair."""
 import re
-from .qq_text import plain_qq_text
+from .presentation import render
 from .reply_batch import ReplySchemaError, validate_reply
 
 
 def render_parts(text, content_kind="chat", limit=450):
     # A code-kind body is already data even without Markdown fences.
     fenced = bool(re.search(r'(?m)^\s*(`{3,}|~{3,})', text))
-    rendered = text if content_kind == 'code' and not fenced else plain_qq_text(text)
+    rendered, _ = render(text, content_kind)
     if not rendered.strip():
         raise ReplySchemaError("qq_plain_text_empty")
     # Fence contents become plain text; preserve each original code line atomically.

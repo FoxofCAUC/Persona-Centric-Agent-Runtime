@@ -35,6 +35,8 @@ class CharacterUI:
     def init_character_vars(self):
         self.character_status=tk.StringVar(value='启动服务后读取角色资料。')
         self.character_summary=tk.StringVar()
+        self.character_preview_channel=tk.StringVar(value='desktop')
+        self.character_preview_mode=tk.StringVar(value='按入口政策')
         self.character_data=None
         self.character_rows=[]
         self.character_dialogs=[]
@@ -67,7 +69,14 @@ class CharacterUI:
         self.button(bar,'恢复选中版本',self.restore_character_version,{'character-write'})
         ttk.Label(history,text='输入测试消息，预览本地激活结果（不调用模型）').pack(anchor='w',pady=6)
         self.character_preview_input=scrolledtext.ScrolledText(history,height=3,width=1,wrap='word');self.character_preview_input.pack(fill='x')
-        self.button(self.character_bar(history),'预览设定激活',self.preview_character,{'character-read'})
+        bar=self.character_bar(history)
+        ttk.Combobox(bar,textvariable=self.character_preview_channel,values=('desktop','qq'),state='readonly',width=10).grid(row=0,column=0,padx=4)
+        ttk.Combobox(bar,textvariable=self.character_preview_mode,values=('按入口政策','词法','本地语义（旧方案）','本地召回＋云端选择'),state='readonly',width=14).grid(row=0,column=1,padx=4)
+        self.button(bar,'预览设定激活',self.preview_character,{'character-read'})
+        self.button(bar,'最近云端选择',self.selector_records,{'selector-read'})
+        self.button(bar,'索引状态',lambda:self.character_index('index-status'),{'character-read'})
+        self.button(bar,'重新准备',lambda:self.character_index('index-prepare'),{'character-write'})
+        ttk.Label(history,text='语义增强为选择的政策；本轮实际模式与降级原因见预览／上下文清单。').pack(anchor='w')
 
     def character_read(self, action, done, **args):
         epoch=self.view_epoch
@@ -307,7 +316,25 @@ class CharacterUI:
 
     def preview_character(self):
         text=self.character_preview_input.get('1.0','end-1c')
-        self.character_read('character.preview',lambda persona,value:self.show_json('本地设定激活预览（未调用模型）',value),text=text)
+        self.character_semantic_request('preview',text=text)
+
+    def character_index(self,action):
+        self.character_semantic_request(action)
+
+    def character_semantic_key(self):
+        row=self.selected_character()
+        return (self.persona_id,self.view_epoch,self.character_preview_channel.get(),self.character_preview_mode.get(),row['id'] if row else (self.character_data or {}).get('id'),self.character_preview_input.get('1.0','end-1c'))
+
+    def character_semantic_request(self,action,**extra):
+        if not self.persona_id:return
+        key=self.character_semantic_key()
+        args={'persona_id':key[0],'channel':key[2],'version_id':key[4],**extra}
+        if action=='preview':args['mode']={'词法':'lexical','语义增强':'hybrid','本地语义（旧方案）':'hybrid','本地召回＋云端选择':'hybrid_llm'}.get(key[3])
+        def done(value):
+            if key!=self.character_semantic_key():return
+            self.show_json('角色索引／本地预览（零云端调用）',value)
+        self.run_task('角色索引／预览',{'character-write' if action=='index-prepare' else 'character-read'},
+            lambda _:self.client.manage('character.'+action,**args),done,error_current=lambda:key==self.character_semantic_key())
 
     def export_character(self):
         self.character_read('character.export',lambda persona,value:self.notice.set('角色包已导出：'+value['path']))

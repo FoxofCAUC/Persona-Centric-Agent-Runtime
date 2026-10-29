@@ -7,8 +7,9 @@ DEFAULT_CONTEXT={'context_mode':'working_set','cross_session':False}
 
 def values(policy):
     data=json.loads(policy['data_json']).get('context',{})
+    from .character_policy import read
     return {'context_mode':data.get('context_mode','legacy_recent'),
-            'cross_session':bool(data.get('cross_session',False))}
+            'cross_session':bool(data.get('cross_session',False)), 'character_retrieval':read(data)}
 
 
 def snapshot(policy):

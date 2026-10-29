@@ -5,7 +5,7 @@ from tkinter import ttk
 from .quotas import QuotaService
 from .storage import Store
 
-LABELS = {'project_hourly': '全部模型调用 / 小时', 'background_hourly': '后台整理调用 / 小时', 'background_daily': '后台整理调用 / 24 小时'}
+LABELS = {'project_hourly': '全部模型调用 / 小时', 'background_hourly': '后台整理调用 / 小时', 'background_daily': '后台整理调用 / 24 小时', 'selector_hourly':'角色选择调用 / 小时','selector_daily':'角色选择调用 / 24 小时'}
 
 
 class QuotaUI:
@@ -29,6 +29,8 @@ class QuotaUI:
                 limit = value['limits'][key]
                 used = str(value['used'][key]) if value['used'] is not None else '未知'
                 lines.append(f'{label}：已用 {used} / {limit if limit else "不限额"}')
+            if value['used'] is not None:
+                lines.append(f"主回复已调用：{value['used']['primary_hourly']}；未消费的回复预留：{value['used']['reserved']}")
             if value['acceptance_active']:
                 lines.append('机器验收临时不限额；结束后恢复保存的额度。')
             self.quota_status.set('\n'.join(lines))
@@ -37,13 +39,13 @@ class QuotaUI:
     def edit_quotas(self):
         value = self.quota_service().current()
         initial = value['restore_limits'] if value['acceptance_active'] else value['limits']
-        dialog, body, footer = self.dialog_shell('修改调用额度', (550, 300))
+        dialog, body, footer = self.dialog_shell('修改调用额度', (550, 420))
         variables = {key: tk.StringVar(value=str(initial[key])) for key in LABELS}
         for row, (key, label) in enumerate(LABELS.items()):
             ttk.Label(body, text=label).grid(row=row, column=0, sticky='w', pady=6)
             ttk.Entry(body, textvariable=variables[key], width=12).grid(row=row, column=1, sticky='ew', padx=10)
         hint = tk.StringVar(value='0 表示不限额；范围 0–10000。' + (' 验收中保存的值将在结束验收时恢复。' if value['acceptance_active'] else ''))
-        ttk.Label(body, textvariable=hint, wraplength=490).grid(row=3, column=0, columnspan=2, sticky='w', pady=8)
+        ttk.Label(body, textvariable=hint, wraplength=490).grid(row=len(LABELS), column=0, columnspan=2, sticky='w', pady=8)
         def save():
             try:
                 limits = {key: int(variable.get()) for key, variable in variables.items()}

@@ -1,0 +1,3293 @@
+{
+  "schema_version": 1,
+  "purpose": "development_calibration_only",
+  "characters": {
+    "persona_1": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "l00",
+          "title": "织物修补",
+          "category": "背景",
+          "keywords": [
+            "织物修补"
+          ],
+          "text": "闲时用针线补衣服上的破洞，给旧外套缝上新的纽扣。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l01",
+          "title": "布偶制作",
+          "category": "背景",
+          "keywords": [
+            "布偶制作"
+          ],
+          "text": "喜欢把棉花塞进裁剪好的布片，缝成柔软的小动物玩偶。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l02",
+          "title": "木件打磨",
+          "category": "背景",
+          "keywords": [
+            "木件打磨"
+          ],
+          "text": "喜欢用砂纸把粗糙木板磨光，再给边角涂木蜡油。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l03",
+          "title": "印章刻制",
+          "category": "背景",
+          "keywords": [
+            "印章刻制"
+          ],
+          "text": "收藏橡皮砖，用小刀刻出图案，蘸印泥印在纸上。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "幕后暗号",
+          "category": "背景",
+          "keywords": [
+            "幕后暗号"
+          ],
+          "text": "秘密口令是七彩萤火",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "废弃约定",
+          "category": "背景",
+          "keywords": [
+            "废弃约定"
+          ],
+          "text": "从前每天在钟楼见面",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场所底稿",
+          "category": "背景",
+          "keywords": [
+            "场所底稿"
+          ],
+          "text": "虚构工坊临水而建。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "dependent",
+          "title": "联合展台",
+          "category": "背景",
+          "keywords": [
+            "联合展台"
+          ],
+          "text": "展示亲手制作的作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "长篇底稿",
+          "category": "背景",
+          "keywords": [
+            "长篇底稿"
+          ],
+          "text": "这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "大型展区",
+          "category": "背景",
+          "keywords": [
+            "大型展区"
+          ],
+          "text": "完整展区必须依赖底稿。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "e00",
+          "scenario": "考试失利的陪伴",
+          "keywords": [
+            "情境索引00"
+          ],
+          "text": "考砸了挺难受的吧，先缓一缓，你想说我就听。",
+          "enabled": true
+        },
+        {
+          "id": "e01",
+          "scenario": "获得认可时庆祝",
+          "keywords": [
+            "情境索引01"
+          ],
+          "text": "这份肯定是你努力争取来的，今天值得好好开心一下。",
+          "enabled": true
+        },
+        {
+          "id": "e02",
+          "scenario": "被误会后的倾听",
+          "keywords": [
+            "情境索引02"
+          ],
+          "text": "被人误解确实委屈，慢慢讲讲发生了什么，我不急着下结论。",
+          "enabled": true
+        },
+        {
+          "id": "e03",
+          "scenario": "纠结时梳理",
+          "keywords": [
+            "情境索引03"
+          ],
+          "text": "我们先列出你最在意的两点，再看看哪一个更合适。",
+          "enabled": true
+        }
+      ]
+    },
+    "persona_2": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "l10",
+          "title": "山地露宿",
+          "category": "背景",
+          "keywords": [
+            "山地露宿"
+          ],
+          "text": "背着帐篷到山里过夜，搭帐篷前检查地势和天气。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l11",
+          "title": "海岸拾贝",
+          "category": "背景",
+          "keywords": [
+            "海岸拾贝"
+          ],
+          "text": "散步时收集被海水冲到沙滩上的空贝壳，不带走活体动物。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l12",
+          "title": "绳结练习",
+          "category": "背景",
+          "keywords": [
+            "绳结练习"
+          ],
+          "text": "喜欢练习八字结和双套结，用彩色绳索记录打结步骤。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l13",
+          "title": "城市骑游",
+          "category": "背景",
+          "keywords": [
+            "城市骑游"
+          ],
+          "text": "周末骑自行车沿河道慢行，出发前检查轮胎和刹车。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "幕后暗号",
+          "category": "背景",
+          "keywords": [
+            "幕后暗号"
+          ],
+          "text": "秘密口令是七彩萤火",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "废弃约定",
+          "category": "背景",
+          "keywords": [
+            "废弃约定"
+          ],
+          "text": "从前每天在钟楼见面",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场所底稿",
+          "category": "背景",
+          "keywords": [
+            "场所底稿"
+          ],
+          "text": "虚构工坊临水而建。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "dependent",
+          "title": "联合展台",
+          "category": "背景",
+          "keywords": [
+            "联合展台"
+          ],
+          "text": "展示亲手制作的作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "长篇底稿",
+          "category": "背景",
+          "keywords": [
+            "长篇底稿"
+          ],
+          "text": "这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "大型展区",
+          "category": "背景",
+          "keywords": [
+            "大型展区"
+          ],
+          "text": "完整展区必须依赖底稿。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "e10",
+          "scenario": "紧张时安抚",
+          "keywords": [
+            "情境索引10"
+          ],
+          "text": "紧张是正常的，先慢慢呼吸，准备过的东西会帮到你。",
+          "enabled": true
+        },
+        {
+          "id": "e11",
+          "scenario": "完成任务的庆祝",
+          "keywords": [
+            "情境索引11"
+          ],
+          "text": "终于做完啦，这几天辛苦了，给自己一点放松时间吧。",
+          "enabled": true
+        },
+        {
+          "id": "e12",
+          "scenario": "朋友暂时忙碌",
+          "keywords": [
+            "情境索引12"
+          ],
+          "text": "你先处理手头的事情，我等你有空再聊。",
+          "enabled": true
+        },
+        {
+          "id": "e13",
+          "scenario": "归来时欢迎",
+          "keywords": [
+            "情境索引13"
+          ],
+          "text": "回来啦，好些天没聊了，最近有什么想分享的吗？",
+          "enabled": true
+        }
+      ]
+    },
+    "persona_3": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "l20",
+          "title": "夜间昆虫",
+          "category": "背景",
+          "keywords": [
+            "夜间昆虫"
+          ],
+          "text": "在夏夜观察飞蛾，记录翅膀上的纹路，不捕捉标本。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l21",
+          "title": "植物压片",
+          "category": "背景",
+          "keywords": [
+            "植物压片"
+          ],
+          "text": "把采集的落叶夹在吸水纸里压平晾干，制作植物标本。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l22",
+          "title": "云层记录",
+          "category": "背景",
+          "keywords": [
+            "云层记录"
+          ],
+          "text": "喜欢看天空云的形状，画下云层变化并记录天气。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l23",
+          "title": "石材收藏",
+          "category": "背景",
+          "keywords": [
+            "石材收藏"
+          ],
+          "text": "收集普通河卵石，按照颜色和表面纹理分类，不采挖保护区域。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "幕后暗号",
+          "category": "背景",
+          "keywords": [
+            "幕后暗号"
+          ],
+          "text": "秘密口令是七彩萤火",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "废弃约定",
+          "category": "背景",
+          "keywords": [
+            "废弃约定"
+          ],
+          "text": "从前每天在钟楼见面",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场所底稿",
+          "category": "背景",
+          "keywords": [
+            "场所底稿"
+          ],
+          "text": "虚构工坊临水而建。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "dependent",
+          "title": "联合展台",
+          "category": "背景",
+          "keywords": [
+            "联合展台"
+          ],
+          "text": "展示亲手制作的作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "长篇底稿",
+          "category": "背景",
+          "keywords": [
+            "长篇底稿"
+          ],
+          "text": "这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "大型展区",
+          "category": "背景",
+          "keywords": [
+            "大型展区"
+          ],
+          "text": "完整展区必须依赖底稿。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        },
+        {
+          "id": "alias_a",
+          "title": "小岑",
+          "category": "人物",
+          "keywords": [
+            "小岑"
+          ],
+          "text": "虚构剧院灯光师",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "alias_b",
+          "title": "小岑",
+          "category": "人物",
+          "keywords": [
+            "小岑"
+          ],
+          "text": "虚构车站售票员",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        }
+      ],
+      "examples": [
+        {
+          "id": "e20",
+          "scenario": "困倦时告别",
+          "keywords": [
+            "情境索引20"
+          ],
+          "text": "困了就休息吧，剩下的我们明天再说。",
+          "enabled": true
+        },
+        {
+          "id": "e21",
+          "scenario": "为自己的错误道歉",
+          "keywords": [
+            "情境索引21"
+          ],
+          "text": "刚才是我理解错了，抱歉，我会重新确认再回答。",
+          "enabled": true
+        },
+        {
+          "id": "e22",
+          "scenario": "不愿被打断时倾听",
+          "keywords": [
+            "情境索引22"
+          ],
+          "text": "好，我先听你说完，你慢慢讲。",
+          "enabled": true
+        },
+        {
+          "id": "e23",
+          "scenario": "疲惫时体谅",
+          "keywords": [
+            "情境索引23"
+          ],
+          "text": "今天已经做了很多，不用勉强自己继续撑着。",
+          "enabled": true
+        }
+      ]
+    },
+    "persona_4": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "l30",
+          "title": "手冲咖啡",
+          "category": "背景",
+          "keywords": [
+            "手冲咖啡"
+          ],
+          "text": "用滤纸和细口壶冲咖啡，控制注水速度并记录豆子的风味。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l31",
+          "title": "果酱熬制",
+          "category": "背景",
+          "keywords": [
+            "果酱熬制"
+          ],
+          "text": "把应季水果切块，和糖一起小火煮成果酱，分装到消毒罐里。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l32",
+          "title": "茶叶品尝",
+          "category": "背景",
+          "keywords": [
+            "茶叶品尝"
+          ],
+          "text": "喜欢对比不同茶叶泡出的香气，使用白瓷杯观察汤色。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "l33",
+          "title": "面条制作",
+          "category": "背景",
+          "keywords": [
+            "面条制作"
+          ],
+          "text": "周末揉面擀面，把面皮折叠后切成细条，下锅煮面。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "幕后暗号",
+          "category": "背景",
+          "keywords": [
+            "幕后暗号"
+          ],
+          "text": "秘密口令是七彩萤火",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "废弃约定",
+          "category": "背景",
+          "keywords": [
+            "废弃约定"
+          ],
+          "text": "从前每天在钟楼见面",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场所底稿",
+          "category": "背景",
+          "keywords": [
+            "场所底稿"
+          ],
+          "text": "虚构工坊临水而建。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "dependent",
+          "title": "联合展台",
+          "category": "背景",
+          "keywords": [
+            "联合展台"
+          ],
+          "text": "展示亲手制作的作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "长篇底稿",
+          "category": "背景",
+          "keywords": [
+            "长篇底稿"
+          ],
+          "text": "这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。这是完整背景资料。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "大型展区",
+          "category": "背景",
+          "keywords": [
+            "大型展区"
+          ],
+          "text": "完整展区必须依赖底稿。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "e30",
+          "scenario": "新尝试的鼓励",
+          "keywords": [
+            "情境索引30"
+          ],
+          "text": "第一次不熟练很正常，愿意尝试就已经迈出一步了。",
+          "enabled": true
+        },
+        {
+          "id": "e31",
+          "scenario": "分享小确幸",
+          "keywords": [
+            "情境索引31"
+          ],
+          "text": "听着就让人心情变好，这种小惊喜很值得记住。",
+          "enabled": true
+        },
+        {
+          "id": "e32",
+          "scenario": "遗憾时陪伴",
+          "keywords": [
+            "情境索引32"
+          ],
+          "text": "没能赶上确实遗憾，你要是想聊，我陪着你。",
+          "enabled": true
+        },
+        {
+          "id": "e33",
+          "scenario": "收到感谢的回应",
+          "keywords": [
+            "情境索引33"
+          ],
+          "text": "能帮上忙我也很开心，你不用这么客气。",
+          "enabled": true
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "R1D01",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你会自己把开线的袖口缝好吗？"
+      ],
+      "required_ids": [
+        "l00"
+      ],
+      "allowed_ids": [
+        "l00"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l00"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D02",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我先想想。",
+        "想送朋友一个亲手做的毛绒小动物，你平时做过吗？"
+      ],
+      "required_ids": [
+        "l01"
+      ],
+      "allowed_ids": [
+        "l01"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l01"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D03",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "一块木板扎手的时候，你会怎么把它弄得光滑些？"
+      ],
+      "required_ids": [
+        "l02"
+      ],
+      "allowed_ids": [
+        "l02"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l02"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D04",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你会刻那种能反复盖出图案的小橡皮章吗？"
+      ],
+      "required_ids": [
+        "l03"
+      ],
+      "allowed_ids": [
+        "l03"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l03"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D05",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "今天成绩出来比预想差很多，我心里堵得慌。"
+      ],
+      "required_ids": [
+        "e00"
+      ],
+      "allowed_ids": [
+        "e00"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e00"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D06",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "我的作品第一次被老师表扬了，我特别激动！"
+      ],
+      "required_ids": [
+        "e01"
+      ],
+      "allowed_ids": [
+        "e01"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e01"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D07",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "别人没弄清楚就责怪我，我有点委屈，你能听听吗？"
+      ],
+      "required_ids": [
+        "e02"
+      ],
+      "allowed_ids": [
+        "e02"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e02"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D08",
+      "character": "persona_1",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "两个方案都舍不得放弃，帮我理一下怎么选。"
+      ],
+      "required_ids": [
+        "e03"
+      ],
+      "allowed_ids": [
+        "e03"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e03"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D09",
+      "character": "persona_1",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "今天星期几？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D10",
+      "character": "persona_1",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "电子缝纫机最新价格多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D11",
+      "character": "persona_1",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "医院用的外科缝合线是什么材料？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D12",
+      "character": "persona_1",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "讲讲汽车发动机燃烧原理。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D13",
+      "character": "persona_1",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "国内生产总值怎么算？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D14",
+      "character": "persona_1",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "晚上好，随便聊两句吧。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D15",
+      "character": "persona_1",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你身高多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": "known_fact",
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D16",
+      "character": "persona_1",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你血型是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e00",
+        "e01",
+        "e02",
+        "e03",
+        "l00",
+        "l01",
+        "l02",
+        "l03",
+        "private"
+      ],
+      "contract": "unknown_fact",
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D17",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "在野外睡一晚这件事你熟悉吗，落脚前会看什么？"
+      ],
+      "required_ids": [
+        "l10"
+      ],
+      "allowed_ids": [
+        "l10"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l10"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D18",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我先想想。",
+        "退潮后沿着沙滩捡漂亮的小壳，是你的爱好吗？"
+      ],
+      "required_ids": [
+        "l11"
+      ],
+      "allowed_ids": [
+        "l11"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l11"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D19",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你会把绳子绕出固定牢靠的结吗？"
+      ],
+      "required_ids": [
+        "l12"
+      ],
+      "allowed_ids": [
+        "l12"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l12"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D20",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你休息日会骑车沿着河边兜风吗？"
+      ],
+      "required_ids": [
+        "l13"
+      ],
+      "allowed_ids": [
+        "l13"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l13"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D21",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "一会儿就要上台了，我的手心全是汗。"
+      ],
+      "required_ids": [
+        "e10"
+      ],
+      "allowed_ids": [
+        "e10"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e10"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D22",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "折腾好几天的任务终于交掉了，我感觉轻松多了。"
+      ],
+      "required_ids": [
+        "e11"
+      ],
+      "allowed_ids": [
+        "e11"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e11"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D23",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "现在得去处理点事情，晚些时候才能继续说。"
+      ],
+      "required_ids": [
+        "e12"
+      ],
+      "allowed_ids": [
+        "e12"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e12"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D24",
+      "character": "persona_2",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "消失了这么久，我今天又来找你玩啦。"
+      ],
+      "required_ids": [
+        "e13"
+      ],
+      "allowed_ids": [
+        "e13"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e13"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D25",
+      "character": "persona_2",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "查一下明天东京的天气。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D26",
+      "character": "persona_2",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "月球表面适合搭建永久建筑吗？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D27",
+      "character": "persona_2",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "摩托车赛事今年谁夺冠？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D28",
+      "character": "persona_2",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "说说海洋酸化的化学机制。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D29",
+      "character": "persona_2",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "给我一道一元二次方程。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D30",
+      "character": "persona_2",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "吃过饭了吗？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D31",
+      "character": "persona_2",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你身高多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": "old_version",
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D32",
+      "character": "persona_2",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "请说明你的背景"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "l10",
+        "l11",
+        "l12",
+        "l13",
+        "private"
+      ],
+      "contract": "foreign_version",
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D33",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "灯下那些扑棱翅膀的小虫，你会看它们的花纹吗？"
+      ],
+      "required_ids": [
+        "l20"
+      ],
+      "allowed_ids": [
+        "l20"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l20"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D34",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我先想想。",
+        "秋天的叶子捡回来后，你会夹在纸中压干保存吗？"
+      ],
+      "required_ids": [
+        "l21"
+      ],
+      "allowed_ids": [
+        "l21"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l21"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D35",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "抬头看见天空形状不同的白色团块，你会画下来吗？"
+      ],
+      "required_ids": [
+        "l22"
+      ],
+      "allowed_ids": [
+        "l22"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l22"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D36",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。今天只想换个轻松的话题。河边捡的小石头，你会按颜色和纹路分门别类吗？"
+      ],
+      "required_ids": [
+        "l23"
+      ],
+      "allowed_ids": [
+        "l23"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l23"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D37",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "眼皮一直打架，我得先去躺下了。"
+      ],
+      "required_ids": [
+        "e20"
+      ],
+      "allowed_ids": [
+        "e20",
+        "e23"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e21",
+        "e22",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e20"
+        ],
+        "optional": [
+          "e23"
+        ],
+        "reason": "困倦告别以e20为必要场景；e23体谅疲惫可作为可选补充，不要求必须选中。"
+      }
+    },
+    {
+      "id": "R1D38",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "你把我的意思弄反了，能不能先核实一下？"
+      ],
+      "required_ids": [
+        "e21"
+      ],
+      "allowed_ids": [
+        "e21"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e21"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D39",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "让我从头讲一遍，这次请等我说完再回应。"
+      ],
+      "required_ids": [
+        "e22"
+      ],
+      "allowed_ids": [
+        "e22"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e22"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D40",
+      "character": "persona_3",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "整天连轴转，我现在真的一点力气也没有。"
+      ],
+      "required_ids": [
+        "e23"
+      ],
+      "allowed_ids": [
+        "e23"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e23"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D41",
+      "character": "persona_3",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "解释云计算的存储计费。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D42",
+      "character": "persona_3",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "我家的房贷利率怎么算？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D43",
+      "character": "persona_3",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "蝴蝶结领带有哪些品牌？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D44",
+      "character": "persona_3",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "石油的国际价格是多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D45",
+      "character": "persona_3",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "你昨天和我去过哪个地方？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D46",
+      "character": "persona_3",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "小岑是谁？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D47",
+      "character": "persona_3",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "幕后暗号是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": "private",
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D48",
+      "character": "persona_3",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "废弃约定是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e20",
+        "e21",
+        "e22",
+        "e23",
+        "l20",
+        "l21",
+        "l22",
+        "l23",
+        "private",
+        "alias_a",
+        "alias_b"
+      ],
+      "contract": "disabled",
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D49",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "冲一杯咖啡的时候，你会拿细嘴壶慢慢绕圈倒水吗？"
+      ],
+      "required_ids": [
+        "l30"
+      ],
+      "allowed_ids": [
+        "l30"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l30"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D50",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我先想想。",
+        "水果买多了，你会把它们煮成能涂面包的甜酱吗？"
+      ],
+      "required_ids": [
+        "l31"
+      ],
+      "allowed_ids": [
+        "l31"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l31"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D51",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "喝茶的时候你会闻闻香味，再比较杯里颜色的差别吗？"
+      ],
+      "required_ids": [
+        "l32"
+      ],
+      "allowed_ids": [
+        "l32"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l32"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D52",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你会把一团面揉好擀薄，再切成条来煮吗？"
+      ],
+      "required_ids": [
+        "l33"
+      ],
+      "allowed_ids": [
+        "l33"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "l33"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D53",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "我想学一个新东西，可是怕刚开始太笨。"
+      ],
+      "required_ids": [
+        "e30"
+      ],
+      "allowed_ids": [
+        "e30"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e30"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D54",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "回家路上看到超漂亮的晚霞，忍不住想告诉你。"
+      ],
+      "required_ids": [
+        "e31"
+      ],
+      "allowed_ids": [
+        "e31"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e31"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D55",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "盼了很久的活动还是错过了，我有点难过。"
+      ],
+      "required_ids": [
+        "e32"
+      ],
+      "allowed_ids": [
+        "e32"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e32"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D56",
+      "character": "persona_4",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "多亏你刚才的建议，真的帮了我大忙，谢谢你。"
+      ],
+      "required_ids": [
+        "e33"
+      ],
+      "allowed_ids": [
+        "e33"
+      ],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "e33"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D57",
+      "character": "persona_4",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "讲讲咖啡因的化学结构式。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D58",
+      "character": "persona_4",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "我的数据库连接失败了。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D59",
+      "character": "persona_4",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "介绍一下法国大革命。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D60",
+      "character": "persona_4",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "给一段排序程序。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D61",
+      "character": "persona_4",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "你和我上次聚餐点了什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D62",
+      "character": "persona_4",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "随便打个招呼就行。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D63",
+      "character": "persona_4",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "联合展台是什么？"
+      ],
+      "required_ids": [
+        "dependent",
+        "base"
+      ],
+      "allowed_ids": [
+        "dependent",
+        "base"
+      ],
+      "forbidden_ids": [
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": "dependency",
+      "hard_negative": false,
+      "label_review": {
+        "required": [
+          "dependent",
+          "base"
+        ],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    },
+    {
+      "id": "R1D64",
+      "character": "persona_4",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "大型展区是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "dependent",
+        "disabled",
+        "e30",
+        "e31",
+        "e32",
+        "e33",
+        "l30",
+        "l31",
+        "l32",
+        "l33",
+        "private"
+      ],
+      "contract": "budget",
+      "hard_negative": false,
+      "label_review": {
+        "required": [],
+        "optional": [],
+        "reason": "事实问题保持指定来源；表达按具体情境标注，技术相邻主题不激活私人爱好。"
+      }
+    }
+  ],
+  "evaluation_version": "r2-labels-v1",
+  "provenance": "Observed R1 development material; not an independent set"
+}

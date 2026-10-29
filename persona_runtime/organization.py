@@ -8,7 +8,7 @@ import unicodedata
 from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, require_text, timestamp
 from .service import RuntimeService
 from .turn_input import load_turn_sources
-from .memory_policy import exclude_sources, exclude_memory, project_calls
+from .memory_policy import exclude_sources, exclude_memory, project_capacity_used
 
 
 def encoded(value):
@@ -250,6 +250,8 @@ class OrganizationEngine:
             "previous_summary": json.loads(previous["items_json"]) if previous else [], "events": payload["events"]})}]
 
     def submit(self, preview, request_id, automatic=False, fixed_persona=None):
+        from .private_personas import guard_acceptance_write
+        if isinstance(preview,dict):guard_acceptance_write(self.store,preview.get('persona_id'))
         require_text(request_id, "request_id")
         if len(request_id) > 200 or not isinstance(preview, dict):
             raise RuntimeErrorBase("invalid_organization_submission")
@@ -451,7 +453,7 @@ class OrganizationEngine:
             project_limit = self.config.load()["model"]["hourly_limit"]
             if ((limits["hourly_limit"] and hour >= limits["hourly_limit"])
                     or (limits["daily_limit"] and day >= limits["daily_limit"])
-                    or (project_limit and project_calls(conn, now-3600) >= project_limit)):
+                    or (project_limit and project_capacity_used(conn, now-3600) >= project_limit)):
                 conn.execute("UPDATE organization_tasks SET status='waiting_quota' WHERE id=?", (task["id"],))
                 return False
             model = json.loads(task["model_snapshot"])

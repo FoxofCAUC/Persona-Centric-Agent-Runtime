@@ -9,6 +9,7 @@ from .config import ConfigStore
 from .models import identifier
 from .submissions import SubmissionJournal
 from .qq_text import plain_qq_text
+from .presentation import render, assert_transport
 
 
 class BridgeAPIError(RuntimeError):
@@ -171,7 +172,7 @@ class QQBridge:
         if not claim["claimed"]:
             return False
         try:
-            reply = plain_qq_text(turn["reply"])
+            reply, _ = render(turn["reply"])
             if not reply.strip():
                 raise RuntimeError('qq_plain_text_empty')
             for offset in range(0, len(reply), 450):
@@ -200,6 +201,9 @@ class QQBridge:
                 return delivered
             if part["state"] != "pending" or view["state"] != "open":
                 return delivered
+            assert_transport(part['text'],part.get('content_kind','chat'),part.get('protected_code_lines',()))
+            if 'text_hash' in part and hashlib.sha256(part['text'].encode('utf-8')).hexdigest()!=part['text_hash']:
+                raise RuntimeError('delivery_text_hash_mismatch')
             try:
                 claim = await self.request("POST", f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/claim",
                     {"expected_revision": view["revision"], "operation_id": identifier(), "capabilities":["reply_batch_v2","reply_rhythm_v1"]})

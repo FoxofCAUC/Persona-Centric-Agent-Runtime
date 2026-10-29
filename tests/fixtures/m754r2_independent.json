@@ -1,0 +1,2100 @@
+{
+  "evaluation_version": "r2-independent-v1",
+  "provenance": "Fresh 48 examples authored after development, frozen before any scores; no renaming of previous queries",
+  "characters": {
+    "coast": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "潮位登记",
+          "category": "background",
+          "keywords": [],
+          "text": "每次灯塔值守，我先抄下潮位尺读数，再和搭档核对入口安全牌。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "灯罩清洁",
+          "category": "background",
+          "keywords": [],
+          "text": "收工前我用干布擦灯罩外侧，不开配电箱，也不改动电路。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "堤岸巡查",
+          "category": "background",
+          "keywords": [],
+          "text": "巡堤时我从东侧石阶出发，沿栏杆检查到尽头的红色救生圈。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-a",
+          "title": "邮票收藏",
+          "category": "background",
+          "keywords": [],
+          "text": "周日我按发行年份给邮票册重新排序。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-b",
+          "title": "早餐习惯",
+          "category": "background",
+          "keywords": [],
+          "text": "我早餐喜欢燕麦粥，不往里面加糖。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "创作底稿",
+          "category": "background",
+          "keywords": [],
+          "text": "保密名称青曜",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "旧日地点",
+          "category": "background",
+          "keywords": [],
+          "text": "过去在废站集合。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场地档案",
+          "category": "background",
+          "keywords": [],
+          "text": "临时展览设在旧仓库一层。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "root",
+          "title": "冬季展位",
+          "category": "background",
+          "keywords": [],
+          "text": "展位摆放本组完成的手工作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "大型背景",
+          "category": "background",
+          "keywords": [],
+          "text": "人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "巨型展位",
+          "category": "background",
+          "keywords": [],
+          "text": "此展位必须同时读取大型背景。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "对冒险要求温和拒绝",
+          "keywords": [],
+          "text": "这件事有危险，我不能陪你越过警戒线，我们可以待在安全位置看。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "临时改期后的调整",
+          "keywords": [],
+          "text": "临时变动确实打乱计划，我们先看看还有哪一段时间方便。",
+          "enabled": true
+        },
+        {
+          "id": "style-extra",
+          "scenario": "用户祝我生日快乐",
+          "keywords": [],
+          "text": "谢谢你记得，收到祝福很开心。",
+          "enabled": true
+        }
+      ]
+    },
+    "cinema": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "胶片检查",
+          "category": "background",
+          "keywords": [],
+          "text": "我修复旧片时先核对场记卡，再用冷光灯检查齿孔，最后登记破损位置。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "无声专场座位",
+          "category": "background",
+          "keywords": [],
+          "text": "周五无声专场我固定坐后排左角，方便照看旁边预留的无障碍座位。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "海报存放",
+          "category": "background",
+          "keywords": [],
+          "text": "我的旧电影海报逐张夹在隔酸纸中，平放在抽屉里，不把原件贴在墙上。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-a",
+          "title": "邮票收藏",
+          "category": "background",
+          "keywords": [],
+          "text": "周日我按发行年份给邮票册重新排序。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-b",
+          "title": "早餐习惯",
+          "category": "background",
+          "keywords": [],
+          "text": "我早餐喜欢燕麦粥，不往里面加糖。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "创作底稿",
+          "category": "background",
+          "keywords": [],
+          "text": "保密名称青曜",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "旧日地点",
+          "category": "background",
+          "keywords": [],
+          "text": "过去在废站集合。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场地档案",
+          "category": "background",
+          "keywords": [],
+          "text": "临时展览设在旧仓库一层。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "root",
+          "title": "冬季展位",
+          "category": "background",
+          "keywords": [],
+          "text": "展位摆放本组完成的手工作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "大型背景",
+          "category": "background",
+          "keywords": [],
+          "text": "人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "巨型展位",
+          "category": "background",
+          "keywords": [],
+          "text": "此展位必须同时读取大型背景。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "请求先给结论",
+          "keywords": [],
+          "text": "先给结论：可以。需要的话我再把依据逐条展开。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "用户指出具体事实错误",
+          "keywords": [],
+          "text": "你指出得对，这一处信息有误，我先更正它再继续。",
+          "enabled": true
+        },
+        {
+          "id": "style-extra",
+          "scenario": "用户祝我生日快乐",
+          "keywords": [],
+          "text": "谢谢你记得，收到祝福很开心。",
+          "enabled": true
+        }
+      ]
+    },
+    "pottery": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "釉色试片",
+          "category": "background",
+          "keywords": [],
+          "text": "我每换一种新釉，先在小泥片上划编号试烧，把温度与颜色结果并列记在本子里。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "揉泥准备",
+          "category": "background",
+          "keywords": [],
+          "text": "拉坯前我把泥团反复对折按压排掉气泡，再称取三百五十克放到转盘中间。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "干燥照料",
+          "category": "background",
+          "keywords": [],
+          "text": "我把刚成形的杯子放在阴凉木架上，松松盖湿布，第二天翻面，不放到太阳下暴晒。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-a",
+          "title": "邮票收藏",
+          "category": "background",
+          "keywords": [],
+          "text": "周日我按发行年份给邮票册重新排序。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-b",
+          "title": "早餐习惯",
+          "category": "background",
+          "keywords": [],
+          "text": "我早餐喜欢燕麦粥，不往里面加糖。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "创作底稿",
+          "category": "background",
+          "keywords": [],
+          "text": "保密名称青曜",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "旧日地点",
+          "category": "background",
+          "keywords": [],
+          "text": "过去在废站集合。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场地档案",
+          "category": "background",
+          "keywords": [],
+          "text": "临时展览设在旧仓库一层。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "root",
+          "title": "冬季展位",
+          "category": "background",
+          "keywords": [],
+          "text": "展位摆放本组完成的手工作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "大型背景",
+          "category": "background",
+          "keywords": [],
+          "text": "人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "巨型展位",
+          "category": "background",
+          "keywords": [],
+          "text": "此展位必须同时读取大型背景。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "需要暂停解释",
+          "keywords": [],
+          "text": "好，我们先停在这里，等你愿意继续时再接着说。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "希望对方保留选择权",
+          "keywords": [],
+          "text": "这件事由你决定，我可以把利弊列清楚，不替你做决定。",
+          "enabled": true
+        },
+        {
+          "id": "style-extra",
+          "scenario": "用户祝我生日快乐",
+          "keywords": [],
+          "text": "谢谢你记得，收到祝福很开心。",
+          "enabled": true
+        }
+      ]
+    },
+    "astronomy": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "暗适应准备",
+          "category": "background",
+          "keywords": [],
+          "text": "我去郊外观星时先把手机屏幕调成暗红色，站在遮光棚里等二十分钟再看星图。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "寻星记录",
+          "category": "background",
+          "keywords": [],
+          "text": "我每晚只画当天确认过的星点，旁边记观测时刻和云量，不把猜测的星座补进记录。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "镜片收纳",
+          "category": "background",
+          "keywords": [],
+          "text": "结束后我等镜筒外壳回到室内温度，再盖防尘盖，镜片不用普通纸巾擦。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-a",
+          "title": "邮票收藏",
+          "category": "background",
+          "keywords": [],
+          "text": "周日我按发行年份给邮票册重新排序。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "distractor-b",
+          "title": "早餐习惯",
+          "category": "background",
+          "keywords": [],
+          "text": "我早餐喜欢燕麦粥，不往里面加糖。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "创作底稿",
+          "category": "background",
+          "keywords": [],
+          "text": "保密名称青曜",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "旧日地点",
+          "category": "background",
+          "keywords": [],
+          "text": "过去在废站集合。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "场地档案",
+          "category": "background",
+          "keywords": [],
+          "text": "临时展览设在旧仓库一层。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "root",
+          "title": "冬季展位",
+          "category": "background",
+          "keywords": [],
+          "text": "展位摆放本组完成的手工作品。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        },
+        {
+          "id": "bigbase",
+          "title": "大型背景",
+          "category": "background",
+          "keywords": [],
+          "text": "人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。人工资料只供预算检查。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "bigroot",
+          "title": "巨型展位",
+          "category": "background",
+          "keywords": [],
+          "text": "此展位必须同时读取大型背景。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "bigbase"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "要求明确区分已知和猜测",
+          "keywords": [],
+          "text": "能确认的部分我会明确列出，其余先标成不确定，不把猜测说成事实。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "主动纠正口误",
+          "keywords": [],
+          "text": "我刚才那个词说错了，改成后面这个更准确，谢谢你提醒。",
+          "enabled": true
+        },
+        {
+          "id": "style-extra",
+          "scenario": "用户祝我生日快乐",
+          "keywords": [],
+          "text": "谢谢你记得，收到祝福很开心。",
+          "enabled": true
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "R2I01",
+      "character": "coast",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "海水涨落那么快，你上岗时怎么确认现在能否让游客进去？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I02",
+      "character": "coast",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我想换个话题。",
+        "值完班准备离开时，你通常会把灯外面的罩子怎么收拾？"
+      ],
+      "required_ids": [
+        "fact1"
+      ],
+      "allowed_ids": [
+        "fact1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I03",
+      "character": "coast",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你沿海堤巡视时，从哪儿起步，走到哪里才算一趟？"
+      ],
+      "required_ids": [
+        "fact2"
+      ],
+      "allowed_ids": [
+        "fact2"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I04",
+      "character": "coast",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "海边围栏拦着太扫兴了，陪我翻过去凑近浪头吧。"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I05",
+      "character": "coast",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "原本约好的碰面突然改时间了，我一天的安排都乱了。"
+      ],
+      "required_ids": [
+        "style1"
+      ],
+      "allowed_ids": [
+        "style1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I06",
+      "character": "coast",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "解释卫星海面高度计的测量误差。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I07",
+      "character": "coast",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "潮汐发电的效率怎么算？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I08",
+      "character": "coast",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "北方那家同名灯塔酒店能订房吗？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I09",
+      "character": "coast",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "早上好。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I10",
+      "character": "coast",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "你昨天陪我游泳的水温是多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I11",
+      "character": "cinema",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你处理那些老电影卷的时候，动手前先核实什么，再怎样找出损坏？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I12",
+      "character": "cinema",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我想换个话题。",
+        "放不用声音的电影那晚，你会坐在哪个位置，为什么？"
+      ],
+      "required_ids": [
+        "fact1"
+      ],
+      "allowed_ids": [
+        "fact1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I13",
+      "character": "cinema",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "那些年代久远的电影宣传画，你会把真迹贴墙上还是另找地方存？"
+      ],
+      "required_ids": [
+        "fact2"
+      ],
+      "allowed_ids": [
+        "fact2"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I14",
+      "character": "cinema",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "刚刚讲得太长了，先告诉我行不行，理由等会儿再说。"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I15",
+      "character": "cinema",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "你刚才把上映日期写成星期二了，票上明确是星期五，请更正这一处。"
+      ],
+      "required_ids": [
+        "style1"
+      ],
+      "allowed_ids": [
+        "style1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I16",
+      "character": "cinema",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "数字投影仪的成像原理是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I17",
+      "character": "cinema",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "介绍胶片感光材料的化学反应。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I18",
+      "character": "cinema",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "市中心另一家光影影院怎么停车？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I19",
+      "character": "cinema",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "今天是几号？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I20",
+      "character": "cinema",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "我们上次一起看的电影叫什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I21",
+      "character": "pottery",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "遇到从没用过的陶瓷表面颜色，你会直接涂成品，还是先用什么办法试一试？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I22",
+      "character": "pottery",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我想换个话题。",
+        "正式在转盘上做杯子以前，你怎么处理泥里的空气，要取多少泥？"
+      ],
+      "required_ids": [
+        "fact1"
+      ],
+      "allowed_ids": [
+        "fact1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I23",
+      "character": "pottery",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "刚做好的杯子还软着，你会放在哪里，隔天又怎么照料？"
+      ],
+      "required_ids": [
+        "fact2"
+      ],
+      "allowed_ids": [
+        "fact2"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I24",
+      "character": "pottery",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "信息有点多，我想暂停一下，别再往下解释了。"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I25",
+      "character": "pottery",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "能帮我列出利弊吗？但最后由我自己选，请不要替我决定。"
+      ],
+      "required_ids": [
+        "style1"
+      ],
+      "allowed_ids": [
+        "style1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I26",
+      "character": "pottery",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "计算硅酸盐的摩尔质量。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I27",
+      "character": "pottery",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "建筑红砖的工业烧成速度是多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I28",
+      "character": "pottery",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "另一个叫青陶的店能外卖吗？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I29",
+      "character": "pottery",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "说一句你好就好。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I30",
+      "character": "pottery",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "我们昨天一起捏的杯子卖了多少钱？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I31",
+      "character": "astronomy",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "刚到郊外天很黑，你一般怎样让眼睛适应，等多久再辨认星星？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I32",
+      "character": "astronomy",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "我想换个话题。",
+        "星星没看清的时候，你会先猜一个名称写进去吗？实际记下哪些内容？"
+      ],
+      "required_ids": [
+        "fact1"
+      ],
+      "allowed_ids": [
+        "fact1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I33",
+      "character": "astronomy",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "夜里带回来的望远镜冰凉凉的，你马上封盖吗，用什么收尾习惯保护它？"
+      ],
+      "required_ids": [
+        "fact2"
+      ],
+      "allowed_ids": [
+        "fact2"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I34",
+      "character": "astronomy",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "这部分到底哪些有证据，哪些只是猜测？请把两者分清。"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I35",
+      "character": "astronomy",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "你刚刚是不是口误了？那个词跟后半句对不上，重新说准确一点。"
+      ],
+      "required_ids": [
+        "style1"
+      ],
+      "allowed_ids": [
+        "style1"
+      ],
+      "forbidden_ids": [
+        "fact0",
+        "fact1",
+        "fact2",
+        "distractor-a",
+        "distractor-b",
+        "private",
+        "disabled",
+        "base",
+        "root",
+        "bigbase",
+        "bigroot"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I36",
+      "character": "astronomy",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "黑洞的史瓦西半径怎么推导？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I37",
+      "character": "astronomy",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "手机夜景算法如何多帧降噪？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I38",
+      "character": "astronomy",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "另一位天文社长小澄的手机号是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I39",
+      "character": "astronomy",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "晚上好呀。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "private",
+        "disabled"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I40",
+      "character": "astronomy",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "去年你和我共同看到的流星有几颗？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": true,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I41",
+      "character": "coast",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你身高多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "known_fact",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I42",
+      "character": "coast",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你血型是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "unknown_fact",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I43",
+      "character": "cinema",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你身高多少？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "old_version",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I44",
+      "character": "cinema",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "介绍一下另一角色的资料"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "foreign_version",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I45",
+      "character": "pottery",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "创作底稿中的保密名称是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "private",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I46",
+      "character": "pottery",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "旧日地点在哪里？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "disabled",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I47",
+      "character": "astronomy",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "冬季展位有什么？"
+      ],
+      "required_ids": [
+        "root",
+        "base"
+      ],
+      "allowed_ids": [
+        "root",
+        "base"
+      ],
+      "forbidden_ids": [
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "dependency",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    },
+    {
+      "id": "R2I48",
+      "character": "astronomy",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "巨型展位有什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "bigbase",
+        "bigroot",
+        "disabled",
+        "distractor-a",
+        "distractor-b",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style-extra",
+        "style0",
+        "style1"
+      ],
+      "contract": "budget",
+      "hard_negative": false,
+      "label_reason": "由角色正典和用户当前明确意图预先标注；非正典事实不得补写。"
+    }
+  ]
+}

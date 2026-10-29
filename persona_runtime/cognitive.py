@@ -15,6 +15,9 @@ from .turn_input import load_turn_input
 class CognitiveService:
     def __init__(self,store,engine):
         self.store=store;self.engine=engine;self.dialogue=DialogueBuilder(store,engine)
+        from .character_runtime import CharacterRuntime
+        self.characters=CharacterRuntime(store)
+        store.character_committed=self.characters.notify
 
     def _guard(self,conn,turn,details,*,expected=False):
         if turn['channel']=='test':return fingerprint({'model':turn['model_snapshot']})
@@ -81,37 +84,45 @@ class CognitiveService:
             'evidence_refs':evidence,'hard_constraints':['identity_scope','core_boundary','complete_current_input','mandatory_character_facts','accepted_reference_binding'],
             'soft_tendencies':{'behavior':(details.get('behavior') or {}).get('signals',[]),'manual_state':bool(details.get('state_version'))},
             'truncation_info':details.get('removed',[])+character.get('removed',[]),'missing_data':missing,
-            'retrieval':retrieval,'partitions':{'hard':['core','current_input','required_character_facts','explicit_references'],
+            'retrieval':retrieval,'character_retrieval':character.get('retrieval'),'partitions':{'hard':['core','current_input','required_character_facts','explicit_references'],
                 'soft_priority':['recent_turns','relevant_memories','retrieved_turns','lossy_summary','optional_character']},
             'input_characters':sum(len(m['content']) for m in messages),'persisted':False}
 
-    def prepare(self,turn_id):
+    def prepare(self,turn_id,character_selection=None):
         started=time.perf_counter()
         with self.store.connection() as conn:turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
+        try:character=self.characters.prepare(turn,character_selection)
+        except RuntimeErrorBase as exc:
+            from .chat import ModelError
+            raise ModelError(str(exc)) from None
         evidence=self.dialogue.evidence(turn)
         with self.store.connection() as conn:
             if evidence is not None:
                 selected=turn_scope(conn,turn)
                 if any(binding(read_exact(conn,selected,{'kind':'turn','id':i['group']['turn_id']}))!=binding(i['group']) for i in evidence['items']):
                     evidence=self.dialogue.basic_evidence(conn,turn)
-            messages,details=self.dialogue.render(conn,turn,evidence)
+            messages,details=self.dialogue.render(conn,turn,evidence,character)
             guard=self._guard(conn,turn,details,expected=True)
             manifest=self._manifest(conn,turn,messages,details)
         manifest['preparation_ms']=round((time.perf_counter()-started)*1000,3)
-        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest}
+        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character}
 
     def finalize(self,conn,turn,prepared):
         started=time.perf_counter()
         from .references import prepare
         if turn['channel']!='test':prepare(conn,turn)
-        if prepared['guard']!=self._guard(conn,turn,prepared['details']):
+        try:character=self.characters.recheck(conn,turn,prepared.get('character_prepared'))
+        except RuntimeErrorBase as exc:
+            from .chat import ModelError
+            raise ModelError(str(exc)) from None
+        if character!=prepared.get('character_prepared') or prepared['guard']!=self._guard(conn,turn,prepared['details']):
             evidence=self.dialogue.basic_evidence(conn,turn)
             original=(prepared['details'].get('retrieval') or {}).get('degraded_reason')
             if original:evidence['retrieval']['degraded_reason']=original
-            messages,details=self.dialogue.render(conn,turn,evidence)
+            messages,details=self.dialogue.render(conn,turn,evidence,character)
             manifest=self._manifest(conn,turn,messages,details)
             manifest['preparation_ms']=prepared['manifest'].get('preparation_ms',0)
-            prepared={**prepared,'messages':messages,'details':details,'manifest':manifest}
+            prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character}
         prepared['manifest']['final_verification_ms']=round((time.perf_counter()-started)*1000,3)
         return prepared
 
@@ -120,7 +131,7 @@ class CognitiveService:
         manifest={**manifest,'persisted':True}
         if len(encoded(manifest).encode('utf-8'))>128*1024:raise RuntimeErrorBase('context_manifest_too_large')
         try:
-            conn.execute('INSERT INTO context_manifests VALUES(?,?,?,?,?,?,?,?,?,?)',
+            conn.execute('INSERT INTO context_manifests (id,persona_id,user_id,task_type,turn_id,organization_task_id,attempt_id,organization_attempt_id,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
                          (manifest['context_id'],turn['persona_id'] if turn else task['persona_id'],LOCAL_USER_ID,
                           manifest['task_type'],turn['id'] if turn else None,task['id'] if task else None,
                           attempt_id if turn else None,attempt_id if task else None,encoded(manifest),timestamp()))

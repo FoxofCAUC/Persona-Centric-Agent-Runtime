@@ -160,6 +160,8 @@ class ProfileService:
         return data
 
     def _write(self,conn,persona_id,kind,data,expected_version,operation_id,*,source_ids=(),actor='user',restored_from=None):
+        from .private_personas import guard_acceptance_write
+        guard_acceptance_write(self.store,persona_id)
         require_text(operation_id,'operation_id')
         if len(operation_id)>200:
             raise RuntimeErrorBase('invalid_operation_id')

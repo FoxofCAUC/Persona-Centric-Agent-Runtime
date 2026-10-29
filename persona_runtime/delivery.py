@@ -202,7 +202,10 @@ class DeliveryService:
         stream["parts"] = []
         for row in conn.execute("SELECT * FROM reply_delivery_parts WHERE stream_id=? ORDER BY stream_seq", (stream_id,)):
             part=dict(row);part.pop("claim_token",None)
-            metadata=conn.execute('SELECT content_kind,cancel_if_new_input,wait_ms FROM reply_segments WHERE batch_id=? AND segment_index=?',(part['reply_batch_id'],part['semantic_index'])).fetchone()
+            metadata=conn.execute('SELECT text,content_kind,cancel_if_new_input,wait_ms FROM reply_segments WHERE batch_id=? AND segment_index=?',(part['reply_batch_id'],part['semantic_index'])).fetchone()
+            from .presentation import code_lines
+            part['protected_code_lines']=[line for line in code_lines(metadata['text']) if line in part['text']] if metadata else []
+            metadata={k:v for k,v in dict(metadata).items() if k!='text'} if metadata else None
             part.update(dict(metadata) if metadata else {})
             part['remaining_ms']=self._wait(conn,part) if part['state']=='pending' else 0
             part["attempts"]=[dict(item) for item in conn.execute(

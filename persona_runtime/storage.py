@@ -18,7 +18,7 @@ from .schema_m70 import SCHEMA11, TABLES11
 from .schema_m72 import SCHEMA12, TABLES12
 from .schema_m73 import SCHEMA13, TABLES13
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
 M2_TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
 M3_TABLES = M2_TABLES + ("request_activity", "service_notices")
@@ -166,7 +166,7 @@ class Store:
         if version != SCHEMA_VERSION:
             raise RuntimeErrorBase(f"Incompatible database schema version {version}; expected {SCHEMA_VERSION}")
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if not set(TABLES).issubset(tables):
+        if not set(TABLES + (('character_selection_attempts','quota_reservations') if SCHEMA_VERSION>=15 else ())).issubset(tables):
             raise RuntimeErrorBase("Database schema is incomplete; restore a verified backup")
 
     @contextmanager
@@ -188,13 +188,14 @@ class Store:
         conn = self._connect(create=True)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
+            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not set(M1_TABLES).issubset(tables):
                     raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
                 prefix = "before-m72" if version == 11 else "before-m70" if version == 10 else "before-m63" if version == 9 else "before-m62" if version == 8 else "before-m61" if version == 7 else "before-m6" if version == 6 else ("before-m5" if version == 5 else ("before-m4" if version == 4 else ("before-m3" if version == 3 else "before-m2")))
                 prefix = 'before-m73' if version == 12 else prefix
                 prefix = 'before-m74' if version == 13 else prefix
+                prefix = 'before-m754r2' if version == 14 else prefix
                 backup = self.paths.home / "backups" / f"{prefix}-{uuid4()}.sqlite3"
                 target = sqlite3.connect(backup)
                 try:
@@ -249,7 +250,7 @@ class Store:
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif version == 12 and set(TABLES[:-len(TABLES13)]).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            elif version == 13 and set(TABLES).issubset(tables):
+            elif version in (13,14) and set(TABLES).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
@@ -280,6 +281,9 @@ class Store:
             if version < 14:
                 from .schema_m74 import migrate
                 migrate(conn)
+            if version < 15 and SCHEMA_VERSION>=15:
+                from .schema_m754r2 import migrate as migrate_selector
+                migrate_selector(conn)
             refresh_development_scope_trigger(conn)
             if conn.execute("PRAGMA foreign_key_check").fetchone():
                 raise RuntimeErrorBase("Migration foreign key verification failed")
@@ -296,7 +300,7 @@ class Store:
             return {
                 "database": str(self.path), "schema_version": SCHEMA_VERSION,
                 "current_persona": self.current(conn, required=False),
-                "counts": {t: conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in TABLES},
+                "counts": {t: conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in TABLES + ('character_selection_attempts','quota_reservations')},
             }
 
     @staticmethod

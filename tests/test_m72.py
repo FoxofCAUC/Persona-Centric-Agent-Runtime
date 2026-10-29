@@ -43,7 +43,7 @@ class MigrationTests(unittest.TestCase):
                 if version:old_database(store.path,version)
                 store.initialize();store.initialize()
                 with store.connection() as db:
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],14)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],15)
                     self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
                     self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
                     self.assertEqual(db.execute('SELECT count(*) FROM context_manifests').fetchone()[0],0)
@@ -204,7 +204,7 @@ class ContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_export9_includes_policy_and_manifest_without_credentials(self):
         t=await self.turn('你好');await self.engine._run(t['id'])
         result=self.service.export_persona();payload=json.loads(Path(result['path']).read_text(encoding='utf-8'))
-        self.assertEqual(payload['format_version'],11);self.assertEqual(len(payload['context_manifests']),1)
+        self.assertEqual(payload['format_version'],12);self.assertEqual(len(payload['context_manifests']),1)
         self.assertNotIn('encrypted_key',json.dumps(payload['context_manifests']))
 
     async def test_manifest_write_failure_rolls_back_attempt_and_never_calls_provider(self):

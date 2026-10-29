@@ -9,8 +9,12 @@ from urllib.parse import urlsplit
 from .models import RuntimeErrorBase, identifier
 from .security import protect, unprotect
 
+SELECTOR_DEFAULTS = {"enabled": False, "base_url": "", "name": "", "encrypted_key": "",
+                     "timeout": 60, "max_tokens": 512, "max_input_chars": 48000,
+                     "hourly_limit": 30, "daily_limit": 200}
+
 DEFAULTS = {
-    "version": 1, "service_port": 8765, "napcat_port": 6399,
+    "version": 2, "character_selector": SELECTOR_DEFAULTS, "service_port": 8765, "napcat_port": 6399,
     "astrbot_port": 6285, "onebot_port": 6299, "bot_qq": "", "owner_qq": "",
     "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
               "max_tokens": 1024, "hourly_limit": 30, "max_input_chars": 24000},
@@ -44,19 +48,39 @@ class ConfigStore:
             value.update(instance_id=identifier(), admin_token=protect(secrets.token_urlsafe(32)),
                          bridge_token=protect(secrets.token_urlsafe(32)))
             atomic_json(self.file, value)
-        return self.load()
+        value=self.load()
+        raw=json.loads(self.file.read_text(encoding='utf-8'))
+        if raw.get('version')==1:
+            backup=self.file.with_name('workbench-v1-'+identifier()+'.json')
+            backup.write_bytes(self.file.read_bytes())
+            atomic_json(self.file,value)
+        return value
 
     def load(self):
         value = json.loads(self.file.read_text(encoding="utf-8"))
         value.setdefault("interaction", copy.deepcopy(DEFAULTS["interaction"]))
         value.setdefault("organization", copy.deepcopy(DEFAULTS["organization"]))
+        if value.get("version") == 1:
+            value["version"] = 2
+        value.setdefault("character_selector", copy.deepcopy(SELECTOR_DEFAULTS))
         self.validate(value)
         return value
 
     @staticmethod
     def validate(value):
-        if value.get("version") != 1:
+        if value.get("version") != 2:
             raise RuntimeErrorBase("Unsupported workbench configuration version")
+        selector = value.get("character_selector")
+        if not isinstance(selector, dict) or set(selector) != set(SELECTOR_DEFAULTS) or type(selector['enabled']) is not bool:
+            raise RuntimeErrorBase('Invalid character selector configuration')
+        for key in ('base_url','name','encrypted_key'):
+            if not isinstance(selector[key],str):raise RuntimeErrorBase('Invalid character selector text')
+        if selector['base_url']:
+            url=urlsplit(selector['base_url'])
+            if url.scheme not in ('http','https') or not url.hostname or url.username or url.password or url.query or url.fragment or (url.scheme=='http' and url.hostname not in ('localhost','127.0.0.1','::1')):
+                raise RuntimeErrorBase('Invalid character selector endpoint')
+        for field,low,high in (('timeout',1,60),('max_tokens',64,2048),('max_input_chars',1000,64000),('hourly_limit',0,10000),('daily_limit',0,10000)):
+            if type(selector[field]) is not int or not low<=selector[field]<=high:raise RuntimeErrorBase('Invalid character selector limit')
         ports = [value.get(key) for key in ("service_port", "napcat_port", "astrbot_port", "onebot_port")]
         if any(type(p) is not int or not 1024 <= p <= 65535 for p in ports) or len(set(ports)) != 4:
             raise RuntimeErrorBase("Ports must be distinct integers between 1024 and 65535")
@@ -109,6 +133,7 @@ class ConfigStore:
 
     def public(self):
         value = self.load()
+        value["character_selector"]["has_key"] = bool(value["character_selector"].pop("encrypted_key"))
         value.pop("admin_token")
         value.pop("bridge_token")
         value["model"]["has_key"] = bool(value["model"].pop("encrypted_key"))
@@ -117,7 +142,7 @@ class ConfigStore:
 
     def update(self, changes):
         value = self.load()
-        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization"}
+        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization", "character_selector"}
         if not isinstance(changes, dict) or not set(changes) <= allowed:
             raise RuntimeErrorBase("Unknown configuration field")
         for key, change in changes.items():
@@ -133,6 +158,15 @@ class ConfigStore:
                         raise RuntimeErrorBase("API key must be text")
                     value["model"]["encrypted_key"] = protect(key_value) if key_value else ""
                 value["model"].update(change)
+            elif key == "character_selector":
+                if not isinstance(change,dict) or not set(change) <= (set(SELECTOR_DEFAULTS)-{'encrypted_key'})|{'api_key'}:
+                    raise RuntimeErrorBase('Unknown character selector field')
+                change=copy.deepcopy(change)
+                if 'api_key' in change:
+                    secret=change.pop('api_key')
+                    if not isinstance(secret,str):raise RuntimeErrorBase('Invalid character selector key')
+                    change['encrypted_key']=protect(secret) if secret else ''
+                value[key].update(change)
             elif key == "organization":
                 if not isinstance(change, dict) or not set(change) <= set(DEFAULTS["organization"]):
                     raise RuntimeErrorBase("Unknown organization field")
@@ -156,6 +190,14 @@ class ConfigStore:
                 value[key] = change
         self.validate(value)
         atomic_json(self.file, value)
+        return self.public()
+
+    def copy_selector_model(self):
+        value=self.load()
+        for key in ('base_url','name','encrypted_key'):
+            value['character_selector'][key]=value['model'][key]
+        self.validate(value)
+        atomic_json(self.file,value)
         return self.public()
 
     def token(self, role="admin"):

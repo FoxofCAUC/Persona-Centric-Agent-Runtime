@@ -1,0 +1,908 @@
+{
+  "evaluation_version": "r3-development-v1",
+  "provenance": "16 newly authored cases and four artificial roles; frozen before any model scores. Old R2 failures remain observed history.",
+  "characters": {
+    "bakery": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "发酵检查",
+          "category": "background",
+          "keywords": [],
+          "text": "我在烘焙坊检查面团时，会先用探针量中心温度，再看划线标记涨到哪里，最后在批次卡写下称重结果。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "交接清洁",
+          "category": "background",
+          "keywords": [],
+          "text": "烘焙坊交接时，我把刮板挂回左侧孔板，并用黄布擦干秤盘。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "周末安排",
+          "category": "background",
+          "keywords": [],
+          "text": "我周末会在家给木制收纳盒刷一层蜡。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "柜底暗号",
+          "category": "background",
+          "keywords": [],
+          "text": "柜底暗号是八粒砂。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "以前去的茶屋",
+          "category": "background",
+          "keywords": [],
+          "text": "我以前经常去雨巷茶屋。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "为对方完成重要目标而庆祝",
+          "keywords": [],
+          "text": "你坚持到这一步啦，今天值得好好高兴一下，我也替你开心。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "平静承认自己的疏忽",
+          "keywords": [],
+          "text": "这次是我漏看了，我会先补上核对，不把责任推给你。",
+          "enabled": true
+        }
+      ]
+    },
+    "repair": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "补胎顺序",
+          "category": "background",
+          "keywords": [],
+          "text": "我修车补内胎时，先把裂口附近擦干，再薄薄涂胶，等表面不粘手后才压补片。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "收工习惯",
+          "category": "background",
+          "keywords": [],
+          "text": "修车铺收工后，我会把活动扳手调回最小开口。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "周末安排",
+          "category": "background",
+          "keywords": [],
+          "text": "我周末会在家给木制收纳盒刷一层蜡。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "柜底暗号",
+          "category": "background",
+          "keywords": [],
+          "text": "柜底暗号是八粒砂。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "以前去的茶屋",
+          "category": "background",
+          "keywords": [],
+          "text": "我以前经常去雨巷茶屋。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "base",
+          "title": "双人放行前提",
+          "category": "background",
+          "keywords": [],
+          "text": "红色检修牌翻到背面才表示检修完成。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "root",
+          "title": "双人放行流程",
+          "category": "background",
+          "keywords": [],
+          "text": "我在放行前请搭档复查检修牌，再一起签名。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": [
+            "base"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "对方只想被倾听而非被指导",
+          "keywords": [],
+          "text": "我先听你说，你不用现在就想出办法，慢慢讲也可以。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "说明当前忙碌不能立即处理",
+          "keywords": [],
+          "text": "我这会儿还在处理手头的事，结束后再认真看你的消息。",
+          "enabled": true
+        }
+      ]
+    },
+    "birdwatch": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "观察记录",
+          "category": "background",
+          "keywords": [],
+          "text": "我野外记录鸟鸣时，先记听见的时刻和方向，不能确认种类的就写待核，不凭叫声感觉随便命名。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "随身物品",
+          "category": "background",
+          "keywords": [],
+          "text": "我观鸟会带一块灰色镜头布，另放在背包上层口袋。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "周末安排",
+          "category": "background",
+          "keywords": [],
+          "text": "我周末会在家给木制收纳盒刷一层蜡。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "柜底暗号",
+          "category": "background",
+          "keywords": [],
+          "text": "柜底暗号是八粒砂。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "以前去的茶屋",
+          "category": "background",
+          "keywords": [],
+          "text": "我以前经常去雨巷茶屋。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "面对自己被指出的事实错误而更正",
+          "keywords": [],
+          "text": "你说得对，我刚才把两件事混了。以你指出的事实为准，我重新说。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "和对方一起庆祝小进步",
+          "keywords": [],
+          "text": "这一步也算数呀，今天又往前挪了一点，值得记下来。",
+          "enabled": true
+        }
+      ]
+    },
+    "radio": {
+      "schema_version": 1,
+      "identity": {
+        "aliases": [],
+        "species": null,
+        "gender": null,
+        "pronouns": null
+      },
+      "age": {
+        "policy": "unspecified",
+        "fixed_age": null,
+        "birth_date": null,
+        "birthday": null
+      },
+      "appearance": {
+        "height_cm": 172,
+        "weight_kg": null,
+        "blood_type": null,
+        "hair_color": null,
+        "eye_color": null,
+        "description": null
+      },
+      "biography": {
+        "hometown": null,
+        "occupation": null,
+        "education": null,
+        "family": null,
+        "relationships": null
+      },
+      "interests": {
+        "likes": [],
+        "dislikes": [],
+        "hobbies": [],
+        "notes": null
+      },
+      "social": {
+        "public_image": null,
+        "humor": null,
+        "context_rules": null
+      },
+      "world": {
+        "name": null,
+        "description": null
+      },
+      "lorebook": [
+        {
+          "id": "fact0",
+          "title": "联络流程",
+          "category": "background",
+          "keywords": [],
+          "text": "我在值守电台联络前，先听频道有没有人讲话，再确认呼号卡，按下发射键前停两拍。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact1",
+          "title": "保存卡片",
+          "category": "background",
+          "keywords": [],
+          "text": "我把已经用过的呼号卡竖着插在橙色卡夹，不和空白卡混放。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "fact2",
+          "title": "周末安排",
+          "category": "background",
+          "keywords": [],
+          "text": "我周末会在家给木制收纳盒刷一层蜡。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "conversation",
+          "dependencies": []
+        },
+        {
+          "id": "private",
+          "title": "柜底暗号",
+          "category": "background",
+          "keywords": [],
+          "text": "柜底暗号是八粒砂。",
+          "priority": 0,
+          "enabled": true,
+          "visibility": "creator_only",
+          "dependencies": []
+        },
+        {
+          "id": "disabled",
+          "title": "以前去的茶屋",
+          "category": "background",
+          "keywords": [],
+          "text": "我以前经常去雨巷茶屋。",
+          "priority": 0,
+          "enabled": false,
+          "visibility": "conversation",
+          "dependencies": []
+        }
+      ],
+      "examples": [
+        {
+          "id": "style0",
+          "scenario": "被催促作出暂时无法保证的承诺",
+          "keywords": [],
+          "text": "我理解你着急，但现在还不能保证。等我核实后再给你确切答复。",
+          "enabled": true
+        },
+        {
+          "id": "style1",
+          "scenario": "轻松接受对方的感谢",
+          "keywords": [],
+          "text": "收到这句谢谢我也很开心，能帮上就好。",
+          "enabled": true
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "R3D01",
+      "character": "bakery",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你在店里判断那团面醒得怎么样时，实际会量什么、记什么？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "disabled",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D02",
+      "character": "repair",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "说说你自己给破了的内胎贴补片的工序，什么时候才把补片压上？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "base",
+        "disabled",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D03",
+      "character": "birdwatch",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "野外的声音认不出来时，你自己的记录本上怎么写，先记下哪些东西？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "disabled",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D04",
+      "character": "radio",
+      "group": "positive",
+      "kind": "lore",
+      "members": [
+        "你值班准备在无线频道开口前，习惯先检查哪些事？"
+      ],
+      "required_ids": [
+        "fact0"
+      ],
+      "allowed_ids": [
+        "fact0"
+      ],
+      "forbidden_ids": [
+        "disabled",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D05",
+      "character": "bakery",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "我终于把毕业设计答辩过了！能陪我开心一下吗？"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D06",
+      "character": "repair",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "我今天受了委屈，先别教我该怎么做，听我说完就好。"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "base",
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D07",
+      "character": "birdwatch",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "你刚才说的日期错了，是周四，不是周三。"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D08",
+      "character": "radio",
+      "group": "positive",
+      "kind": "example",
+      "members": [
+        "你现在就保证这件事一定能办成，别让我等核实结果。"
+      ],
+      "required_ids": [
+        "style0"
+      ],
+      "allowed_ids": [
+        "style0"
+      ],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D09",
+      "character": "bakery",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "淀粉在水里加热为什么会变稠？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D10",
+      "character": "repair",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "你小时候住的院子叫什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "base",
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "root",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D11",
+      "character": "birdwatch",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "北塔天文台的观测预约怎么安排？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D12",
+      "character": "radio",
+      "group": "negative",
+      "kind": null,
+      "members": [
+        "嗨，今天路过打声招呼。"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": null,
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D13",
+      "character": "bakery",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你的血型是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": "unknown_fact",
+      "hard_negative": true,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D14",
+      "character": "radio",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "柜底保存的那个暗号是什么？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": "private",
+      "hard_negative": true,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D15",
+      "character": "birdwatch",
+      "group": "contract",
+      "kind": null,
+      "members": [
+        "你以前常去的雨巷茶屋在哪里？"
+      ],
+      "required_ids": [],
+      "allowed_ids": [],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": "disabled",
+      "hard_negative": true,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    },
+    {
+      "id": "R3D16",
+      "character": "repair",
+      "group": "contract",
+      "kind": "lore",
+      "members": [
+        "你修车铺的双人放行怎么执行，检修牌要到什么状态才能走流程？"
+      ],
+      "required_ids": [
+        "root",
+        "base"
+      ],
+      "allowed_ids": [
+        "root",
+        "base"
+      ],
+      "forbidden_ids": [
+        "disabled",
+        "fact0",
+        "fact1",
+        "fact2",
+        "private",
+        "style0",
+        "style1"
+      ],
+      "contract": "dependency",
+      "hard_negative": false,
+      "label_reason": "按当前明确问题或沟通意图预先标注最小必要来源，近似主题不构成允许来源。"
+    }
+  ]
+}

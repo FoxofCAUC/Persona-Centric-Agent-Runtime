@@ -38,3 +38,8 @@ downloads/
 *.pem
 *.key
 *.pfx
+
+# Local personal canon and acceptance copies are never publication assets.
+private/
+*.private.json
+*.private.md

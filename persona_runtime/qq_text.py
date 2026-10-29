@@ -6,6 +6,10 @@ contents, numbers and URLs remain data; Markdown decoration is not sent to QQ.
 import re
 
 
+def is_code_line(line):
+    return bool(re.match(r'^\s*(?:def\s+\w+\(|class\s+\w+|(?:from|import)\s+\w+|return\s+|assert\s+|print\(|[A-Za-z_]\w*(?:\[[^\n]+?\])?\s*=(?!=))',line))
+
+
 def plain_qq_text(text):
     # Protect code contents from emphasis stripping (e.g. Python ** and a_b).
     protected = []
@@ -26,6 +30,8 @@ def plain_qq_text(text):
                 code.append(line)
         elif match:
             fence = match[1]
+        elif is_code_line(line):
+            lines.append(protect(line))
         else:
             lines.append(line)
     if fence:
@@ -51,6 +57,7 @@ def plain_qq_text(text):
     result = '\n'.join(rows)
     # URL path/query characters are data, including underscores and asterisks.
     result = re.sub(r'https?://[^\s（）<>]+', lambda m: protect(m[0]), result)
+    result = re.sub(r'\b[A-Za-z0-9_]+\s+\*\*\s+[A-Za-z0-9_]+',lambda m:protect(m[0]),result)
     result = re.sub(r'\\([*_`~#>\[\]])', r'\1', result)
     for marker in ('**', '__', '~~'):
         result = re.sub(re.escape(marker)+r'([^\n]+?)'+re.escape(marker), r'\1', result)

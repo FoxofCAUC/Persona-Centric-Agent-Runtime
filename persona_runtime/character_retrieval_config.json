@@ -1,0 +1,11 @@
+{
+  "algorithm": "character-hybrid-rrf60-v1",
+  "rrf_k": 60,
+  "model_fingerprint": "9604d8e7728c59a3396c7afc1e363f29ec775ed4ca59cb329bafa11831ae4be3",
+  "development_sha256": "3eb59ad5a6a36c7e36c5b3ac7ec8400eb8d32b56a53a171359c7bd5143e34eb9",
+  "thresholds": {
+    "lore": 0.575,
+    "example": 0.675
+  },
+  "status": "development_frozen_not_joint_acceptance"
+}

@@ -11,7 +11,10 @@ class ContextUI:
         self.ctx_turn=tk.StringVar();self.ctx_organization=tk.StringVar()
         cfg=self.config.load();self.ctx_bot=tk.StringVar(value=cfg['bot_qq']);self.ctx_peer=tk.StringVar(value=cfg['owner_qq'])
         self.ctx_enabled=tk.BooleanVar(value=True);self.ctx_cross=tk.BooleanVar(value=False)
-        self.ctx_policy=None;self.ctx_epoch=0;self.ctx_intents={}
+        self.ctx_character=tk.StringVar(value='词法')
+        self.ctx_policy=None;self.ctx_epoch=0;self.ctx_intents={};self.ctx_draft_epoch=0
+        for var in (self.ctx_enabled,self.ctx_cross,self.ctx_character):
+            var.trace_add('write',lambda *_:setattr(self,'ctx_draft_epoch',self.ctx_draft_epoch+1))
 
     def build_context_page(self,parent):
         self.heading(parent,'认知上下文与工作集','预览读取请求受理时政策；未保存的开关只影响保存后新输入。未就绪的任务视图不触发模型。')
@@ -23,6 +26,8 @@ class ContextUI:
         line=ttk.Frame(parent);line.pack(fill='x',pady=4)
         ttk.Checkbutton(line,text='自动工作集召回',variable=self.ctx_enabled).pack(side='left',padx=5)
         ttk.Checkbutton(line,text='允许同入口跨会话',variable=self.ctx_cross).pack(side='left',padx=5)
+        ttk.Label(line,text='角色检索').pack(side='left')
+        ttk.Combobox(line,textvariable=self.ctx_character,values=('词法','本地语义（旧方案）','本地召回＋云端选择'),state='readonly',width=23).pack(side='left')
         self.button(line,'读取入口政策',self.refresh_context_policy,{'context-read'})
         self.button(line,'保存开关',self.save_context_policy,{'context-write'})
         line=ttk.Frame(parent);line.pack(fill='x',pady=4)
@@ -55,10 +60,12 @@ class ContextUI:
 
     def refresh_context_policy(self):
         if not self.persona_id:return
-        key=self.context_key();pid=self.persona_id;channel=self.ctx_channel.get()
+        key=self.context_key();pid=self.persona_id;channel=self.ctx_channel.get();draft=self.ctx_draft_epoch
         def done(value):
             if key!=self.context_key():return
+            if draft!=self.ctx_draft_epoch:return
             self.ctx_policy=value;self.ctx_enabled.set(value.get('context_mode')=='working_set');self.ctx_cross.set(value.get('cross_session',False))
+            self.ctx_character.set({'lexical':'词法','hybrid':'本地语义（旧方案）','hybrid_llm':'本地召回＋云端选择'}.get(value.get('character_retrieval',{}).get('mode'),'词法'))
             self.set_text(self.ctx_output,json.dumps(value,ensure_ascii=False,indent=2))
         self.run_task('读取上下文政策',{'context-read'},lambda _:self.client.manage('interaction.current',persona_id=pid,channel=channel),done,error_current=lambda:key==self.context_key())
 
@@ -73,9 +80,10 @@ class ContextUI:
             if answer is None:return
             pending_action='seal' if answer else 'cancel'
         mode='working_set' if self.ctx_enabled.get() else 'legacy_recent';cross=self.ctx_cross.get()
-        intent=(p['persona_id'],p['channel'],p['id'],mode,cross,pending_action)
+        character_mode={'词法':'lexical','语义增强':'hybrid','本地语义（旧方案）':'hybrid','本地召回＋云端选择':'hybrid_llm'}[self.ctx_character.get()]
+        intent=(p['persona_id'],p['channel'],p['id'],mode,cross,pending_action,character_mode)
         args={'persona_id':p['persona_id'],'channel':p['channel'],'mode':p['mode'],'expected_version':p['id'],
-              'operation_id':self.ctx_intents.setdefault(intent,identifier()),'context_mode':mode,'cross_session':cross,'pending_action':pending_action}
+              'operation_id':self.ctx_intents.setdefault(intent,identifier()),'context_mode':mode,'cross_session':cross,'pending_action':pending_action,'character_retrieval_mode':character_mode}
         def done(value):
             if key!=self.context_key():return
             self.ctx_policy=value;self.set_text(self.ctx_output,json.dumps(value,ensure_ascii=False,indent=2));self.notice.set('上下文政策已保存，只影响后续受理输入。')

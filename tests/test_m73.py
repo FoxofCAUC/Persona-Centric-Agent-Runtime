@@ -246,7 +246,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
 
     def test_export10_has_lifecycle_no_credentials(self):
         self.seed();self.seal();path=Path(self.service.export_persona()['path']);value=json.loads(path.read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],11);self.assertEqual(len(value['session_packages']),1)
+        self.assertEqual(value['format_version'],12);self.assertEqual(len(value['session_packages']),1)
         self.assertNotIn('encrypted_key',path.read_text(encoding='utf-8'))
 
     async def test_manifest_failure_prevents_organization_call(self):
@@ -332,7 +332,7 @@ class MigrationTests(unittest.TestCase):
                         db.execute('INSERT INTO users VALUES(?,?,?)',(LOCAL_USER_ID,'人工',timestamp()));db.execute(f'PRAGMA user_version={v}')
                 store.initialize();store.initialize()
                 with store.connection() as db:
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],14)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],15)
                     self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok');self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
 
     def test_schema12_failure_rolls_back(self):

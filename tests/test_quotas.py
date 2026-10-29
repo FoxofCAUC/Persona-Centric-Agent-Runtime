@@ -26,7 +26,7 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_zero_is_valid_but_negative_bool_and_unknown_fields_are_rejected(self):
         unlimited=dict(project_hourly=0,background_hourly=0,background_daily=0)
-        self.assertEqual(self.quotas.update(unlimited)['limits'],unlimited)
+        self.assertEqual(self.quotas.update(unlimited)['limits'],unlimited | {'selector_hourly':30,'selector_daily':200})
         for bad in (-1,True,10001,'0'):
             with self.assertRaises(RuntimeErrorBase):self.quotas.update(dict(unlimited,project_hourly=bad))
         with self.assertRaises(RuntimeErrorBase):self.quotas.update(dict(unlimited,other=1))
@@ -49,7 +49,7 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(other.current()['limits'],before)
 
     async def test_edit_while_acceptance_active_changes_restore_values(self):
-        self.quotas.begin_acceptance();target=dict(project_hourly=31,background_hourly=7,background_daily=21)
+        self.quotas.begin_acceptance();target=dict(project_hourly=31,background_hourly=7,background_daily=21,selector_hourly=32,selector_daily=201)
         result=self.quotas.update(target)
         self.assertEqual(result['limits'],dict.fromkeys(target,0));self.assertEqual(result['restore_limits'],target)
         self.quotas.end_acceptance();self.assertEqual(self.quotas.current()['limits'],target)

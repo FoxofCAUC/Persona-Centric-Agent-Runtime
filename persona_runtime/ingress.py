@@ -54,22 +54,26 @@ class IngressService:
     def _remember(self,conn,persona,operation_id,fingerprint,result):
         conn.execute('INSERT INTO batch_operations VALUES (?,?,?,?,?,?)',(operation_id,persona,LOCAL_USER_ID,fingerprint,encoded(result),timestamp()))
 
-    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,reply_mode=None,context_mode=None,cross_session=None):
+    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None):
         if mode not in MODES:raise RuntimeErrorBase('invalid_interaction_mode')
         if reply_mode is not None and reply_mode not in REPLY_MODES:raise RuntimeErrorBase('invalid_reply_mode')
         if context_mode is not None and context_mode not in ('working_set','legacy_recent'):raise RuntimeErrorBase('invalid_context_mode')
         if cross_session is not None and type(cross_session) is not bool:raise RuntimeErrorBase('invalid_cross_session')
+        from .character_policy import choose
+        selected_character=choose(character_retrieval_mode) if character_retrieval_mode is not None else None
         with self.store.connection(write=True) as conn:
             if self.store.current(conn)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
             current=self.policy(conn,persona_id,channel)
             value={'channel':channel,'mode':mode,'reply_mode':reply_mode,'context_mode':context_mode,'cross_session':cross_session,'expected_version':expected_version,'pending_action':pending_action}
+            if character_retrieval_mode is not None:value['character_retrieval_mode']=character_retrieval_mode
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
             reply_mode=reply_mode or current['reply_mode']
             context_mode=context_mode or current['context_mode']
             cross_session=current['cross_session'] if cross_session is None else cross_session
-            context_changed=(context_mode,cross_session)!=(current['context_mode'],current['cross_session'])
+            character_policy=selected_character if selected_character is not None else current['character_retrieval']
+            context_changed=(context_mode,cross_session,character_policy)!=(current['context_mode'],current['cross_session'],current['character_retrieval'])
             pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall() if mode!=current['mode'] or context_changed or reply_mode!=current['reply_mode'] else []
             if pending and pending_action not in ('seal','cancel'):raise RuntimeErrorBase('pending_batch_resolution_required')
             for row in pending:
@@ -78,11 +82,13 @@ class IngressService:
             if current['mode']==mode and current['reply_mode']==reply_mode and not context_changed:result=current
             else:
                 vid=identifier()
-                data=json.loads(current['data_json']);data['expression']=expression_snapshot(reply_mode,vid);data['context']={'context_mode':context_mode,'cross_session':cross_session}
+                data=json.loads(current['data_json']);data['expression']=expression_snapshot(reply_mode,vid);data['context']={**data.get('context',{}),'context_mode':context_mode,'cross_session':cross_session,'character_retrieval':character_policy}
                 conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',(vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,mode,encoded(data),timestamp(),reply_mode))
                 conn.execute('INSERT INTO interaction_heads VALUES (?,?,?,?) ON CONFLICT(persona_id,channel) DO UPDATE SET version_id=excluded.version_id',(persona_id,LOCAL_USER_ID,channel,vid))
                 result=self.policy(conn,persona_id,channel)
             self._remember(conn,persona_id,operation_id,fp,result)
+        callback=getattr(self.store,'character_committed',None)
+        if callback:callback(persona_id)
         self.schedule_committed();return result
 
     def _batch(self,conn,batch_id):
@@ -92,7 +98,7 @@ class IngressService:
 
     def _view(self,conn,batch_id):
         row=self._batch(conn,batch_id)
-        for key in ('profile_snapshot','character_snapshot','model_snapshot','scope_key'):row.pop(key,None)
+        for key in ('profile_snapshot','character_snapshot','model_snapshot','selector_model_snapshot','scope_key'):row.pop(key,None)
         row['policy']=json.loads(row.pop('policy_json'))
         row['origin']={'bot':row['bot'],'sender':row['peer']} if row['channel']=='qq' else None
         row['members']=[dict(r) for r in conn.execute('SELECT r.id AS receipt_id,r.accepted_seq,e.id AS event_id,e.text,e.created_at FROM input_batch_members m JOIN ingress_receipts r ON r.id=m.receipt_id JOIN events e ON e.id=m.event_id WHERE m.batch_id=? ORDER BY m.member_order',(batch_id,))]
@@ -152,6 +158,8 @@ class IngressService:
             # A v1 intent cannot be silently replayed through v2 after upgrade.
             if conn.execute('SELECT 1 FROM turns WHERE source_key=?',(channel+':'+rid,)).fetchone():raise RuntimeErrorBase('legacy_submission_exists')
             pid=self.engine.service._persona(conn,value.get('persona_id'))['id']
+            from .private_personas import guard_acceptance_write
+            guard_acceptance_write(self.store,pid)
             sid=self.engine._session(conn,pid,channel,value.get('session_id'),origin={'bot':bot,'sender':peer})
             pol=self.policy(conn,pid,channel);policy={**PARAMS,'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol),'expression':expression_snapshot(pol['reply_mode'],pol['id'])}
             frozen=snapshot(conn,pid);character=character_head(conn,pid)
@@ -203,6 +211,7 @@ class IngressService:
             clock=self.clocks.get(batch['id'])
             elapsed=max(0,(self.monotonic()-clock[0])*1000) if clock else max(0,(self.epoch()-batch['first_epoch'])*1000)
             conn.execute('UPDATE input_batches SET buffer_ms=? WHERE id=?',(elapsed,batch['id']))
+            conn.execute('UPDATE input_batches SET selector_model_snapshot=? WHERE id=?',(encoded(self.config.load()['character_selector']),batch['id']))
             conn.execute("UPDATE input_batches SET state='sealed_waiting_capacity',sealed_at=?,seal_reason=?,model_snapshot=?,revision=revision+1,updated_at=? WHERE id=?",(timestamp(),reason,encoded(self.config.load()['model']),timestamp(),batch['id']))
         self._enqueue(conn,batch['persona_id'])
 
@@ -220,7 +229,7 @@ class IngressService:
             if policy.get('expression'):
                 conn.execute('UPDATE turns SET expression_snapshot=? WHERE id=?',(encoded(policy['expression']),tid))
             if policy.get('context') is not None:
-                conn.execute('UPDATE turns SET context_policy_snapshot=? WHERE id=?',(encoded(policy['context']),tid))
+                conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=1 WHERE id=?',(encoded(policy['context']),b['selector_model_snapshot'],tid))
             if b['channel']=='qq':conn.execute("INSERT INTO deliveries VALUES (?,'pending',?)",(tid,timestamp()))
             record(conn,tid,'accepted');record(conn,tid,'queued')
             conn.execute("UPDATE input_batches SET state='linked',revision=revision+1,updated_at=? WHERE id=?",(timestamp(),b['id']))

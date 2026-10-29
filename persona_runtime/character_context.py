@@ -25,8 +25,11 @@ def render_parts(parts):
     return HEADER+'\n'.join(p['text'] for p in parts) if parts else ''
 
 
-def select_context(version, query, *, scenario=None, example_limit=2):
+def select_context(version, query, *, scenario=None, example_limit=2, members=None):
     data=version['data']; folded=query.casefold(); parts=[]; removed=[]; facts=[]; lore_ids=[]; example_ids=[]
+    queries = [query] if members is None else members
+    def keyword_match(keyword):
+        return any(keyword.casefold() in text.casefold() for text in queries)
     scenarios = (scenario,) if isinstance(scenario, str) else tuple(scenario or ())
     def add(kind, item_id, content, limit, used, required=False):
         rendered=encode({'kind':kind,'id':item_id,'data':content})
@@ -47,7 +50,8 @@ def select_context(version, query, *, scenario=None, example_limit=2):
     dynamic_used=0
     for path,aliases in ALIASES.items():
         # Explicit field paths also support deterministic administrative/test queries.
-        exact=path in folded or (('你' in query or '角色' in query) and any(a in folded for a in aliases))
+        exact=any(path in text.casefold() or (('你' in text or '角色' in text) and
+                  any(a in text.casefold() for a in aliases)) for text in queries)
         if not exact:
             continue
         fact=read_fact(version,path)
@@ -58,7 +62,7 @@ def select_context(version, query, *, scenario=None, example_limit=2):
     lore={row['id']:row for row in data['lorebook']}
     selected=set()
     candidates=sorted((r for r in lore.values() if r['enabled'] and r['visibility']=='conversation'
-                       and any(k.casefold() in folded for k in r['keywords'])),key=lambda r:(-r['priority'],r['id']))
+                       and any(keyword_match(k) for k in r['keywords'])),key=lambda r:(-r['priority'],r['id']))
     def expand(entry, depth, trail):
         row=lore[entry]
         if depth>2 or entry in trail or not row['enabled'] or row['visibility']!='conversation':
@@ -86,7 +90,7 @@ def select_context(version, query, *, scenario=None, example_limit=2):
     examples_used=0
     for row in sorted(data['examples'],key=lambda r:r['id']):
         scenario_match=any(value.casefold() in row['scenario'].casefold() for value in scenarios)
-        if not row['enabled'] or not (scenario_match or any(k.casefold() in folded for k in row['keywords'])):continue
+        if not row['enabled'] or not (scenario_match or any(keyword_match(k) for k in row['keywords'])):continue
         if len(example_ids)>=example_limit:
             removed.append({'kind':'example','id':row['id'],'reason':'item_limit'});continue
         examples_used,ok=add('example',row['id'],{'scenario':row['scenario'],'text':row['text']},600,examples_used)

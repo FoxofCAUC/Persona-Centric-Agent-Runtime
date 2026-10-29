@@ -1,7 +1,7 @@
 """Persisted metadata-only state transitions and measured, non-estimated durations."""
 import time
 
-EVENTS = {"accepted", "queued", "retry_queued", "provider_started", "first_output", "generated",
+EVENTS = {"character_local", "character_selection", "character_fallback", "character_selected","accepted", "queued", "retry_queued", "provider_started", "first_output", "generated",
           "persisted", "failed", "interrupted", "cancelled", "delivery_started", "delivery_confirmed",
           "delivery_uncertain", "delivery_failed"}
 
@@ -30,6 +30,8 @@ def progress(conn, turn):
     elif phase == "completed" and turn.get("delivery"):
         phase = {"pending": "awaiting_delivery", "sending": "delivering", "sent": "completed",
                  "uncertain": "delivery_uncertain", "failed": "delivery_failed"}[turn["delivery"]]
+    if phase=='queued' and rows and rows[-1]['event'] in ('character_local','character_selection','character_fallback'):
+        phase=rows[-1]['event']
     queued = latest.get("retry_queued", latest.get("queued"))
     return {"phase": phase, "events": rows, "timings": {
         "queue_seconds": duration(queued, latest.get("provider_started")),
@@ -43,7 +45,7 @@ def progress(conn, turn):
 
 def recovery(phase, error=None):
     if phase == "cancelled":
-        return "已取消排队；没有为此次取消开始新的模型调用。需要时可显式重试。"
+        return "已取消排队；不会开始主回复。此前已发出的候选选择调用仍保留用量记录。需要时可显式重试。"
     if phase == "delivery_uncertain":
         return "模型已生成，但平台送达结果不确定；先核对 QQ 历史，不自动补发或重新生成。"
     if phase in ("awaiting_delivery", "delivering"):

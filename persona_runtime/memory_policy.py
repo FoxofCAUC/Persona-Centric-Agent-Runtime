@@ -35,4 +35,12 @@ def exclude_memory(conn, memory, reason):
 
 def project_calls(conn, since):
     return (conn.execute("SELECT count(*) FROM attempts WHERE started_epoch>?", (since,)).fetchone()[0]
-            + conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (since,)).fetchone()[0])
+            + conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (since,)).fetchone()[0]
+            + conn.execute("SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?", (since,)).fetchone()[0])
+
+
+def project_capacity_used(conn, since, exclude_turn=None):
+    import time
+    return project_calls(conn,since)+conn.execute(
+        "SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>? AND (? IS NULL OR turn_id!=?)",
+        (time.time(),exclude_turn,exclude_turn)).fetchone()[0]

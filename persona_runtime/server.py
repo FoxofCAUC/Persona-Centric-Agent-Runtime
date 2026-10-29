@@ -102,7 +102,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.7.4.dev1", "capabilities":["reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.7.5.dev3", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "capabilities":["character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -339,6 +339,14 @@ def create_app(paths, client=None):
             if name=='link' and kind=='thread':return web.json_response(await asyncio.to_thread(topics.link,**args))
             if name in ('list','show','create','update'):
                 return web.json_response(await asyncio.to_thread(getattr(topics,name),kind=kind,**args))
+        if action=='character.selector-test':
+            return web.json_response(await engine.selector.probe(**args))
+        if action=='character.selector-records':
+            return web.json_response(engine.selector.list(**args))
+        if action=='character.selector-status':
+            return web.json_response({'configuration':config.public()['character_selector'],'busy':engine.selector.busy})
+        if action=='character.selector-copy-main':
+            return web.json_response(config.copy_selector_model())
         handlers = {
             **{"archive."+name:getattr(archive,name) for name in ("list","get","resolve","preview")},
             'quota.current': lambda: QuotaService(store, config).current(),
@@ -376,8 +384,14 @@ def create_app(paths, client=None):
                 stream_id, part_id, action, expected_revision, operation_id, persona_id=persona_id,
                 reason=reason, allow_continue=allow_continue),
         }
-        if action not in handlers or not isinstance(args, dict):
+        if (action not in handlers and action not in ('character.index-status','character.index-prepare')) or not isinstance(args, dict):
             raise RuntimeErrorBase("Unknown management action")
+        if action=='character.preview':return web.json_response(await asyncio.to_thread(engine.cognitive.characters.preview,**args))
+        if action in ('character.index-status','character.index-prepare'):
+            handler=engine.cognitive.characters.status if action.endswith('status') else engine.cognitive.characters.request_prepare
+            return web.json_response(await asyncio.to_thread(handler,**args))
+        if action in ('character.update','character.restore','character.import'):
+            return web.json_response(await asyncio.to_thread(handlers[action],**args))
         return web.json_response(handlers[action](**args))
 
     async def control(request):
@@ -421,6 +435,7 @@ def create_app(paths, client=None):
     app.router.add_post("/v1/control/{operation}", control)
 
     async def startup(_):
+        await asyncio.to_thread(engine.cognitive.characters.notify,None)
         app["session_worker"] = asyncio.create_task(sessions.worker())
         app["organization_worker"] = asyncio.create_task(organization.worker())
         app["ingress_worker"] = asyncio.create_task(ingress.worker())
@@ -442,6 +457,7 @@ def create_app(paths, client=None):
             worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
         await engine.wait()
+        await asyncio.to_thread(engine.cognitive.characters.close)
     app.on_cleanup.append(cleanup)
     return app
 
