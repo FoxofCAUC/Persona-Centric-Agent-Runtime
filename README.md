@@ -18,11 +18,11 @@
 
 > M6历史收尾：M6核心范围收尾，历史条件继续携带。M6.4全量237项、72次质量对照及实际QQ合批/纯文本门通过，见[M6.4](docs/M6.4.md)。
 
-当前运行时0.7.3.dev1、结构13、导出10、桥接0.6.0。M7.3按用户修订的长时模拟方式完成规定范围验收。[M7.2](docs/M7.2.md)已通过规定范围验收；M4 O01–O03、M5 P09及M6.1旧付费续跑继续携带。十份[施工文档](docs/施工总计划/README.md)已同步，下一步仅[准备M7.4](docs/M7.4-开工输入与待定事项.md)。
+当前运行时0.7.4.dev1、结构14、导出11、桥接0.7.0。M7.4规定范围验收完成，26次真实调用、QQ余段取消与恢复通过，历史条件携带，见[阶段进度](docs/M7.4.md)及[机器结论](docs/acceptance/M7.4-机器验收结论.md)。M7.3历史验收保持。[M7.2](docs/M7.2.md)已通过规定范围验收；M4 O01–O03、M5 P09及M6.1旧付费续跑继续携带。十份[施工文档](docs/施工总计划/README.md)已同步，下一步仅准备M7.5。
 
 人格、记忆与关系持续保存，模型与聊天渠道可以替换。
 
-![Version](https://img.shields.io/badge/version-0.7.3.dev1-4263eb)
+![Version](https://img.shields.io/badge/version-0.7.4.dev1-4263eb)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003B57?logo=sqlite&logoColor=white)
