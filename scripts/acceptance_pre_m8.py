@@ -33,6 +33,9 @@ def main(action,slot):
     if state is None:raise RuntimeError('Run setup first')
     if action=='arm':
         if slot in state['slots']:raise RuntimeError('Slot already armed; observe instead of replay')
+        if slot=='qq':
+            from persona_runtime.qq_testing import QQTesting
+            QQTesting(paths).require_ready()
         PrivatePersonas(paths).assert_acceptance(state['persona_id'])
         client.manage('persona.use',persona_id=state['persona_id'])
         with store.connection() as db:seq=db.execute('SELECT coalesce(max(rowid),0) FROM turns').fetchone()[0]

@@ -154,6 +154,9 @@ class ChatEngine:
             raise RuntimeErrorBase("Unsupported channel")
         if len(text) > 24000 or len(request_id) > 200:
             raise RuntimeErrorBase("Input is too long")
+        if channel=='qq':
+            from .qq_testing import QQTesting
+            QQTesting(self.store.paths).check_runtime((origin or {}).get('sender',self.config.load()['owner_qq']))
         source_key = channel + ":" + request_id
         with self.store.connection(write=True) as conn:
             if conn.execute("SELECT 1 FROM ingress_receipts WHERE channel=? AND request_id=?",(channel,request_id)).fetchone():

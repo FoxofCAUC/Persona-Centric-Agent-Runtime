@@ -176,6 +176,8 @@ class PrivatePersonas:
 
 
 def guard_acceptance_write(store,persona_id):
+    from .qq_testing import QQTesting
+    if QQTesting(store.paths).active():PrivatePersonas(store.paths).assert_acceptance(persona_id)
     journal=store.paths.home/'runtime/acceptance-quotas.json'
     if journal.exists():
         try:active=json.loads(journal.read_text(encoding='utf-8')).get('status')=='active'

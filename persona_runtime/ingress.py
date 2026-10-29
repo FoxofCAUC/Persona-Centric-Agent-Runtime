@@ -140,6 +140,8 @@ class IngressService:
         cfg=self.config.load();bot=peer=''
         if channel=='qq':
             bot=value.get('bot');peer=value.get('sender');mid=value.get('platform_message_id')
+            from .qq_testing import QQTesting
+            QQTesting(self.store.paths).check_runtime(peer)
             if not cfg['bot_qq'] or not cfg['owner_qq'] or bot!=cfg['bot_qq'] or peer!=cfg['owner_qq']:raise RuntimeErrorBase('qq_identity_conflict')
             require_text(mid,'platform_message_id')
             if len(mid)>200:raise RuntimeErrorBase('invalid_platform_message_id')

@@ -6,7 +6,7 @@ from urllib.parse import quote
 import aiohttp
 
 from .config import ConfigStore
-from .models import identifier
+from .models import identifier, RuntimeErrorBase
 from .submissions import SubmissionJournal
 from .qq_text import plain_qq_text
 from .presentation import render, assert_transport
@@ -112,6 +112,9 @@ class QQBridge:
         payload = allowed_message(event, self.config.load())
         if payload is None:
             return False
+        from .qq_testing import QQTesting
+        try:QQTesting(self.config.paths).check_runtime(payload['sender'])
+        except RuntimeErrorBase:return False  # No reply/journal/model dispatch to a forbidden test peer.
         # The SDK handler stops the normal LLM path before this first await.
         payload = self.journal.remember(payload)
         try:
@@ -163,6 +166,8 @@ class QQBridge:
         return await self.deliver(turn, send)
 
     async def deliver(self, turn, send):
+        from .qq_testing import QQTesting
+        QQTesting(self.config.paths).check_runtime(self.config.load()['owner_qq'])
         health = await self.request("GET", "/v1/health")
         reply_batch = turn.get("reply_batch")
         if "reply_delivery_parts_v1" in health.get("capabilities", []) and reply_batch:
@@ -190,6 +195,8 @@ class QQBridge:
         return True
 
     async def deliver_stream(self, stream, send):
+        from .qq_testing import QQTesting
+        QQTesting(self.config.paths).check_runtime(self.config.load()['owner_qq'])
         view = stream
         delivered = False
         for part in view["parts"]:
