@@ -12,7 +12,7 @@ from persona_runtime.paths import RuntimePaths
 from persona_runtime.qq_bridge import QQBridge
 
 
-@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.6.0")
+@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.7.0")
 class PersonaRuntimePlugin(Star):
     def __init__(self, context):
         super().__init__(context)
@@ -56,7 +56,7 @@ class PersonaRuntimePlugin(Star):
                             break
             except Exception:
                 pass
-            await asyncio.sleep(1)
+            await asyncio.sleep(.1)
 
     async def health(self):
         from persona_runtime.bridge_health import heartbeat_loop

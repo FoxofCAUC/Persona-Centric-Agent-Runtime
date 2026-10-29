@@ -192,6 +192,9 @@ class ChatEngine:
                 identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
                 conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
                 conn.execute("INSERT INTO deliveries VALUES (?, 'pending', ?)", (turn_id, timestamp()))
+            if not test:
+                from .delivery import DeliveryService
+                DeliveryService(self.store).new_input(conn,event_id,persona_id,session_id,channel,identity if channel=='qq' else {},exclude_turn=turn_id)
             record_progress(conn, turn_id, "accepted")
             record_progress(conn, turn_id, "queued")
         self._schedule(turn_id)
@@ -230,7 +233,7 @@ class ChatEngine:
         reply_batch=conn.execute('SELECT * FROM reply_batches WHERE turn_id=? ORDER BY created_at DESC LIMIT 1',(turn_id,)).fetchone()
         if reply_batch:
             batch=dict(reply_batch)
-            batch['segments']=[dict(r) for r in conn.execute('SELECT segment_index,text,format FROM reply_segments WHERE batch_id=? ORDER BY segment_index',(batch['id'],))]
+            batch['segments']=[dict(r) for r in conn.execute('SELECT segment_index,text,format,content_kind,cancel_if_new_input,wait_ms FROM reply_segments WHERE batch_id=? ORDER BY segment_index',(batch['id'],))]
             for key in ('persona_id','user_id','attempt_id','raw_fingerprint'):batch.pop(key,None)
             value['reply_batch']=batch
         else:value['reply_batch']=None
@@ -324,6 +327,14 @@ class ChatEngine:
                     record_progress(conn, turn_id, "provider_started", attempt_id)
                 from .reply_batch import ReplySchemaError, validate_reply
                 raw_reply, usage = await self.client.complete(model, messages)
+                # Keep only the output fingerprint for failed validation as well as
+                # successful batches; never persist a malformed internal envelope.
+                import hashlib
+                with self.store.connection(write=True) as conn:
+                    details=dict(turn['_context_details'])
+                    details['reply_output_fingerprint']=hashlib.sha256(raw_reply.encode('utf-8')).hexdigest()
+                    conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
+                                 (json.dumps(details,ensure_ascii=False),attempt_id))
                 reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
                 reply=reply_batch.text
                 with self.store.connection(write=True) as conn:
@@ -336,8 +347,9 @@ class ChatEngine:
                         batch_id=identifier()
                         conn.execute('INSERT INTO reply_batches (id,turn_id,attempt_id,persona_id,user_id,schema_version,mode,raw_fingerprint,segment_count,total_chars,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                                      (batch_id,turn_id,attempt_id,turn['persona_id'],LOCAL_USER_ID,reply_batch.schema_version,reply_batch.mode,reply_batch.raw_fingerprint,len(reply_batch.segments),sum(len(item.text) for item in reply_batch.segments),timestamp()))
-                        conn.executemany('INSERT INTO reply_segments (batch_id,persona_id,user_id,segment_index,text,format) VALUES (?,?,?,?,?,?)',
-                                         [(batch_id,turn['persona_id'],LOCAL_USER_ID,index,item.text,item.format) for index,item in enumerate(reply_batch.segments,1)])
+                        conn.execute('UPDATE reply_batches SET behavior_intent=?,fallback_reason=? WHERE id=?',(reply_batch.behavior_intent,reply_batch.fallback_reason,batch_id))
+                        conn.executemany('INSERT INTO reply_segments (batch_id,persona_id,user_id,segment_index,text,format,content_kind,cancel_if_new_input,wait_ms) VALUES (?,?,?,?,?,?,?,?,?)',
+                                         [(batch_id,turn['persona_id'],LOCAL_USER_ID,index,item.text,item.format,item.content_kind,int(item.cancel_if_new_input),item.wait_ms) for index,item in enumerate(reply_batch.segments,1)])
                         from .delivery import DeliveryService
                         DeliveryService(self.store).create_for_batch(conn,batch_id,turn)
                     encoded = json.dumps(usage) if usage is not None else None
@@ -394,7 +406,8 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,turn['persona_id']),ensure_ascii=False),turn_id))
                 reply_policy=conn.execute('SELECT p.reply_mode FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(turn['persona_id'],turn['channel'])).fetchone()
                 reply_mode=reply_policy[0] if reply_policy else 'legacy_full'
-                conn.execute('UPDATE turns SET reply_mode_snapshot=? WHERE id=?',(reply_mode,turn_id))
+                from .reply_batch import expression_snapshot
+                conn.execute('UPDATE turns SET reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',(reply_mode,json.dumps(expression_snapshot(reply_mode)),turn_id))
                 from .context_policy import current as context_policy
                 conn.execute('UPDATE turns SET context_policy_snapshot=? WHERE id=?',(json.dumps(context_policy(conn,turn['persona_id'],turn['channel'])),turn_id))
             record_progress(conn, turn_id, "retry_queued")

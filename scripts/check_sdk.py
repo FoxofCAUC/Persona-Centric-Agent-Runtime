@@ -71,7 +71,7 @@ async def main(home):
                     raise AssertionError("SDK exited before plugin initialization")
                 await asyncio.sleep(.25)
             proof = json.loads(health.read_text(encoding="utf-8"))
-            assert proof["plugin_version"] == "0.6.0"
+            assert proof["plugin_version"] == "0.7.0"
             assert not proof["online"] and not proof["verified"]
             from astrbot.api import logger
             logger.warning("SDK probe sensitive body must not be persisted")

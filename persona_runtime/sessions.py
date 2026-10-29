@@ -166,7 +166,7 @@ def build_manifest(conn, row):
                       'reply_event_id':t['reply_event_id'],'parts':parts,'binding':binding(ordinary),
                       'legacy_delivery':dict(legacy) if legacy else None,'legacy_disposition':dict(disposition) if disposition else None,
                       'coverage':ordinary.get('coverage','unavailable'),'excluded_reason':None if ordinary['status']=='found' else ordinary['status'],
-                      'versions':versions,'snapshot_hashes':{k:fingerprint(t.get(k)) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','reply_mode_snapshot')},
+                      'versions':versions,'snapshot_hashes':{k:fingerprint(t.get(k)) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','reply_mode_snapshot','expression_snapshot')},
                       'context_ids':[r[0] for r in conn.execute('SELECT id FROM context_manifests WHERE turn_id=? ORDER BY rowid',(t['id'],))]})
     loose = [{'id':e['id'],'role':e['role'],'hash':fingerprint(e['text']),'reason':'no_complete_turn'} for e in conn.execute('SELECT * FROM events WHERE session_id=? ORDER BY seq',(row['session_id'],)) if e['id'] not in linked]
     return {'format_version':1,'pipeline_version':PIPELINE,'scope':selected,'session_id':row['session_id'],

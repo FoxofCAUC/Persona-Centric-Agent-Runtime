@@ -4,7 +4,7 @@ from tkinter import ttk,messagebox,scrolledtext
 from .models import identifier
 
 BATCH_LABELS={'collecting':'收集中','sealed_waiting_capacity':'已封存，等待队列容量','interrupted_buffer':'中断，待继续或取消','cancelled':'已取消','queued':'排队中','running':'正在生成','completed':'生成完成','failed':'生成失败','interrupted':'请求中断'}
-REPLY_LABELS={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复'}
+REPLY_LABELS={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复','natural_structured':'自然私聊（可省略余段）'}
 
 class BatchUI:
     def init_batch_vars(self):
@@ -87,28 +87,37 @@ class BatchUI:
     def change_reply_mode(self,channel):
         p=self.batch_policies.get(channel);pid=self.persona_id;epoch=self.view_epoch
         if not p or p['persona_id']!=pid:return
-        dialog,body,footer=self.dialog_shell('选择回复模式',(430,245))
+        dialog,body,footer=self.dialog_shell('选择回复模式',(500,330))
         value=tk.StringVar(value=p.get('reply_mode','legacy_full'))
         ttk.Label(body,text=('窗口' if channel=='desktop' else 'QQ')+' 后续受理的请求使用：').pack(anchor='w',pady=(8,4))
         for mode,label,description in (
             ('legacy_full','兼容全文','保持现有完整文本回复行为。'),
             ('context_full','情境全文','使用本地情境线索和角色样例，仍返回完整文本。'),
             ('context_structured','情境结构回复','一次主调用返回经校验的 1–3 段；窗口显示正文，QQ按入口能力投递。'),
+            ('natural_structured','自然私聊','完整显示正文；QQ按语义等待，新输入可取消未开始的可省略余段。'),
         ):
             row=ttk.Frame(body);row.pack(fill='x',anchor='w',pady=3)
             ttk.Radiobutton(row,text=label,value=mode,variable=value).pack(side='left')
             ttk.Label(row,text=description,wraplength=280).pack(side='left',padx=8)
         def save():
+            if epoch!=self.view_epoch or pid!=self.persona_id:
+                messagebox.showerror('选择已变化','请在当前人格重新打开设置。');return
             mode=value.get()
             if mode==p.get('reply_mode','legacy_full'):
                 dialog.destroy();return
-            op=identifier()
+            pending_action=None
+            if any(b['channel']==channel and b['state']=='collecting' for b in self.batch_rows):
+                answer=messagebox.askyesnocancel('处理收集中输入','先封存并回复再切换？选择“否”取消该批输入后切换。')
+                if answer is None:return
+                pending_action='seal' if answer else 'cancel'
+            key=('reply',pid,channel,p['id'],mode,pending_action)
+            op=self.batch_intents.setdefault(key,identifier())
             def done(_):
                 if epoch==self.view_epoch and pid==self.persona_id:self.refresh_batches()
                 if dialog.winfo_exists():dialog.destroy()
             def failed(_):
-                if dialog.winfo_exists():dialog.destroy()
-            self.run_task('保存回复模式',{'batch-write'},lambda _:self.client.manage('reply.update',persona_id=pid,channel=channel,reply_mode=mode,expected_version=p['id'],operation_id=op),done,failure=failed)
+                pass  # Keep the selected draft available after a failed save.
+            self.run_task('保存回复模式',{'batch-write'},lambda _:self.client.manage('reply.update',persona_id=pid,channel=channel,reply_mode=mode,expected_version=p['id'],operation_id=op,pending_action=pending_action),done,failure=failed)
         ttk.Button(footer,text='取消',command=dialog.destroy).grid(row=0,column=0,padx=5)
         ttk.Button(footer,text='保存',command=save,style='Primary.TButton').grid(row=0,column=1,padx=5)
 

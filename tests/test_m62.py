@@ -103,9 +103,9 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.ingress.update_policy(self.pid,'desktop','natural_batch',current['id'],identifier(),reply_mode='context_full')
         receipt=self.accept('哈哈')
         current=self.ingress.current_policy(self.pid,'desktop')
-        self.ingress.update_policy(self.pid,'desktop',current['mode'],current['id'],identifier(),reply_mode='legacy_full')
+        self.ingress.update_policy(self.pid,'desktop',current['mode'],current['id'],identifier(),reply_mode='legacy_full',pending_action='seal')
         batch=self.ingress.get(receipt['batch_id'])
-        sealed=self.ingress.action(batch['id'],'seal',batch['revision'],identifier(),self.pid)
+        sealed=batch if batch['turn_id'] else self.ingress.action(batch['id'],'seal',batch['revision'],identifier(),self.pid)
         await self.engine.wait();turn=self.engine.get(sealed['turn_id'])
         self.assertEqual(turn['reply_batch']['mode'],'context_full')
         self.assertEqual(turn['context']['behavior']['signals'],['playful_tone'])
@@ -129,7 +129,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         receipt=self.accept('代码修正')
         await self.engine.wait()
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],10);self.assertEqual(len(data['reply_batches']),1)
+        self.assertEqual(data['format_version'],11);self.assertEqual(len(data['reply_batches']),1)
         self.assertEqual(len(data['reply_segments']),2)
         self.assertNotIn('encrypted_key',json.dumps(data))
 
@@ -151,7 +151,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_batches'").fetchone());db.close()
         store.initialize();store.initialize()
         with store.connection() as conn:
-            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],13)
+            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],14)
             self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(conn.execute("SELECT dflt_value FROM pragma_table_info('interaction_policies') WHERE name='reply_mode'").fetchone()[0],"'legacy_full'")
         self.assertTrue(list((path.home/'backups').glob('before-m62-*.sqlite3')))
@@ -163,7 +163,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeErrorBase,'submission_conflict'):
             self.ingress.update_policy(self.pid,'desktop',current['mode'],current['id'],operation,reply_mode='legacy_full')
         with self.assertRaisesRegex(RuntimeErrorBase,'version_conflict'):
-            self.ingress.update_policy(self.pid,'desktop',current['mode'],current['id'],identifier(),reply_mode='legacy_full')
+            self.ingress.update_policy(self.pid,'desktop',current['mode'],current['id'],identifier(),reply_mode='legacy_full',pending_action='seal')
         app=__import__('persona_runtime.server',fromlist=['create_app']).create_app(self.paths,self.fake)
         async with TestServer(app) as server,ClientSession() as client:
             admin={'Authorization':'Bearer '+self.config.token()};bridge={'Authorization':'Bearer '+self.config.token('bridge')}

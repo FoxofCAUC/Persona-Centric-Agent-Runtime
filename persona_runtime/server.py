@@ -20,6 +20,7 @@ from .profile import ProfileService
 from .character import CharacterService
 from .ingress import IngressService
 from .delivery import DeliveryService
+from .reply_service import ReplyService
 from .quotas import QuotaService
 
 
@@ -101,7 +102,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.7.3.dev1", "capabilities":["session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.7.4.dev1", "capabilities":["reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -228,7 +229,7 @@ def create_app(paths, client=None):
         if request.match_info["part_id"] not in {part["id"] for part in batch["parts"] if part["reply_batch_id"]==request.match_info["reply_batch_id"]}:raise web.HTTPNotFound()
         origin=delivery_origin(request)
         return web.json_response(delivery_service.claim(stream_id,request.match_info["part_id"],value["expected_revision"],
-            value["operation_id"],persona_id=value.get("persona_id"),origin=origin,actor=request["role"]))
+            value["operation_id"],persona_id=value.get("persona_id"),origin=origin,actor=request["role"],capabilities=value.get("capabilities")))
 
     async def delivery_result(request):
         value=await body(request);origin=delivery_origin(request);batch=delivery_service.by_batch(request.match_info["reply_batch_id"])
@@ -346,7 +347,9 @@ def create_app(paths, client=None):
             'quota.acceptance.end': lambda: QuotaService(store, config).end_acceptance(),
             "interaction.current":ingress.current_policy,"interaction.update":ingress.update_policy,"batch.list":ingress.list,
             "reply.current":lambda persona_id,channel:ingress.current_policy(persona_id,channel),
-            "reply.update":lambda persona_id,channel,reply_mode,expected_version,operation_id:ingress.update_policy(persona_id,channel,ingress.current_policy(persona_id,channel)['mode'],expected_version,operation_id,reply_mode=reply_mode),
+            "reply.update":lambda persona_id,channel,reply_mode,expected_version,operation_id,pending_action=None:ingress.update_policy(persona_id,channel,ingress.current_policy(persona_id,channel)['mode'],expected_version,operation_id,pending_action=pending_action,reply_mode=reply_mode),
+            "reply.preview":ReplyService(store).preview,
+            "reply.cancel":delivery_service.cancel_optional,
             **{"character."+name:getattr(characters,name) for name in ("current","update","history","show","compare","restore","fact","preview","export")},
             "character.import":characters.import_package,
             'profile.current':profiles.current,'profile.history':profiles.history,'profile.update':profiles.update,

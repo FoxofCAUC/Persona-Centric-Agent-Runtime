@@ -94,7 +94,7 @@ def build_context(engine, conn, turn, evidence=None):
                                 example_limit=4 if contextual else 2) if turn.get('character_snapshot') else None
     behavior_instruction=render_behavior(behavior,character) if contextual else ''
     base+=behavior_instruction
-    if reply_mode=='context_structured':base+=prompt_contract()
+    if reply_mode in ('context_structured','natural_structured'):base+=prompt_contract(reply_mode)
     character_parts = list(character['parts']) if character else []
     character_removed = []
     removed = initial_removed

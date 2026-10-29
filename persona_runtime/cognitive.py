@@ -43,7 +43,7 @@ class CognitiveService:
         # Hashes are internal transient guards. Full rows never enter the
         # persisted manifest or ordinary logs.
         settings=turn if expected else current
-        return fingerprint({'turn_settings':{k:settings.get(k) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','model_snapshot','reply_mode_snapshot','origin_json')},
+        return fingerprint({'turn_settings':{k:settings.get(k) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','model_snapshot','reply_mode_snapshot','expression_snapshot','origin_json')},
             'inputs':load_turn_input(conn,current),'history':history,'memories':memories,
             'summary':dict(summary) if summary else None,'summary_valid':summary_valid,
             'state':details.get('state_version') if expected else state['id'] if active_state(state) else None,
@@ -52,6 +52,9 @@ class CognitiveService:
 
     def _manifest(self,conn,turn,messages,details):
         states=[{'kind':k,**v} for k,v in details.get('profile_versions',{}).items()]
+        if turn.get('expression_snapshot'):
+            states.append({'kind':'expression_policy','snapshot_hash':fingerprint(turn['expression_snapshot']),
+                           'policy':json.loads(turn['expression_snapshot'])})
         character=details.get('character') or {}
         if character:states.append({'kind':'character','id':character['version_id'],'revision':character['revision'],'origin':'creator_setting'})
         if details.get('state_version'):states.append({'kind':'manual_state','id':details['state_version']})

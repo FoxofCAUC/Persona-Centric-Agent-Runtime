@@ -1,6 +1,6 @@
 name: astrbot_plugin_persona_runtime
 display_name: Persona Runtime
 desc: 本机人格运行时的本人好友私聊桥接
-version: v0.6.0
+version: v0.7.0
 author: Persona Runtime
 repo: ""

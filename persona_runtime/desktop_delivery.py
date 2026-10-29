@@ -1,5 +1,6 @@
 """Desktop view and explicit controls for the M6.3 delivery ledger."""
 import tkinter as tk
+import json
 from tkinter import messagebox, scrolledtext, ttk
 
 from .models import identifier
@@ -14,6 +15,7 @@ class DeliveryUI:
         self.heading(parent, "回复投递", "按原人格和目标查看平台发送状态；不确定片段需要人工核对，系统不会自动重发。")
         bar = ttk.Frame(parent); bar.pack(fill="x", pady=5)
         self.button(bar, "刷新", self.refresh_deliveries, {"delivery-read"})
+        self.button(bar, "表达与节奏预览", self.preview_reply, {"delivery-read"})
         self.delivery_tree = ttk.Treeview(parent, columns=("channel", "state", "parts", "blocked"), show="headings", height=8)
         for key, title, width in (("channel", "入口", 70), ("state", "状态", 110), ("parts", "已发送 / 总数", 130), ("blocked", "阻塞原因", 220)):
             self.delivery_tree.heading(key, text=title); self.delivery_tree.column(key, width=width)
@@ -32,6 +34,7 @@ class DeliveryUI:
         self.button(actions, "跳过此段及本批余段", lambda: self.resolve_delivery("skip", True), {"delivery-write"})
         self.button(actions, "解除队列阻塞", lambda: self.resolve_delivery("release", True), {"delivery-write"})
         self.button(actions, "显式重发单段", self.retry_delivery_part, {"delivery-write"})
+        self.button(actions, "取消本批可省略余段", self.cancel_optional_reply, {"delivery-write"})
 
     def refresh_deliveries(self):
         persona_id = self.persona_id; epoch = self.view_epoch
@@ -68,7 +71,10 @@ class DeliveryUI:
         self.delivery_part_tree.delete(*self.delivery_part_tree.get_children())
         self.delivery_parts = stream["parts"] if stream else []
         for part in self.delivery_parts:
-            self.delivery_part_tree.insert("", "end", iid=part["id"], values=(part["state"], part["semantic_index"], part["part_index"], part["attempt"], part["platform_message_id"] or ""))
+            state=('新输入取消' if part.get('cancel_reason')=='new_input' else '已取消' if part.get('cancel_reason') else
+                   f"等待 {part['remaining_ms']} ms" if part.get('remaining_ms') else
+                   {'pending':'待领取','sending':'已领取','sent':'已发送','uncertain':'结果不确定','skipped':'已跳过'}.get(part['state'],part['state']))
+            self.delivery_part_tree.insert("", "end", iid=part["id"], values=(state, part["semantic_index"], part["part_index"], part["attempt"], part["platform_message_id"] or ""))
         if selected and self.delivery_part_tree.exists(selected[0]):
             self.delivery_part_tree.selection_set(selected[0])
         self.show_delivery_detail()
@@ -81,7 +87,40 @@ class DeliveryUI:
             for attempt in part.get("attempts",[]):
                 self.delivery_detail.insert("end", f"#{attempt['attempt_no']} {attempt['state']} · 平台ID {attempt['platform_message_id'] or '无'} · {attempt['error'] or '无错误'} · {attempt['started_at']}\n")
             self.delivery_detail.insert("end", f"\n最近错误：{part['error'] or '无'}")
+            self.delivery_detail.insert('end',f"\n类别：{part.get('content_kind')}；可省略：{bool(part.get('cancel_if_new_input'))}；计划等待：{part.get('wait_ms') or 0} ms\n取消原因：{part.get('cancel_reason') or '无'}；触发输入：{part.get('trigger_event_id') or '无'}")
         self.delivery_detail.configure(state="disabled")
+
+    def cancel_optional_reply(self):
+        stream=self.selected_delivery();part=self.selected_delivery_part();pid=self.persona_id;epoch=self.view_epoch
+        if not stream or not part:return
+        if not messagebox.askyesno('取消可省略余段','只取消整个消息尚未领取且明确可省略的余段，原文仍保留。继续？'):return
+        def done(_):
+            if epoch==self.view_epoch and pid==self.persona_id:self.refresh_deliveries()
+        self.run_task('取消可省略余段',{'delivery-write'},lambda _:self.client.manage('reply.cancel',persona_id=pid,batch_id=part['reply_batch_id'],expected_revision=stream['revision'],operation_id=identifier()),done)
+
+    def preview_reply(self):
+        pid=self.persona_id;epoch=self.view_epoch;part=self.selected_delivery_part()
+        if not pid:return
+        dialog,body,footer=self.dialog_shell('表达与节奏预览',(760,600))
+        ttk.Label(body,text='选择已保存片段可预览原批次；或填写完整模型输出，预览不会调用模型。').pack(anchor='w')
+        source=scrolledtext.ScrolledText(body,height=8);source.pack(fill='both',expand=True)
+        output=scrolledtext.ScrolledText(body,height=12,state='disabled');output.pack(fill='both',expand=True)
+        def run(saved=False):
+            if epoch!=self.view_epoch or pid!=self.persona_id:return
+            target=self.selected_delivery_part()
+            target_id=target['id'] if target else None
+            if saved and (not part or target_id!=part['id']):return
+            draft=source.get('1.0','end-1c')
+            args={'batch_id':part['reply_batch_id']} if saved and part else {'raw':source.get('1.0','end-1c'),'mode':'natural_structured'}
+            def done(value):
+                if epoch!=self.view_epoch or pid!=self.persona_id or not dialog.winfo_exists():return
+                current=self.selected_delivery_part()
+                if (current['id'] if current else None)!=target_id or source.get('1.0','end-1c')!=draft:return
+                output.configure(state='normal');output.delete('1.0','end');output.insert('end',json.dumps(value,ensure_ascii=False,indent=2));output.configure(state='disabled')
+            self.run_task('预览表达',{'delivery-read'},lambda _:self.client.manage('reply.preview',persona_id=pid,**args),done)
+        ttk.Button(footer,text='预览填写内容',command=run).pack(side='left')
+        if part:ttk.Button(footer,text='预览选中批次',command=lambda:run(True)).pack(side='left')
+        ttk.Button(footer,text='关闭',command=dialog.destroy).pack(side='right')
 
     def resolve_delivery(self, action, allow_continue):
         stream = self.selected_delivery(); part = self.selected_delivery_part(); persona_id = self.persona_id

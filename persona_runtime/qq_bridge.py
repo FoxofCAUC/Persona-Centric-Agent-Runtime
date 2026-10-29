@@ -202,7 +202,7 @@ class QQBridge:
                 return delivered
             try:
                 claim = await self.request("POST", f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/claim",
-                    {"expected_revision": view["revision"], "operation_id": identifier()})
+                    {"expected_revision": view["revision"], "operation_id": identifier(), "capabilities":["reply_batch_v2","reply_rhythm_v1"]})
             except BridgeAPIError as exc:
                 if str(exc) == "version_conflict":
                     return delivered
