@@ -28,7 +28,7 @@ from .desktop_sessions import SessionUI
 from .desktop_selector import SelectorUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
-ERRORS = {"provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
+ERRORS = {"reply_schema_invalid":"模型回复结构不合规，未发送正文；请查看上下文校验诊断。", "reply_output_truncated":"模型输出被截断，未发送正文；请查看结束原因。", "provider_content_filtered":"供应商未返回可用正文，未发送回复。", "provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
           "model_not_configured": "尚未配置模型地址和名称。", "provider_http_401": "模型密钥未通过验证。",
           "provider_http_429": "模型提供商限流，请稍后手动重试。", "queue_full": "等待队列已满，请稍后再试。",
           "provider_network_error": "模型网络连接失败。", "context_limit_exceeded": "人格、关系与消息超过输入长度限制。",
@@ -579,7 +579,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
                 self.notice.set('请先恢复回收站人格，再建立副本。');return
             if action=='restore' and not value['deleted']:
                 self.notice.set('该人格未被删除，无需恢复。');return
-            descriptions={'clone':'建立独立ID，复制核心、表达和角色资料；不继承聊天、记忆、临时状态或入口政策。私有副本保留原始初始关系及隐私保护，测试仍需独立运行目录。',
+            descriptions={'clone':'建立独立ID，复制核心、表达和角色资料；不继承聊天、记忆或临时状态。双入口默认开启自然缓冲、自然分条、工作集和角色语义增强，不复制旧入口政策。私有副本保留原始初始关系及隐私保护，测试仍需独立运行目录。',
                 'trash':'移入回收站并隐藏，历史记录保留，可恢复。未决任务会阻止删除。',
                 'restore':'从回收站恢复原身份及历史，不自动切换当前人格或运行任务。'}
             if not messagebox.askyesno('确认人格操作',value['name']+' · '+target[:8]+'\n\n'+descriptions[action],default='no'):return

@@ -47,8 +47,11 @@ class RuntimeService:
             from .character import initialize_characters
             initialize_characters(conn,persona_id,actor='create')
             from .context_policy import initialize as initialize_context_policies
-            initialize_context_policies(conn,persona_id)
-            return self._persona(conn, persona_id)
+            initialize_context_policies(conn,persona_id,new_persona=True)
+            result=self._persona(conn, persona_id)
+        callback=getattr(self.store,'character_committed',None)
+        if callback:callback(persona_id)
+        return result
 
     def list_personas(self,include_deleted=False) -> list[dict]:
         if type(include_deleted) is not bool:raise RuntimeErrorBase('invalid_include_deleted')

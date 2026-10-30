@@ -117,6 +117,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.config.update({'model':{'base_url':'http://localhost:9/v1','name':'mock'},'bot_qq':'123','owner_qq':'456'})
         self.service=RuntimeService(self.store);self.pid=self.service.create_persona(generic_persona())['id'];self.service.use_persona(self.pid)
         self.fake=Fake();self.engine=ChatEngine(self.store,self.config,self.fake);self.ingress=IngressService(self.engine)
+        for channel in ('desktop','qq'):
+            policy=self.ingress.current_policy(self.pid,channel)
+            self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.now=0.;self.delivery=DeliveryService(self.store,monotonic=lambda:self.now)
         self.mode('natural_structured');self.addAsyncCleanup(self.engine.wait)
 

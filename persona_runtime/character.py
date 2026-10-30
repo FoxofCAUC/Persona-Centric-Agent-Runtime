@@ -343,6 +343,8 @@ class CharacterService:
             from .profile import initialize_profiles
             initialize_profiles(conn,new_id,actor='create')
             version=append(conn,new_id,data,'import')
+            from .context_policy import initialize as initialize_context_policies
+            initialize_context_policies(conn,new_id,new_persona=True)
             conn.execute('INSERT INTO character_operations VALUES (?,?,?,?,?)',(operation_id,new_id,LOCAL_USER_ID,fingerprint,version['id']))
             result=RuntimeService._persona(conn,new_id)
         callback=getattr(self.store,'character_committed',None)

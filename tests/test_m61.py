@@ -38,6 +38,10 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.service=RuntimeService(self.store);self.pid=self.service.create_persona(generic_persona())['id'];self.service.use_persona(self.pid)
         self.fake=Fake();self.engine=ChatEngine(self.store,self.config,self.fake);self.now=0.;self.epoch=100000.
         self.ingress=IngressService(self.engine,lambda:self.now,lambda:self.epoch+self.now)
+        # Historical protocol fixtures choose compatibility explicitly; product defaults are tested separately.
+        for channel in ('desktop','qq'):
+            policy=self.ingress.current_policy(self.pid,channel)
+            self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.addAsyncCleanup(self.finish)
     async def finish(self):
         if self.fake.gate:self.fake.gate.set()

@@ -44,6 +44,9 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.response=json.dumps({'schema_version':1,'segments':[{'text':'已更正，类型声明确实写错了。','format':'plain'},{'text':'这段代码按原样保留：\n```py\nx = "a\\nb"\n```','format':'markdown'}]},ensure_ascii=False)
         self.fake=Fake('兼容模式完整回复');self.engine=ChatEngine(self.store,self.config,self.fake)
         self.ingress=IngressService(self.engine)
+        for channel in ('desktop','qq'):
+            policy=self.ingress.current_policy(self.pid,channel)
+            self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.addAsyncCleanup(self.engine.wait)
 
     def policy(self,reply_mode):

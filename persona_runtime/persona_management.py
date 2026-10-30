@@ -82,7 +82,7 @@ class PersonaManagement:
             guard_acceptance_write(self.store,persona_id)
             spec=json.loads(db.execute('SELECT spec_json FROM personas WHERE id=?',(persona_id,)).fetchone()[0])
             new_id=identifier();db.execute('INSERT INTO personas VALUES(?,?,?,?,?)',(new_id,spec['name'],1,json.dumps(spec,ensure_ascii=False),timestamp()))
-            initialize_profiles(db,new_id,actor='copy');append(db,new_id,head(db,persona_id)['data'],'copy');initialize(db,new_id)
+            initialize_profiles(db,new_id,actor='copy');append(db,new_id,head(db,persona_id)['data'],'copy');initialize(db,new_id,new_persona=True)
             root=persona_id if view['private_original'] else view['privacy_root']
             if root:
                 private=PrivatePersonas(self.store.paths)
@@ -92,7 +92,10 @@ class PersonaManagement:
                 if canonical(relationship)!=record['relationship_sha256']:raise RuntimeErrorBase('private_original_changed')
                 append_version(db,new_id,'relationship',{'description':relationship},actor='creator_copy')
             db.execute('INSERT INTO persona_lifecycle VALUES(?,?,?,?,NULL,0)',(new_id,LOCAL_USER_ID,persona_id,root))
-            return self._save(db,operation_id,fp,{'id':new_id,'copied_from':persona_id,'private_protected':bool(root),'history_copied':False})
+            result=self._save(db,operation_id,fp,{'id':new_id,'copied_from':persona_id,'private_protected':bool(root),'history_copied':False})
+        callback=getattr(self.store,'character_committed',None)
+        if callback:callback(new_id)
+        return result
 
     def _idle(self,db,pid):
         for table,condition in (

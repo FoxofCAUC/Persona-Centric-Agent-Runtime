@@ -54,6 +54,7 @@ class CognitiveService:
             'references_hash':fingerprint(block),'window':window})
 
     def _manifest(self,conn,turn,messages,details):
+        from .reply_protocol import descriptor
         states=[{'kind':k,**v} for k,v in details.get('profile_versions',{}).items()]
         if turn.get('expression_snapshot'):
             states.append({'kind':'expression_policy','snapshot_hash':fingerprint(turn['expression_snapshot']),
@@ -86,7 +87,8 @@ class CognitiveService:
             'truncation_info':details.get('removed',[])+character.get('removed',[]),'missing_data':missing,
             'retrieval':retrieval,'character_retrieval':character.get('retrieval'),'partitions':{'hard':['core','current_input','required_character_facts','explicit_references'],
                 'soft_priority':['recent_turns','relevant_memories','retrieved_turns','lossy_summary','optional_character']},
-            'input_characters':sum(len(m['content']) for m in messages),'persisted':False}
+            'input_characters':sum(len(m['content']) for m in messages),
+            'reply_output_contract':descriptor(turn.get('reply_mode_snapshot') or 'legacy_full'),'persisted':False}
 
     def prepare(self,turn_id,character_selection=None):
         started=time.perf_counter()

@@ -49,9 +49,12 @@ def prompt_contract(mode="context_structured") -> str:
                 '只允许这些字段。messages 为1至3条，每条最多8000字符，总正文最多12000字符。'
                 'behavior_intent 仅 respond/clarify/support/explain/acknowledge；content_kind 仅 chat/technical/code/quote。'
                 '第一条、技术、代码和引用必须 cancel_if_new_input=false。只有完全省略也不影响任务完成的补充或结束语可标true；'
-                '必要答案不得放在可取消消息中。不要为凑数拆段。代码、网址、数字与引用必须完整。'
+                '必要答案不得放在可取消消息中。messages每一项是一条独立发送的消息；确认与另外发起的追问应分别放两项，不用空行拼成一项。'
+                '不要为凑数拆段。代码、网址、数字与引用必须完整。'
                 '日常聊天用自然短句，通常无需句末句号，避免文章腔和多余逗号；技术、代码、引用保留必要标点。'
-                '不要装饰性Markdown；禁止指定延迟或调用工具。')
+                '不要装饰性Markdown；禁止指定延迟或调用工具。'
+                '历史assistant消息展示的是实际聊天正文，不是本轮输出格式范例。'
+                '本轮必须返回上述完整JSON对象，正确转义正文中的换行、双引号与反斜杠，不加任何对象外文字。')
     return (
         "\n回复格式合同：只返回一个 JSON 对象，不要代码围栏、前言或对象之外的说明。"
         '固定形状：{"schema_version":1,"segments":[{"text":"回复内容","format":"plain"}]}。'

@@ -54,7 +54,7 @@ class IngressService:
     def _remember(self,conn,persona,operation_id,fingerprint,result):
         conn.execute('INSERT INTO batch_operations VALUES (?,?,?,?,?,?)',(operation_id,persona,LOCAL_USER_ID,fingerprint,encoded(result),timestamp()))
 
-    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None):
+    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None):
         if mode not in MODES:raise RuntimeErrorBase('invalid_interaction_mode')
         if reply_mode is not None and reply_mode not in REPLY_MODES:raise RuntimeErrorBase('invalid_reply_mode')
         if context_mode is not None and context_mode not in ('working_set','legacy_recent'):raise RuntimeErrorBase('invalid_context_mode')
@@ -62,10 +62,12 @@ class IngressService:
         from .character_policy import choose
         selected_character=choose(character_retrieval_mode) if character_retrieval_mode is not None else None
         with self.store.connection(write=True) as conn:
-            if self.store.current(conn)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
+            if self.store.current(conn)!=(persona_id if expected_selected is None else expected_selected):raise RuntimeErrorBase('persona_selection_conflict')
+            self.engine.service._persona(conn,persona_id)
             current=self.policy(conn,persona_id,channel)
             value={'channel':channel,'mode':mode,'reply_mode':reply_mode,'context_mode':context_mode,'cross_session':cross_session,'expected_version':expected_version,'pending_action':pending_action}
             if character_retrieval_mode is not None:value['character_retrieval_mode']=character_retrieval_mode
+            if expected_selected is not None:value['expected_selected']=expected_selected
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')

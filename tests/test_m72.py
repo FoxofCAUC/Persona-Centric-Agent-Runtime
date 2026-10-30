@@ -13,7 +13,7 @@ from persona_runtime.archive import fingerprint
 from persona_runtime.chat import ChatEngine
 from persona_runtime.config import ConfigStore
 from persona_runtime.ingress import IngressService,PARAMS
-from persona_runtime.models import LOCAL_USER_ID,generic_persona,timestamp,RuntimeErrorBase
+from persona_runtime.models import LOCAL_USER_ID,generic_persona,timestamp,RuntimeErrorBase,identifier
 from persona_runtime.paths import RuntimePaths
 from persona_runtime.service import RuntimeService
 from tests.m71_fixtures import seed_turn,insert
@@ -83,6 +83,11 @@ class ContextTests(unittest.IsolatedAsyncioTestCase):
         self.model=CaptureModel();self.engine=ChatEngine(self.store,self.config,self.model);self.service=self.engine.service
         self.pid=self.service.create_persona(generic_persona())['id'];self.service.use_persona(self.pid)
         self.sid=self.engine.session()['session_id'];self.ingress=IngressService(self.engine)
+        # This reusable historical fixture exercises old snapshots, not fresh-identity defaults.
+        for channel in ('desktop','qq'):
+            policy=self.ingress.current_policy(self.pid,channel)
+            self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
+        self.addCleanup(self.engine.cognitive.characters.close)
 
     async def turn(self,text='青禾书店的预算和颜色是什么？'):
         with patch.object(self.engine,'_schedule'):

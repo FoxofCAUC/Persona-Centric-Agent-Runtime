@@ -10,6 +10,11 @@ from .profile import snapshot,head,active_state,source_blocked
 def build_context(engine, conn, turn, evidence=None, character=None):
     from .chat import terms, ModelError
     if turn['channel'] == 'test':
+        if turn.get('reply_mode_snapshot') in ('natural_structured','context_structured'):
+            from .reply_batch import prompt_contract
+            from .presentation import CONTRACT
+            return [{'role':'system','content':CONTRACT+prompt_contract(turn['reply_mode_snapshot'])},
+                    {'role':'user','content':'晚上好，能看到我的消息吗'}],{'test':True}
         return [{"role": "user", "content": "Reply with OK."}], {"test": True}
     from .behavior import resolve_behavior, render_behavior
     from .reply_batch import prompt_contract, REPLY_MODES
@@ -96,14 +101,14 @@ def build_context(engine, conn, turn, evidence=None, character=None):
     base+=behavior_instruction
     from .presentation import CONTRACT
     base+=CONTRACT
-    if reply_mode in ('context_structured','natural_structured'):base+=prompt_contract(reply_mode)
+    protocol=prompt_contract(reply_mode) if reply_mode in ('context_structured','natural_structured') else ''
     character_parts = list(character['parts']) if character else []
     character_removed = []
     removed = initial_removed
     while True:
         reference = '\n已确认长期记忆：'+json.dumps([{'id': r[3]['id'], 'text': r[3]['text'], 'revision': r[3]['revision']} for r in memories], ensure_ascii=False)
         reference += '\n本会话有损摘要（仅作参考）：'+json.dumps(summary_items, ensure_ascii=False)
-        result = [{'role': 'system', 'content': base+render_parts(character_parts)+reference+reference_block}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
+        result = [{'role': 'system', 'content': base+render_parts(character_parts)+reference+reference_block+protocol}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
         if sum(len(m['content']) for m in result) <= limit:
             break
         optional = next((i for i in range(len(character_parts)-1,-1,-1) if not character_parts[i]['required']), None)

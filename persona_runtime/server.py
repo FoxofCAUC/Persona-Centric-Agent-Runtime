@@ -103,7 +103,7 @@ def create_app(paths, client=None):
         return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                                   "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                                   "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.7.5.dev4", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "capabilities":["character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+                                  "version": "0.7.5.dev5", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "capabilities":["reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
 
     async def chat(request):
         value = await body(request)
@@ -264,7 +264,9 @@ def create_app(paths, client=None):
 
     async def model_test(request):
         # Only saved configuration is tested. All calls are durable and quota counted.
-        return web.json_response(await engine.submit("test", "Reply with OK.", identifier(), test=True))
+        value=await body(request) if request.can_read_body else {}
+        if set(value)-{'reply_mode','request_id'}:raise RuntimeErrorBase('invalid_protocol_probe')
+        return web.json_response(await engine.submit("test", "Reply with OK.", value.get('request_id') or identifier(), test=True,test_reply_mode=value.get('reply_mode')))
 
     async def manage(request):
         value = await body(request)

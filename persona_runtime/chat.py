@@ -16,7 +16,16 @@ from .progress import record as record_progress, progress
 
 
 class ModelError(RuntimeErrorBase):
-    pass
+    def __init__(self,code,*,usage=None,diagnostics=None):
+        super().__init__(code)
+        self.usage=usage;self.diagnostics=diagnostics
+
+
+class ModelCompletion(tuple):
+    """Two-value unpacking stays compatible with existing clients and tasks."""
+    def __new__(cls,text,usage,diagnostics):
+        result=super().__new__(cls,(text,usage));result.diagnostics=diagnostics
+        return result
 
 
 class ModelClient(Protocol):
@@ -32,6 +41,9 @@ class ChatCompletionsClient:
             headers["Authorization"] = "Bearer " + unprotect(model["encrypted_key"])
         payload = {"model": model["name"], "messages": messages,
                    "max_tokens": model["max_tokens"], "stream": False}
+        from .reply_protocol import response_format
+        fmt=response_format(model.get('_reply_mode'))
+        if fmt:payload['response_format']=fmt
         timeout = aiohttp.ClientTimeout(total=model["timeout"], connect=min(5, model["timeout"]))
         try:
             async with aiohttp.ClientSession(timeout=timeout, trust_env=False) as client:
@@ -45,16 +57,21 @@ class ChatCompletionsClient:
                         if len(raw) > 2 * 1024 * 1024:
                             raise ModelError("provider_response_too_large")
                     data = json.loads(raw)
-                    text = data["choices"][0]["message"]["content"]
-                    if not isinstance(text, str) or not text.strip():
-                        raise ModelError("provider_empty_response")
+                    choice=data['choices'][0]
+                    text = choice["message"]["content"]
+                    finish=choice.get('finish_reason')
+                    diagnostics={'finish_reason':finish if finish in ('stop','length','content_filter','tool_calls','function_call') else 'unknown',
+                                 'response_format':'json_schema' if fmt else 'text',
+                                 'output_characters':len(text) if isinstance(text,str) else 0}
                     usage = data.get("usage")
                     if not isinstance(usage, dict):
                         usage = None
                     else:
                         usage = {k: v for k, v in usage.items() if k in (
                             "prompt_tokens", "completion_tokens", "total_tokens") and type(v) is int and v >= 0}
-                    return text, usage
+                    if not isinstance(text, str) or not text.strip():
+                        raise ModelError('provider_content_filtered' if finish=='content_filter' else 'provider_empty_response',usage=usage,diagnostics=diagnostics)
+                    return ModelCompletion(text,usage,diagnostics)
         except ModelError:
             raise
         except (TimeoutError, asyncio.TimeoutError):
@@ -145,13 +162,15 @@ class ChatEngine:
                 "AND NOT EXISTS (SELECT 1 FROM channel_sessions c WHERE c.session_id=s.id AND c.channel='qq') "
                 "ORDER BY s.created_at", (persona_id, LOCAL_USER_ID))]
 
-    async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None):
+    async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None, test_reply_mode=None):
         if self.draining:
             raise RuntimeErrorBase("service_draining")
         require_text(text, "text")
         require_text(request_id, "request_id")
         if channel not in ("desktop", "qq", "test") or (channel == "test") != test:
             raise RuntimeErrorBase("Unsupported channel")
+        if test_reply_mode is not None and (not test or test_reply_mode not in ('natural_structured','context_structured')):
+            raise RuntimeErrorBase('invalid_protocol_probe')
         if len(text) > 24000 or len(request_id) > 200:
             raise RuntimeErrorBase("Input is too long")
         if channel=='qq':
@@ -164,6 +183,7 @@ class ChatEngine:
             old = conn.execute("SELECT id FROM turns WHERE source_key=?", (source_key,)).fetchone()
             if old:
                 previous = self._view(conn, old[0])
+                if test and previous.get('reply_mode_snapshot')!=test_reply_mode:raise RuntimeErrorBase('submission_conflict')
                 if not test and (previous["text"] != text or (persona_id and previous["persona_id"] != persona_id)
                                  or (session_id and previous["session_id"] != session_id)
                                  or (origin is not None and previous["origin"] != origin)):
@@ -189,6 +209,8 @@ class ChatEngine:
                          "model_snapshot,usage_json,created_at,updated_at) VALUES (?,?,?,?,?,?,NULL,'queued',NULL,?,NULL,?,?)",
                          (turn_id, source_key, persona_id, session_id, channel, event_id,
                           json.dumps(model), timestamp(), timestamp()))
+            if test_reply_mode:
+                conn.execute('UPDATE turns SET reply_mode_snapshot=? WHERE id=?',(test_reply_mode,turn_id))
             if not test:
                 from .profile import snapshot
                 conn.execute('UPDATE turns SET profile_snapshot=? WHERE id=?',(json.dumps(snapshot(conn,persona_id),ensure_ascii=False),turn_id))
@@ -345,16 +367,35 @@ class ChatEngine:
                     record_check(conn,turn,turn["_context_details"].get("references",{}),attempt_id=attempt_id)
                     record_progress(conn, turn_id, "provider_started", attempt_id)
                 from .reply_batch import ReplySchemaError, validate_reply
-                raw_reply, usage = await self.client.complete(model, messages)
+                completion = await self.client.complete(dict(model,_reply_mode=turn.get('reply_mode_snapshot')), messages)
+                raw_reply, usage = completion
+                provider_diagnostics=getattr(completion,'diagnostics',{'finish_reason':'unreported'})
+                validation_error=None
+                try:
+                    if turn.get('reply_mode_snapshot') in ('natural_structured','context_structured') and provider_diagnostics.get('finish_reason')=='length':
+                        raise ReplySchemaError('reply_output_truncated')
+                    if provider_diagnostics.get('finish_reason')=='content_filter':
+                        raise ReplySchemaError('provider_content_filtered')
+                    reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
+                    output_validation={'status':'accepted','fallback_reason':reply_batch.fallback_reason,
+                                       'schema_version':reply_batch.schema_version,'message_count':len(reply_batch.segments)}
+                except ReplySchemaError as error:
+                    from .reply_protocol import validation_failure
+                    output_validation=validation_failure(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
+                    if str(error)=='reply_output_truncated':output_validation['reason']='provider_length_limit'
+                    if str(error)=='provider_content_filtered':output_validation['reason']='provider_content_filtered'
+                    validation_error=error
                 # Keep only the output fingerprint for failed validation as well as
                 # successful batches; never persist a malformed internal envelope.
                 import hashlib
                 with self.store.connection(write=True) as conn:
                     details=dict(turn['_context_details'])
                     details['reply_output_fingerprint']=hashlib.sha256(raw_reply.encode('utf-8')).hexdigest()
+                    details['reply_provider']=provider_diagnostics
+                    details['reply_validation']=output_validation
                     conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
                                  (json.dumps(details,ensure_ascii=False),attempt_id))
-                reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
+                if validation_error:raise validation_error
                 reply=reply_batch.text
                 from dataclasses import asdict
                 from .presentation import batch_view
@@ -384,6 +425,7 @@ class ChatEngine:
                     record_progress(conn, turn_id, "persisted", attempt_id)
             except BaseException as error:
                 interrupted = isinstance(error, asyncio.CancelledError)
+                if getattr(error,'usage',None) is not None:usage=error.usage
                 from .reply_batch import ReplySchemaError
                 from .references import ReferenceError,record_check
                 code = str(error) if isinstance(error, (RuntimeErrorBase,ModelError,ReplySchemaError,ReferenceError)) else ("request_interrupted" if interrupted else "request_failed")
@@ -405,6 +447,10 @@ class ChatEngine:
                     conn.execute("UPDATE turns SET status=?,error_code=?,usage_json=?,updated_at=? WHERE id=?",
                                  ("interrupted" if interrupted else "failed", code, encoded, timestamp(), turn_id))
                     if attempt_id:
+                        if getattr(error,'diagnostics',None):
+                            details=dict(turn.get('_context_details',{}));details['reply_provider']=error.diagnostics
+                            details['reply_validation']={'status':'rejected','reason':code}
+                            conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',(json.dumps(details,ensure_ascii=False),attempt_id))
                         conn.execute("UPDATE attempts SET status='failed',error_code=?,usage_json=? WHERE id=?", (code,encoded,attempt_id))
                 if interrupted:
                     raise

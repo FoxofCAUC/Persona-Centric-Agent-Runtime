@@ -239,7 +239,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.characters.import_package(self.pid,{'format':'pcar_character_v1','persona_spec':self.service.show_persona(self.pid)['spec'],'character':self.data},identifier())
         self.assertEqual(self.store.character_committed.call_count,3)
 
-    async def test_discovery_current_and_pending_old_versions_and_no_default_import(self):
+    async def test_discovery_current_pending_old_versions_and_enabled_new_identity(self):
         self.policy(character_retrieval_mode='hybrid');t=await self.turn('书店')
         data=deepcopy(self.data);data['interests']['notes']='新版';new=self.save(data)
         with patch.object(self.rt,'enqueue',return_value={'state':'queued'}) as enqueue:
@@ -248,7 +248,8 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(versions,{self.version['id'],new['id']})
         other=self.service.create_persona(prior.generic_persona())['id']
         with patch.object(self.rt,'enqueue') as enqueue:self.rt.discover(other)
-        enqueue.assert_not_called()
+        self.assertTrue(enqueue.call_args_list)
+        self.assertTrue(all(call.args[0]==other and call.args[2]['mode']=='hybrid_llm' for call in enqueue.call_args_list))
 
     async def test_admin_api_and_bridge_permissions_and_health_during_preparation(self):
         from aiohttp import ClientSession
