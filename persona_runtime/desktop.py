@@ -28,6 +28,14 @@ from .desktop_sessions import SessionUI
 from .desktop_selector import SelectorUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
+DISPLAY_ERRORS = {
+    'provider_connection_timeout': '连接模型接口超时（DNS/TCP/TLS阶段）；未自动重试，请检查连接诊断。',
+    'chat_display_message_limit': '回复分条超过安全上限，整批未发送；原生成记录保留。',
+    'chat_display_empty': '回复无法形成非空展示正文，整批未发送。',
+    'expression_policy_invalid': '冻结的表达策略无效，请查看请求诊断。',
+    'buffer_policy_invalid': '冻结的缓冲策略无效，未按其他策略替代。',
+    'reply_display_capability_required': '消息服务版本不支持新的分条协议，请升级桥接。',
+}
 ERRORS = {"reply_schema_invalid":"模型回复结构不合规，未发送正文；请查看上下文校验诊断。", "reply_output_truncated":"模型输出被截断，未发送正文；请查看结束原因。", "provider_content_filtered":"供应商未返回可用正文，未发送回复。", "provider_timeout": "模型响应超时，可检查状态后手动重试。", "hourly_limit_reached": "已达到每小时调用上限。",
           "model_not_configured": "尚未配置模型地址和名称。", "provider_http_401": "模型密钥未通过验证。",
           "provider_http_429": "模型提供商限流，请稍后手动重试。", "queue_full": "等待队列已满，请稍后再试。",
@@ -38,6 +46,7 @@ ERRORS.update({"session_sealed":"此会话已封存。草稿保留，请在会�
                "submission_conflict": "此请求标识已用于其他内容；请先找回原消息，不能覆盖。",
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
                "request_failed": "本机处理失败，请查看请求详情和诊断记录。"})
+ERRORS.update(DISPLAY_ERRORS)
 PHASES = {"character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
@@ -153,7 +162,8 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.init_archive_search_vars()
         self.init_context_vars()
         self.init_session_vars()
-        self.title("Persona-Centric Agent Runtime (PCAR) · M7.3")
+        from . import __version__
+        self.title("Persona-Centric Agent Runtime (PCAR) · "+__version__)
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
@@ -816,7 +826,12 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
             else:
                 self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
             if turn["status"] == "completed":
-                self.transcript.insert("end", "人格：" + (turn.get('display_reply',turn["reply"]) or "") + "\n\n")
+                displayed=turn.get('display_messages')
+                if displayed:
+                    for message in displayed:self.transcript.insert("end", "人格："+message['text']+"\n\n")
+                    findings=[str(i) for i,m in enumerate(displayed,1) if m.get('diagnostics',{}).get('quality_findings')]
+                    if findings:self.transcript.insert('end','表达检查：第'+ '、'.join(findings)+'条有长度或内部换行提示，正文已完整保留；请在详情中核对。\n\n')
+                else:self.transcript.insert("end", "人格：" + (turn.get('display_reply',turn["reply"]) or "") + "\n\n")
                 self.transcript.insert("end", "用量：" + (json.dumps(turn["usage"], ensure_ascii=False) if turn["usage"] else "未知") + "\n\n")
             else:
                 phase = turn.get("phase", turn["status"])

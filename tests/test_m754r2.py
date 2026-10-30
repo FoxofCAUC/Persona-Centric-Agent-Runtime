@@ -80,7 +80,7 @@ class SelectorTests(prior.IntegrationTests):
         with patch.object(self.rt,'local_pool',side_effect=self.pool):result=self.rt.preview(self.pid,'书店',channel='desktop',mode='hybrid_llm')
         self.assertEqual(result['effective_mode'],'lexical');self.assertFalse(self.model.calls)
         path=self.service.export_persona()['path'];value=json.loads(__import__('pathlib').Path(path).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],13);self.assertNotIn('encrypted_key',json.dumps(value))
+        self.assertEqual(value['format_version'],15);self.assertNotIn('encrypted_key',json.dumps(value))
 
     async def test_probe_durable_no_turn_and_idempotent(self):
         self.enable();op=identifier()

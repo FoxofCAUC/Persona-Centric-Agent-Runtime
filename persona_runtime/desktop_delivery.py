@@ -83,6 +83,7 @@ class DeliveryUI:
         self.delivery_detail.configure(state="normal"); self.delivery_detail.delete("1.0", "end")
         part = self.selected_delivery_part()
         if part:
+            if part.get('display'):self.delivery_detail.insert('end',f"语义组 {part['semantic_index']} → 展示消息 {part['display']['display_index']} → 传输片段\n")
             self.delivery_detail.insert("end", f"片段 {part['part_index']} · SHA-256 {part['text_hash']}\n{part['text']}\n\n发送尝试：\n")
             for attempt in part.get("attempts",[]):
                 self.delivery_detail.insert("end", f"#{attempt['attempt_no']} {attempt['state']} · 平台ID {attempt['platform_message_id'] or '无'} · {attempt['error'] or '无错误'} · {attempt['started_at']}\n")
@@ -102,7 +103,7 @@ class DeliveryUI:
         pid=self.persona_id;epoch=self.view_epoch;part=self.selected_delivery_part()
         if not pid:return
         dialog,body,footer=self.dialog_shell('表达与节奏预览',(760,600))
-        ttk.Label(body,text='选择已保存片段可预览原批次；或填写完整模型输出，预览不会调用模型。').pack(anchor='w')
+        ttk.Label(body,text='选择已保存片段可预览原批次；或填写新版v3完整模型输出（1–12个气泡），预览不会调用模型。').pack(anchor='w')
         source=scrolledtext.ScrolledText(body,height=8);source.pack(fill='both',expand=True)
         output=scrolledtext.ScrolledText(body,height=12,state='disabled');output.pack(fill='both',expand=True)
         def run(saved=False):
@@ -111,7 +112,7 @@ class DeliveryUI:
             target_id=target['id'] if target else None
             if saved and (not part or target_id!=part['id']):return
             draft=source.get('1.0','end-1c')
-            args={'batch_id':part['reply_batch_id']} if saved and part else {'raw':source.get('1.0','end-1c'),'mode':'natural_structured'}
+            args={'batch_id':part['reply_batch_id']} if saved and part else {'raw':source.get('1.0','end-1c'),'mode':'natural_structured','presentation_version':'model-bubbles-v1'}
             def done(value):
                 if epoch!=self.view_epoch or pid!=self.persona_id or not dialog.winfo_exists():return
                 current=self.selected_delivery_part()

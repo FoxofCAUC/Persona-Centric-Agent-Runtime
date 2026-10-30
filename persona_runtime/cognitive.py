@@ -88,7 +88,7 @@ class CognitiveService:
             'retrieval':retrieval,'character_retrieval':character.get('retrieval'),'partitions':{'hard':['core','current_input','required_character_facts','explicit_references'],
                 'soft_priority':['recent_turns','relevant_memories','retrieved_turns','lossy_summary','optional_character']},
             'input_characters':sum(len(m['content']) for m in messages),
-            'reply_output_contract':descriptor(turn.get('reply_mode_snapshot') or 'legacy_full'),'persisted':False}
+            'reply_output_contract':descriptor(turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot')),'persisted':False}
 
     def prepare(self,turn_id,character_selection=None):
         started=time.perf_counter()

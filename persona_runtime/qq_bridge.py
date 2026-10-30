@@ -108,7 +108,7 @@ class QQBridge:
                 text="【服务提示】引用不可用或超出预算，本批输入已保留，未调用模型；请去掉或更换引用后重新发送。"
             await send(text)
 
-    async def handle(self, event, send):
+    async def handle(self, event, send, *, background=False):
         payload = allowed_message(event, self.config.load())
         if payload is None:
             return False
@@ -139,6 +139,27 @@ class QQBridge:
                 await send("【服务提示】暂时无法确认是否受理；已保留本机接收记录，请先在工作台找回，避免重复发送。")
                 return False
         self.journal.forget(payload["request_id"])
+        if background:
+            # Receipt is durable before returning to the SDK; no reply wait can
+            # serialize subsequent input on an adapter's event dispatch lane.
+            if not hasattr(self,'_followers'):self._followers={}
+            key=turn.get('batch_id') or turn.get('id')
+            if key not in self._followers:
+                task=asyncio.create_task(self._follow_submission(turn,send))
+                self._followers[key]=task
+                def finished(done):
+                    self._followers.pop(key,None)
+                    if not done.cancelled():done.exception()
+                task.add_done_callback(finished)
+            return True
+        return await self._follow_submission(turn,send)
+
+    async def close(self):
+        tasks=list(getattr(self,'_followers',{}).values())
+        for task in tasks:task.cancel()
+        if tasks:await asyncio.gather(*tasks,return_exceptions=True)
+
+    async def _follow_submission(self,turn,send):
         if 'receipt_id' in turn:
             while not turn['turn_id']:
                 batch=await self.request('GET','/v2/batches/'+turn['batch_id'])
@@ -213,7 +234,7 @@ class QQBridge:
                 raise RuntimeError('delivery_text_hash_mismatch')
             try:
                 claim = await self.request("POST", f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/claim",
-                    {"expected_revision": view["revision"], "operation_id": identifier(), "capabilities":["reply_batch_v2","reply_rhythm_v1"]})
+                    {"expected_revision": view["revision"], "operation_id": identifier(), "capabilities":["reply_bubbles_v3","reply_batch_v2","reply_rhythm_v1","reply_display_messages_v1"]})
             except BridgeAPIError as exc:
                 if str(exc) == "version_conflict":
                     return delivered

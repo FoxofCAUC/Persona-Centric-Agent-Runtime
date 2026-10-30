@@ -12,7 +12,7 @@ from persona_runtime.paths import RuntimePaths
 from persona_runtime.qq_bridge import QQBridge
 
 
-@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.7.0")
+@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.7.2")
 class PersonaRuntimePlugin(Star):
     def __init__(self, context):
         super().__init__(context)
@@ -71,11 +71,12 @@ class PersonaRuntimePlugin(Star):
             async def send(text):
                 # Await actual platform completion; no generator-yield success assumptions.
                 return await event.send(event.plain_result(text))
-            await self.bridge.handle(event, send)
+            await self.bridge.handle(event, send, background=True)
         except Exception:
             logger.error("persona_bridge_failure")
 
     async def terminate(self):
+        await self.bridge.close()
         if self.delivery_task:
             self.delivery_task.cancel()
             with suppress(asyncio.CancelledError):

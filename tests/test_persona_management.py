@@ -122,7 +122,7 @@ class ManagementTests(unittest.TestCase):
     def test_export_contains_metadata_without_credentials(self):
         pid=self.clone()['id'];self.service.use_persona(pid)
         value=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],13);self.assertEqual(value['persona_lifecycle'][0]['copy_of'],self.a)
+        self.assertEqual(value['format_version'],15);self.assertEqual(value['persona_lifecycle'][0]['copy_of'],self.a)
         self.assertEqual(len(value['persona_operations']),1);self.assertNotIn('encrypted_key',json.dumps(value))
 
     def test_schema15_upgrade_repeat_and_failure_rollback(self):
@@ -141,7 +141,7 @@ class ManagementTests(unittest.TestCase):
         old.initialize();old.initialize()
         with old.connection() as db:
             self.assertEqual([tuple(r) for r in db.execute('SELECT * FROM personas')],original)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],16)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],18)
             self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
 
 

@@ -12,7 +12,7 @@ class BatchUI:
         self.batch_policy_text=tk.StringVar(value='启动服务后读取入口模式。')
 
     def build_batches(self,parent):
-        self.heading(parent,'输入与缓冲','按人格及入口单独开启；默认逐条。五秒静默、十五秒上限；重启后须明确继续。')
+        self.heading(parent,'输入与缓冲','默认最后一条后五秒，无时间上限；容量及版本变化可提前封批。重启后须明确继续。')
         bar=ttk.Frame(parent);bar.pack(fill='x',pady=5)
         self.button(bar,'刷新',self.refresh_batches,{'batch-read'})
         self.button(bar,'切换窗口模式',lambda:self.change_batch_mode('desktop'),{'batch-write'})
@@ -42,8 +42,8 @@ class BatchUI:
         def done(value):
             if epoch!=self.view_epoch or pid!=self.persona_id:return
             rows,policies=value;self.batch_policies=policies
-            self.batch_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+('五秒缓冲' if p['mode']=='natural_batch' else '逐条回复') for c,p in policies.items()))
-            self.reply_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+REPLY_LABELS.get(p.get('reply_mode','legacy_full'),'兼容全文') for c,p in policies.items()))
+            self.batch_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+(('最后一条后五秒，无时间上限' if p.get('buffer_policy',{}).get('schema_version')==2 else '旧策略：五秒静默／十五秒上限') if p['mode']=='natural_batch' else '逐条回复') for c,p in policies.items()))
+            self.reply_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+REPLY_LABELS.get(p.get('reply_mode','legacy_full'),'兼容全文')+(' · 模型分泡，保留合理逗号，通常省略句末句号（最多12条，不凑数）' if (p.get('expression_policy') or {}).get('version')==3 else ' · 旧版表达') for c,p in policies.items()))
             selected=self.batch_tree.selection()
             self.batch_rows=rows
             self.batch_tree.delete(*self.batch_tree.get_children())
@@ -82,7 +82,7 @@ class BatchUI:
         key=('policy',pid,channel,p['id'],mode,pending_action);op=self.batch_intents.setdefault(key,identifier())
         def done(_):
             if epoch==self.view_epoch and pid==self.persona_id:self.refresh_batches()
-        self.run_task('保存入口模式',{'batch-write'},lambda _:self.client.manage('interaction.update',persona_id=pid,channel=channel,mode=mode,expected_version=p['id'],operation_id=op,pending_action=pending_action),done)
+        self.run_task('保存入口模式',{'batch-write'},lambda _:self.client.manage('interaction.update',persona_id=pid,channel=channel,mode=mode,expected_version=p['id'],operation_id=op,pending_action=pending_action,conversation_policy_version=2),done)
 
     def change_reply_mode(self,channel):
         p=self.batch_policies.get(channel);pid=self.persona_id;epoch=self.view_epoch
@@ -94,7 +94,7 @@ class BatchUI:
             ('legacy_full','兼容全文','保持现有完整文本回复行为。'),
             ('context_full','情境全文','使用本地情境线索和角色样例，仍返回完整文本。'),
             ('context_structured','情境结构回复','一次主调用返回经校验的 1–3 段；窗口显示正文，QQ按入口能力投递。'),
-            ('natural_structured','自然私聊','完整显示正文；QQ按语义等待，新输入可取消未开始的可省略余段。'),
+            ('natural_structured','自然私聊','模型直接分泡，保留合理逗号；通常省略句末句号，不凑满12条。'),
         ):
             row=ttk.Frame(body);row.pack(fill='x',anchor='w',pady=3)
             ttk.Radiobutton(row,text=label,value=mode,variable=value).pack(side='left')
@@ -103,7 +103,7 @@ class BatchUI:
             if epoch!=self.view_epoch or pid!=self.persona_id:
                 messagebox.showerror('选择已变化','请在当前人格重新打开设置。');return
             mode=value.get()
-            if mode==p.get('reply_mode','legacy_full'):
+            if mode==p.get('reply_mode','legacy_full') and (p.get('expression_policy') or {}).get('version')==3:
                 dialog.destroy();return
             pending_action=None
             if any(b['channel']==channel and b['state']=='collecting' for b in self.batch_rows):

@@ -7,10 +7,10 @@ DEFAULT_CONTEXT={'context_mode':'working_set','cross_session':False}
 
 def new_persona_defaults():
     """Fresh identities use released features; historical snapshots stay unchanged."""
-    from .ingress import PARAMS
+    from .ingress import ROLLING_PARAMS
     from .character_policy import choose
     return {'mode':'natural_batch','reply_mode':'natural_structured',
-            'data':{**PARAMS,'context':{**DEFAULT_CONTEXT,
+            'data':{**ROLLING_PARAMS,'context':{**DEFAULT_CONTEXT,
                 'character_retrieval':choose('hybrid_llm')}}}
 
 
@@ -49,7 +49,7 @@ def initialize(conn,persona_id=None,*,new_persona=False):
             reply_mode=old['reply_mode'] if old else (defaults['reply_mode'] if defaults else 'legacy_full')
             if defaults:
                 from .reply_batch import expression_snapshot
-                data['expression']=expression_snapshot(reply_mode,vid)
+                data['expression']=expression_snapshot(reply_mode,vid,version=3)
             conn.execute('INSERT INTO interaction_policies(id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES(?,?,?,?,?,?,?,?,?)',
                          (vid,pid,LOCAL_USER_ID,channel,old['revision']+1 if old else 1,
                           mode,json.dumps(data,ensure_ascii=False,sort_keys=True),timestamp(),reply_mode))

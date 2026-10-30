@@ -112,15 +112,16 @@ class DeliveryService:
         segments = conn.execute("SELECT * FROM reply_segments WHERE batch_id=? ORDER BY segment_index", (batch_id,)).fetchall()
         from .reply_transport import render_parts
         # Validate the complete batch before creating a single sendable fragment.
-        rendered_groups = [(s,render_parts(s['text'],s['content_kind'] or 'chat')[1]) for s in segments]
+        displays=conn.execute('SELECT * FROM reply_display_messages WHERE batch_id=? ORDER BY display_index',(batch_id,)).fetchall()
+        rendered_groups = [(d,render_parts(d['text'],d['content_kind'] or 'chat')[1]) for d in displays] if displays else [(s,render_parts(s['text'],s['content_kind'] or 'chat')[1]) for s in segments]
         part_index = 0
         for segment, texts in rendered_groups:
             for text in texts:
                 part_index += 1
                 stream_seq += 1
-                conn.execute("INSERT INTO reply_delivery_parts (id,stream_id,reply_batch_id,turn_id,persona_id,user_id,semantic_index,part_index,stream_seq,text,text_hash,state,revision,claim_token,attempt,platform_message_id,sent_at,error,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',1,NULL,0,NULL,NULL,NULL,?,?)",
+                conn.execute("INSERT INTO reply_delivery_parts (id,stream_id,reply_batch_id,turn_id,persona_id,user_id,semantic_index,part_index,stream_seq,text,text_hash,state,revision,claim_token,attempt,platform_message_id,sent_at,error,created_at,updated_at,display_message_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',1,NULL,0,NULL,NULL,NULL,?,?,?)",
                              (identifier(), stream_id, batch_id, turn["id"], turn["persona_id"], LOCAL_USER_ID,
-                              segment['segment_index'], part_index, stream_seq, text, hashlib.sha256(text.encode("utf-8")).hexdigest(), timestamp(), timestamp()))
+                              segment['semantic_index'] if displays else segment['segment_index'], part_index, stream_seq, text, hashlib.sha256(text.encode("utf-8")).hexdigest(), timestamp(), timestamp(),segment['id'] if displays else None))
         latest = conn.execute('SELECT new_input_event_id FROM turns WHERE id=?',(turn['id'],)).fetchone()[0]
         # A batch can remain capacity-blocked while newer inputs are already accepted.
         # Resolve only authoritative same-session events, excluding this batch's members.
@@ -178,6 +179,8 @@ class DeliveryService:
             return result
 
     def _wait(self,conn,part, *, start=False):
+        if part['display_message_id']:
+            return self._display_wait(conn,part,start=start)
         segment=conn.execute('SELECT wait_ms FROM reply_segments WHERE batch_id=? AND segment_index=?',(part['reply_batch_id'],part['semantic_index'])).fetchone()
         delay=(segment[0] or 0) if segment else 0
         if not delay or part['attempt']:return 0
@@ -196,17 +199,37 @@ class DeliveryService:
             conn.execute('UPDATE reply_delivery_parts SET wait_started_at=?,wait_ms=? WHERE reply_batch_id=? AND semantic_index=?',(timestamp(),delay,*key))
         return max(0,math.ceil((self.waits[key]-self.monotonic())*1000-1e-7))
 
+    def _display_wait(self,conn,part,*,start=False):
+        display=conn.execute('SELECT * FROM reply_display_messages WHERE id=?',(part['display_message_id'],)).fetchone()
+        delay=display['wait_ms']
+        if not delay or part['attempt']:return 0
+        group=conn.execute('SELECT attempt FROM reply_delivery_parts WHERE display_message_id=?',(display['id'],)).fetchall()
+        if any(p['attempt'] for p in group):return 0
+        previous=conn.execute('SELECT p.state FROM reply_delivery_parts p JOIN reply_display_messages d ON d.id=p.display_message_id WHERE d.batch_id=? AND d.display_index=?',(display['batch_id'],display['display_index']-1)).fetchall()
+        if not previous or not all(p['state'] in TERMINAL for p in previous):return 0
+        key=('display',display['id'])
+        if key in self.waits and part['wait_started_at'] is None:self.waits.pop(key,None)
+        if key not in self.waits:
+            if not start:return delay
+            self.waits[key]=self.monotonic()+delay/1000
+            conn.execute('UPDATE reply_delivery_parts SET wait_started_at=?,wait_ms=? WHERE display_message_id=?',(timestamp(),delay,display['id']))
+        return max(0,math.ceil((self.waits[key]-self.monotonic())*1000-1e-7))
+
     def _view(self, conn, stream_id):
         stream = self._stream(conn, stream_id)
         stream["origin"] = json.loads(stream.pop("origin_json"))
         stream["parts"] = []
         for row in conn.execute("SELECT * FROM reply_delivery_parts WHERE stream_id=? ORDER BY stream_seq", (stream_id,)):
             part=dict(row);part.pop("claim_token",None)
+            if part['display_message_id']:
+                d=conn.execute('SELECT display_index,wait_ms,transform_version FROM reply_display_messages WHERE id=?',(part['display_message_id'],)).fetchone()
+                part['display']=dict(d)
             metadata=conn.execute('SELECT text,content_kind,cancel_if_new_input,wait_ms FROM reply_segments WHERE batch_id=? AND segment_index=?',(part['reply_batch_id'],part['semantic_index'])).fetchone()
             from .presentation import code_lines
             part['protected_code_lines']=[line for line in code_lines(metadata['text']) if line in part['text']] if metadata else []
             metadata={k:v for k,v in dict(metadata).items() if k!='text'} if metadata else None
             part.update(dict(metadata) if metadata else {})
+            if part.get('display'):part['wait_ms']=part['display']['wait_ms']
             part['remaining_ms']=self._wait(conn,part) if part['state']=='pending' else 0
             part["attempts"]=[dict(item) for item in conn.execute(
                 "SELECT attempt_no,state,platform_message_id,error,started_at,ended_at FROM reply_delivery_attempts WHERE part_id=? ORDER BY attempt_no",
@@ -254,8 +277,11 @@ class DeliveryService:
             part = conn.execute("SELECT * FROM reply_delivery_parts WHERE id=? AND stream_id=?", (part_id, stream_id)).fetchone()
             if not part:
                 raise RuntimeErrorBase("Delivery part not found")
+            if part['display_message_id'] and 'reply_display_messages_v1' not in (capabilities or []):
+                raise RuntimeErrorBase('reply_display_capability_required')
             batch=conn.execute('SELECT schema_version FROM reply_batches WHERE id=?',(part['reply_batch_id'],)).fetchone()
-            if batch[0]==2 and not {'reply_batch_v2','reply_rhythm_v1'}.issubset(set(capabilities or [])):
+            if batch[0]==3 and 'reply_bubbles_v3' not in (capabilities or []):raise RuntimeErrorBase('bridge_capability_required')
+            if batch[0] in (2,3) and not {'reply_batch_v2','reply_rhythm_v1'}.issubset(set(capabilities or [])):
                 raise RuntimeErrorBase('reply_v2_capability_required')
             first = conn.execute("SELECT id,state FROM reply_delivery_parts WHERE stream_id=? AND state NOT IN ('sent','skipped','resolved') ORDER BY stream_seq LIMIT 1",
                                  (stream_id,)).fetchone()
@@ -305,7 +331,7 @@ class DeliveryService:
                          (status, platform_message_id, error, timestamp(), part_id, part["attempt"]))
             stream = self._refresh(conn, stream_id)
             if status=='sent':
-                next_part=conn.execute("SELECT * FROM reply_delivery_parts WHERE reply_batch_id=? AND semantic_index=? AND state='pending' ORDER BY part_index LIMIT 1",(part['reply_batch_id'],part['semantic_index']+1)).fetchone()
+                next_part=conn.execute("SELECT * FROM reply_delivery_parts WHERE reply_batch_id=? AND part_index>? AND state='pending' ORDER BY part_index LIMIT 1",(part['reply_batch_id'],part['part_index'])).fetchone()
                 if next_part:self._wait(conn,next_part,start=True)
             result = {"state": status, "revision": stream["revision"], "part_id": part_id}
             self._record(conn, operation_id, stream_id, part_id, "result", actor, error, False, request_hash, result)

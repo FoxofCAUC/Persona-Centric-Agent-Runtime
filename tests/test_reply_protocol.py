@@ -69,6 +69,12 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.config.update({'model':{'base_url':str(self.provider.make_url('/v1')),'name':'mock'}})
         self.service=RuntimeService(self.store);self.pid=self.service.create_persona(generic_persona())['id'];self.service.use_persona(self.pid)
         self.engine=ChatEngine(self.store,self.config);self.ingress=IngressService(self.engine)
+        # This suite verifies the frozen pre-bubble wire contract.
+        from persona_runtime.reply_batch import expression_snapshot
+        with self.store.connection(write=True) as conn:
+            for r in conn.execute('SELECT id,reply_mode,data_json FROM interaction_policies').fetchall():
+                data=json.loads(r['data_json']);data['expression']=expression_snapshot(r['reply_mode'],r['id'],version=1)
+                conn.execute('UPDATE interaction_policies SET data_json=? WHERE id=?',(json.dumps(data),r['id']))
         self.addAsyncCleanup(self.cleanup_engine)
 
     async def cleanup_engine(self):
@@ -139,6 +145,17 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
             t=await self.submit()
         self.assertEqual(t['status'],'failed');self.assertEqual(self.requests,[])
         with self.store.connection() as db:self.assertFalse(db.execute('SELECT 1 FROM attempts').fetchone())
+
+    async def test_connection_diagnostics_persist_without_reply(self):
+        from persona_runtime.chat import ModelError
+        diagnostic={'phase':'connecting','request_headers_sent':False,
+                    'response_headers_received':False,'timeout_seconds':60,'elapsed_ms':60001}
+        with patch.object(self.engine.client,'complete',side_effect=ModelError('provider_connection_timeout',diagnostics=diagnostic)) as call:
+            t=await self.submit()
+        self.assertEqual(call.call_count,1)
+        self.assertEqual(t['error_code'],'provider_connection_timeout')
+        self.assertEqual(t['context']['reply_provider'],diagnostic)
+        self.assertIsNone(t['reply_event_id']);self.assertIsNone(t['usage'])
 
     async def test_generic_probe_is_idempotent_and_has_no_persona_or_events(self):
         rid=identifier();a=await self.engine.submit('test','Reply with OK.',rid,test=True,test_reply_mode='natural_structured')

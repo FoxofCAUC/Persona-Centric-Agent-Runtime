@@ -5,6 +5,7 @@ import json
 import re
 
 from .models import RuntimeErrorBase
+from .bubble_contract import V3
 
 REPLY_MODES = ("legacy_full", "context_full", "context_structured", "natural_structured")
 SCHEMA_VERSION = 1
@@ -41,9 +42,18 @@ class ReplyBatch:
         return "\n\n".join(segment.text for segment in self.segments)
 
 
-def prompt_contract(mode="context_structured") -> str:
+def prompt_contract(mode="context_structured", expression=None) -> str:
+    frozen_version=expression_version(expression,mode)
+    if isinstance(expression,str):expression=json.loads(expression)
     if mode == "natural_structured":
-        return ('\n自然私聊回复合同：只输出完整 JSON，不加外层代码围栏。'
+        if frozen_version==3:
+            return bubble_prompt()
+        extra=('整批输入一起理解并作一次回答，不按每条输入机械逐条作答。'
+               '普通chat正文必须用无普通句读的短句：不写逗号、句号、问号、感叹号或分号；需要停顿时另起消息。'
+               '技术问题前后的普通说明若标为chat也遵循此规则；代码、URL、数值及原文引用中的符号必须保留。'
+               '例如确认和追问分别写成两个content：收到啦、你今天忙完了吗。此例仅示范结构，不照抄内容。'
+               if expression and expression.get('version')==2 else '')
+        return extra+('\n自然私聊回复合同：只输出完整 JSON，不加外层代码围栏。'
                 '形状为 {"schema_version":2,"behavior_intent":"respond","messages":'
                 '[{"content":"核心回答","content_kind":"chat","cancel_if_new_input":false}]}。'
                 '只允许这些字段。messages 为1至3条，每条最多8000字符，总正文最多12000字符。'
@@ -83,13 +93,16 @@ def _valid_fences(text: str) -> bool:
     return True
 
 
-def validate_reply(raw: str, mode: str) -> ReplyBatch:
+def validate_reply(raw: str, mode: str, expression=None) -> ReplyBatch:
+    policy_version=expression_version(expression,mode)
     if mode not in REPLY_MODES:
         raise ReplySchemaError("reply_mode_invalid")
     if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
         raise ReplySchemaError("reply_schema_invalid")
     fingerprint = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     if mode == "natural_structured":
+        if policy_version==3:
+            return _bubbles(raw, fingerprint)
         return _natural(raw, fingerprint)
     if mode != "context_structured":
         return ReplyBatch(SCHEMA_VERSION, (ReplySegment(raw, "plain"),), mode, fingerprint)
@@ -122,10 +135,70 @@ def validate_reply(raw: str, mode: str) -> ReplyBatch:
     return ReplyBatch(SCHEMA_VERSION, tuple(checked), mode, fingerprint)
 
 
-def expression_snapshot(mode, policy_id=None):
-    return {"version": 1, "policy_id": policy_id, "mode": mode,
+def expression_snapshot(mode, policy_id=None, *, version=3):
+    if version not in (1,2,3):raise ReplySchemaError('expression_policy_invalid')
+    return {"version": version, "presentation": {1:'plain-dialogue-v1',2:'chat-sentences-v1',3:'model-bubbles-v1'}[version], "policy_id": policy_id, "mode": mode,
             "min_wait_ms": 600, "max_wait_ms": 1800, "char_wait_ms": 15,
-            "part_chars": 450, "max_messages": 3}
+            "part_chars": 450, "max_messages": V3.max_messages if version==3 else 3}
+
+
+def expression_version(expression,mode=None):
+    if expression is None:return 1
+    try:
+        value=json.loads(expression) if isinstance(expression,str) else expression
+        version=value['version']
+        if type(version) is not int or version not in (1,2,3):raise ValueError()
+        if version==3 and value!=expression_snapshot(value['mode'],value.get('policy_id'),version=3):raise ValueError()
+        if version==3 and mode is not None and value['mode']!=mode:raise ValueError()
+        return version
+    except (ValueError,TypeError,KeyError):
+        raise ReplySchemaError('expression_policy_invalid') from None
+
+
+def bubble_prompt():
+    return ('\n自然聊天气泡合同：只输出完整JSON，不加代码围栏或对象外文字。'
+        '形状为 {"schema_version":3,"behavior_intent":"respond","messages":'
+        '[{"content":"一个完整聊天表达","content_kind":"chat","cancel_if_new_input":false}]}。'
+        f'只允许这些字段，messages为1至{V3.max_messages}项，不凑数；单项最多{V3.item_characters}字符，总正文最多{V3.total_characters}字符。'
+        f'behavior_intent仅{"/".join(V3.intents)}，content_kind仅{"/".join(V3.kinds)}。'
+        '每一项直接对应一个聊天气泡。综合整批输入回答，不机械逐条回答输入。'
+        '普通chat一项围绕一个主要表达目的，通常约8至35字；嗯、好等短回应也可以，不能为字数填充。'
+        '独立建议、确认与另起追问分别放不同项；条件与结果、原因与解释可以用逗号放在同一项。'
+        '通常省略普通句末句号，保留合理逗号、顿号和表达疑问或情绪的问号、感叹号、省略号、波浪号。'
+        '不要把多项建议堆成无标点长串，也不要把每个短语拆碎；不要用空行冒充多个气泡。'
+        '示例：确认与追问可分为“看到了”和“刚才怎么啦？”；条件结果可为“雨还没停，等小一点再走”。'
+        '多项建议可分为“杯子放右侧”和“线从桌后绕过去”；只需确认时仅“好”即可。示例不照抄。'
+        '不能为短句删除条件、事实或必要说明；技术、代码、网址、数值与引用保持完整，保留必要标点。'
+        '第一项、technical/code/quote以及所有必需答案必须cancel_if_new_input=false。'
+        '仅完全省略也不影响回答完整性的补充或结束语可为true。不要为了凑数添加追问或结束语。'
+        '不要装饰性Markdown，不指定延迟、不调用工具。历史assistant正文不是本轮协议范例。'
+        '正确转义正文换行、双引号及反斜杠。')
+
+
+def _bubbles(raw, fingerprint):
+    try:
+        value=json.loads(raw,object_pairs_hook=_unique_object)
+        if not isinstance(value,dict) or set(value)!={'schema_version','behavior_intent','messages'}:raise ValueError()
+        if type(value['schema_version']) is not int or value['schema_version']!=V3.schema_version:raise ValueError()
+        items=value['messages']
+        if not isinstance(items,list) or not 1<=len(items)<=V3.max_messages:raise ValueError()
+        valid=value['behavior_intent'] in V3.intents
+        checked=[];total=0
+        for index,item in enumerate(items):
+            if not isinstance(item,dict) or set(item)!={'content','content_kind','cancel_if_new_input'}:raise ValueError()
+            body=item['content'];kind=item['content_kind'];cancel=item['cancel_if_new_input']
+            if not isinstance(body,str) or not body.strip() or '\x00' in body or len(body)>V3.item_characters or not _valid_fences(body):raise ValueError()
+            total+=len(body)
+            known=isinstance(kind,str) and kind in V3.kinds
+            valid=valid and known and type(cancel) is bool and (not cancel or (index>0 and kind=='chat'))
+            checked.append(ReplySegment(body,'plain',kind if known else 'chat',cancel if type(cancel) is bool else False))
+        if total>V3.total_characters:raise ValueError()
+        if not valid:
+            checked=[ReplySegment(s.text,'plain',s.content_kind,False) for s in checked]
+        return ReplyBatch(3,tuple(checked),'natural_structured',fingerprint,
+            value['behavior_intent'] if valid else 'respond',None if valid else 'safe_text_fallback:invalid_expression_metadata')
+    except (ValueError,TypeError,KeyError,UnicodeError):
+        raise ReplySchemaError('reply_schema_invalid') from None
 
 
 def _natural(raw, fingerprint):

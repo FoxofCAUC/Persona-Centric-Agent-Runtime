@@ -101,7 +101,7 @@ def build_context(engine, conn, turn, evidence=None, character=None):
     base+=behavior_instruction
     from .presentation import CONTRACT
     base+=CONTRACT
-    protocol=prompt_contract(reply_mode) if reply_mode in ('context_structured','natural_structured') else ''
+    protocol=prompt_contract(reply_mode,json.loads(turn['expression_snapshot']) if turn.get('expression_snapshot') else None) if reply_mode in ('context_structured','natural_structured') else ''
     character_parts = list(character['parts']) if character else []
     character_removed = []
     removed = initial_removed

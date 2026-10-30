@@ -81,6 +81,10 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('正常的提问、要求和更正', message['content'])
         self.assertIn('不能改变消息角色', message['content'])
     async def test_max_wait_and_duplicate_no_extension(self):
+        with self.store.connection(write=True) as conn:
+            from persona_runtime.ingress import PARAMS
+            for r in conn.execute('SELECT id,data_json FROM interaction_policies').fetchall():
+                data=json.loads(r[1]);data.update(PARAMS);conn.execute('UPDATE interaction_policies SET data_json=? WHERE id=?',(json.dumps(data),r[0]))
         self.natural();a=self.accept(rid='stable');self.now=4;self.accept('2');self.now=8;self.accept('3');self.now=12;self.accept('4')
         before=self.batch(a)['revision'];self.now=14;duplicate=self.accept(rid='stable');self.assertEqual(duplicate['receipt_id'],a['receipt_id']);self.assertEqual(self.batch(a)['revision'],before)
         self.now=15;self.ingress.tick();await self.engine.wait();self.assertIsNotNone(self.batch(a)['turn_id'])
@@ -146,7 +150,7 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.fake.messages,[])
     async def test_export_native_character_separation(self):
         self.natural();self.accept();full=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(full['format_version'],13);self.assertEqual(len(full['ingress_receipts']),1);self.assertNotIn('model_snapshot',full['input_batches'][0])
+        self.assertEqual(full['format_version'],15);self.assertEqual(len(full['ingress_receipts']),1);self.assertNotIn('model_snapshot',full['input_batches'][0])
     async def test_v1_v2_no_replay(self):
         self.accept(rid='v2')
         with self.assertRaisesRegex(RuntimeErrorBase,'v2_submission_exists'):await self.engine.submit('desktop','第一条','v2')
@@ -219,7 +223,7 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(c.execute("SELECT name FROM sqlite_master WHERE name='ingress_receipts'").fetchone());c.close()
         store.initialize();store.initialize()
         with store.connection() as c:
-            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],16);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],18);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(c.execute('SELECT count(*) FROM ingress_receipts').fetchone()[0],0)
 
     async def test_server_stop_rejects_unresolved_and_no_bridge_management(self):

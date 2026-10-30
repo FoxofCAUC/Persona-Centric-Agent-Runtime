@@ -46,8 +46,8 @@ def render_parts(text, content_kind="chat", limit=450):
     return rendered, parts
 
 
-def preview(raw, mode):
-    batch = validate_reply(raw, mode)
+def preview(raw, mode, expression=None):
+    batch = validate_reply(raw, mode, expression)
     messages = []
     for index, item in enumerate(batch.segments, 1):
         rendered, parts = render_parts(item.text, item.content_kind)

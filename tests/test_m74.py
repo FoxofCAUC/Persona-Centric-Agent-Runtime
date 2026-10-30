@@ -120,6 +120,11 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         for channel in ('desktop','qq'):
             policy=self.ingress.current_policy(self.pid,channel)
             self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
+        # Explicitly retain the M7.4 expression contract; v2 presentation has its own suite.
+        with self.store.connection(write=True) as conn:
+            for row in conn.execute('SELECT id,data_json FROM interaction_policies').fetchall():
+                data=json.loads(row[1]);data['expression']['version']=1
+                conn.execute('UPDATE interaction_policies SET data_json=? WHERE id=?',(json.dumps(data),row[0]))
         self.now=0.;self.delivery=DeliveryService(self.store,monotonic=lambda:self.now)
         self.mode('natural_structured');self.addAsyncCleanup(self.engine.wait)
 
@@ -248,7 +253,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         t,s=await self.make();self.assertEqual(self.fake.calls,1);self.assertTrue(t['reply_batch']['fallback_reason'])
         self.assertEqual(len(s['parts']),1);self.assertEqual(t['usage']['total_tokens'],3)
         payload=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(payload['format_version'],13);self.assertIn('wait_ms',payload['reply_segments'][0])
+        self.assertEqual(payload['format_version'],15);self.assertIn('wait_ms',payload['reply_segments'][0])
         self.assertNotIn('claim_token',payload['reply_delivery_parts'][0])
 
     async def test_unsafe_batch_fails_before_any_send(self):

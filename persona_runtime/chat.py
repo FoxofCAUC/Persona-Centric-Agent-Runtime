@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import time
+import math
 from typing import Protocol
 
 import aiohttp
@@ -42,25 +43,45 @@ class ChatCompletionsClient:
         payload = {"model": model["name"], "messages": messages,
                    "max_tokens": model["max_tokens"], "stream": False}
         from .reply_protocol import response_format
-        fmt=response_format(model.get('_reply_mode'))
+        fmt=response_format(model.get('_reply_mode'),model.get('_expression_snapshot'))
         if fmt:payload['response_format']=fmt
-        timeout = aiohttp.ClientTimeout(total=model["timeout"], connect=min(5, model["timeout"]))
+        # One configured end-to-end budget. A hidden shorter connection cap
+        # used to fail 60-second requests after five seconds of DNS/TLS work.
+        budget = model['timeout']
+        timeout = aiohttp.ClientTimeout(total=budget, connect=budget, ceil_threshold=math.inf)
+        started = time.monotonic()
+        transport = {'phase': 'request_setup', 'request_headers_sent': False,
+                     'response_headers_received': False}
+        trace = aiohttp.TraceConfig()
+        async def connecting(*_): transport['phase'] = 'connecting'
+        async def connected(*_): transport['phase'] = 'awaiting_headers'
+        async def sent(*_):
+            transport['request_headers_sent'] = True
+            transport['phase'] = 'awaiting_headers'
+        trace.on_connection_create_start.append(connecting)
+        trace.on_connection_create_end.append(connected)
+        trace.on_request_headers_sent.append(sent)
+        def diagnostic():
+            return {**transport, 'timeout_seconds': budget,
+                    'elapsed_ms': round((time.monotonic()-started)*1000, 3)}
         try:
-            async with aiohttp.ClientSession(timeout=timeout, trust_env=False) as client:
+            async with aiohttp.ClientSession(timeout=timeout, trust_env=False, trace_configs=[trace]) as client:
                 async with client.post(model["base_url"].rstrip("/") + "/chat/completions",
                                        headers=headers, json=payload, allow_redirects=False) as response:
+                    transport.update(phase='reading_body', response_headers_received=True)
                     if response.status != 200:
-                        raise ModelError(f"provider_http_{response.status}")
+                        raise ModelError(f"provider_http_{response.status}", diagnostics=diagnostic())
                     raw = bytearray()
                     async for chunk in response.content.iter_chunked(65536):
                         raw.extend(chunk)
                         if len(raw) > 2 * 1024 * 1024:
                             raise ModelError("provider_response_too_large")
+                    transport['phase'] = 'parsing_response'
                     data = json.loads(raw)
                     choice=data['choices'][0]
                     text = choice["message"]["content"]
                     finish=choice.get('finish_reason')
-                    diagnostics={'finish_reason':finish if finish in ('stop','length','content_filter','tool_calls','function_call') else 'unknown',
+                    diagnostics={**diagnostic(),'finish_reason':finish if finish in ('stop','length','content_filter','tool_calls','function_call') else 'unknown',
                                  'response_format':'json_schema' if fmt else 'text',
                                  'output_characters':len(text) if isinstance(text,str) else 0}
                     usage = data.get("usage")
@@ -75,11 +96,12 @@ class ChatCompletionsClient:
         except ModelError:
             raise
         except (TimeoutError, asyncio.TimeoutError):
-            raise ModelError("provider_timeout") from None
+            code = 'provider_connection_timeout' if transport['phase']=='connecting' else 'provider_timeout'
+            raise ModelError(code, diagnostics=diagnostic()) from None
         except aiohttp.ClientError:
-            raise ModelError("provider_network_error") from None
+            raise ModelError("provider_network_error", diagnostics=diagnostic()) from None
         except (ValueError, KeyError, IndexError, TypeError):
-            raise ModelError("provider_invalid_response") from None
+            raise ModelError("provider_invalid_response", diagnostics=diagnostic()) from None
 
 
 def terms(text):
@@ -272,6 +294,12 @@ class ChatEngine:
         from .presentation import batch_view
         value['display_reply'],value['presentation']=batch_view(value['reply'],
             value['reply_batch']['segments'] if value['reply_batch'] else None,historical=True)
+        from .chat_display import read as read_display
+        value['display_messages']=read_display(conn,reply_batch['id']) if reply_batch else []
+        if value['display_messages']:
+            value['display_reply']='\n\n'.join(m['text'] for m in value['display_messages'])
+            value['presentation']['display_version']=value['display_messages'][0]['transform_version']
+            value['presentation']['planned_wait_ms']=sum(m['wait_ms'] for m in value['display_messages'])
         delivery_stream=conn.execute('SELECT s.id,s.state,s.revision,s.blocked_reason,s.blocked_part_id,count(p.id) AS part_count,sum(CASE WHEN p.state="sent" THEN 1 ELSE 0 END) AS sent_count FROM reply_delivery_streams s JOIN reply_delivery_parts p ON p.stream_id=s.id WHERE p.turn_id=? GROUP BY s.id',(turn_id,)).fetchone()
         value['delivery_stream']=dict(delivery_stream) if delivery_stream else None
         context = conn.execute("SELECT details_json FROM context_uses WHERE turn_id=? ORDER BY rowid DESC LIMIT 1", (turn_id,)).fetchone()
@@ -367,7 +395,7 @@ class ChatEngine:
                     record_check(conn,turn,turn["_context_details"].get("references",{}),attempt_id=attempt_id)
                     record_progress(conn, turn_id, "provider_started", attempt_id)
                 from .reply_batch import ReplySchemaError, validate_reply
-                completion = await self.client.complete(dict(model,_reply_mode=turn.get('reply_mode_snapshot')), messages)
+                completion = await self.client.complete(dict(model,_reply_mode=turn.get('reply_mode_snapshot'),_expression_snapshot=turn.get('expression_snapshot')), messages)
                 raw_reply, usage = completion
                 provider_diagnostics=getattr(completion,'diagnostics',{'finish_reason':'unreported'})
                 validation_error=None
@@ -376,12 +404,12 @@ class ChatEngine:
                         raise ReplySchemaError('reply_output_truncated')
                     if provider_diagnostics.get('finish_reason')=='content_filter':
                         raise ReplySchemaError('provider_content_filtered')
-                    reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
+                    reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
                     output_validation={'status':'accepted','fallback_reason':reply_batch.fallback_reason,
                                        'schema_version':reply_batch.schema_version,'message_count':len(reply_batch.segments)}
                 except ReplySchemaError as error:
                     from .reply_protocol import validation_failure
-                    output_validation=validation_failure(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full')
+                    output_validation=validation_failure(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
                     if str(error)=='reply_output_truncated':output_validation['reason']='provider_length_limit'
                     if str(error)=='provider_content_filtered':output_validation['reason']='provider_content_filtered'
                     validation_error=error
@@ -400,6 +428,12 @@ class ChatEngine:
                 from dataclasses import asdict
                 from .presentation import batch_view
                 _, presentation=batch_view(reply,[asdict(s) for s in reply_batch.segments])
+                from .chat_display import enabled, plan as display_plan, persist as persist_display
+                display_messages=display_plan([asdict(s) for s in reply_batch.segments],turn.get('expression_snapshot')) if enabled(turn.get('expression_snapshot'),reply_batch.mode) else []
+                if display_messages:
+                    presentation['display_version']=display_messages[0]['transform_version']
+                    presentation['display_count']=len(display_messages)
+                    presentation['planned_wait_ms']=sum(m['wait_ms'] for m in display_messages)
                 with self.store.connection(write=True) as conn:
                     details['presentation']=presentation
                     conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
@@ -416,6 +450,7 @@ class ChatEngine:
                         conn.execute('UPDATE reply_batches SET behavior_intent=?,fallback_reason=? WHERE id=?',(reply_batch.behavior_intent,reply_batch.fallback_reason,batch_id))
                         conn.executemany('INSERT INTO reply_segments (batch_id,persona_id,user_id,segment_index,text,format,content_kind,cancel_if_new_input,wait_ms) VALUES (?,?,?,?,?,?,?,?,?)',
                                          [(batch_id,turn['persona_id'],LOCAL_USER_ID,index,item.text,item.format,item.content_kind,int(item.cancel_if_new_input),item.wait_ms) for index,item in enumerate(reply_batch.segments,1)])
+                        if display_messages:persist_display(conn,batch_id,turn,display_messages)
                         from .delivery import DeliveryService
                         DeliveryService(self.store).create_for_batch(conn,batch_id,turn)
                     encoded = json.dumps(usage) if usage is not None else None
@@ -480,10 +515,10 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET profile_snapshot=? WHERE id=?',(json.dumps(snapshot(conn,turn['persona_id']),ensure_ascii=False),turn_id))
                 from .character import head as character_head
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,turn['persona_id']),ensure_ascii=False),turn_id))
-                reply_policy=conn.execute('SELECT p.reply_mode FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(turn['persona_id'],turn['channel'])).fetchone()
+                reply_policy=conn.execute('SELECT p.reply_mode,p.data_json,p.id FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(turn['persona_id'],turn['channel'])).fetchone()
                 reply_mode=reply_policy[0] if reply_policy else 'legacy_full'
                 from .reply_batch import expression_snapshot
-                conn.execute('UPDATE turns SET reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',(reply_mode,json.dumps(expression_snapshot(reply_mode)),turn_id))
+                conn.execute('UPDATE turns SET reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',(reply_mode,json.dumps(json.loads(reply_policy[1]).get('expression') or expression_snapshot(reply_mode,reply_policy[2],version=1) if reply_policy else expression_snapshot(reply_mode,version=1)),turn_id))
                 from .context_policy import current as context_policy
                 conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=execution_revision+1 WHERE id=?',(json.dumps(context_policy(conn,turn['persona_id'],turn['channel'])),json.dumps(self.config.load()['character_selector']),turn_id))
             record_progress(conn, turn_id, "retry_queued")
