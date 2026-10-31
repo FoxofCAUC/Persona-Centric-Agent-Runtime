@@ -1,0 +1,18 @@
+{
+  "archive_version": "1.2",
+  "archived_at": "2026-10-31",
+  "head": "604ddb9a004cf1a7d94a85b5bd299d87741508cb",
+  "source": "docs/pcar_project_plan_zh.md",
+  "sha256": "e3288803dfa0427832ee7ff54991ffc8f62250596a78a9932d55d84faf357ef4",
+  "byte_count": 55848,
+  "includes_uncommitted_progress_alignment": true,
+  "report": {
+    "filename": "PCAR-Persona-Disposition-研究报告.html",
+    "sha256": "b648cfffdacd39f622b245d0623e3748f311d76c3637f251605eee7e137ec898",
+    "evidence_head": "48b6e36",
+    "evidence_date": "2026-10-30",
+    "role": "research_input_not_runtime_instructions"
+  },
+  "reason": "User approved planning 1.3: static Disposition before unattended companion implementation",
+  "immutable": true
+}
