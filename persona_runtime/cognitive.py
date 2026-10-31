@@ -14,6 +14,8 @@ from .turn_input import load_turn_input
 
 class CognitiveService:
     def __init__(self,store,engine):
+        from .disposition_shadow import ShadowService
+        self.shadow=ShadowService(store)
         self.store=store;self.engine=engine;self.dialogue=DialogueBuilder(store,engine)
         from .character_runtime import CharacterRuntime
         self.characters=CharacterRuntime(store)
@@ -106,6 +108,7 @@ class CognitiveService:
             messages,details=self.dialogue.render(conn,turn,evidence,character)
             guard=self._guard(conn,turn,details,expected=True)
             manifest=self._manifest(conn,turn,messages,details)
+        manifest['_shadow_prepared']=self.shadow.prepare(turn)
         manifest['preparation_ms']=round((time.perf_counter()-started)*1000,3)
         return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character}
 
@@ -124,13 +127,19 @@ class CognitiveService:
             messages,details=self.dialogue.render(conn,turn,evidence,character)
             manifest=self._manifest(conn,turn,messages,details)
             manifest['preparation_ms']=prepared['manifest'].get('preparation_ms',0)
+            manifest['_shadow_prepared']=prepared['manifest'].get('_shadow_prepared')
             prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character}
         prepared['manifest']['final_verification_ms']=round((time.perf_counter()-started)*1000,3)
+        prepared['manifest']['_shadow_prepared']=self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
         return prepared
 
     @staticmethod
     def persist(conn,manifest,*,turn=None,task=None,attempt_id=None):
         manifest={**manifest,'persisted':True}
+        if turn is not None:
+            from .disposition_shadow import persist_shadow
+            persist_shadow(conn,turn,manifest,attempt_id)
+        else:manifest.pop('_shadow_prepared',None)
         if len(encoded(manifest).encode('utf-8'))>128*1024:raise RuntimeErrorBase('context_manifest_too_large')
         try:
             conn.execute('INSERT INTO context_manifests (id,persona_id,user_id,task_type,turn_id,organization_task_id,attempt_id,organization_attempt_id,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',

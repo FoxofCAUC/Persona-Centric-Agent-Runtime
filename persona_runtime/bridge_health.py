@@ -45,7 +45,7 @@ async def heartbeat_loop(paths, config, platforms, *, publish=atomic_json, sleep
             try:
                 publish(paths.home / 'runtime/astrbot-health.json', {
                     'at':time.time(), 'pid':os.getpid(), 'instance_id':cfg['instance_id'],
-                    'verified':verified, 'online':online, 'plugin_version':'0.7.0',
+                    'verified':verified, 'online':online, 'plugin_version':'0.7.2',
                     'error_type':error_type, 'error_stage':error_stage})
             except Exception as error:
                 failure('publish', error)

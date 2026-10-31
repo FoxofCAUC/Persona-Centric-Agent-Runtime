@@ -149,7 +149,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
     async def test_export_and_reinitialization(self):
         r=self.accept('引用',reference={'kind':'turn','id':'missing'});await self.engine.wait();self.store.initialize()
         value=json.loads(__import__('pathlib').Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],15);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
+        self.assertEqual(value['format_version'],16);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
 
     async def test_draft_dedup_includes_reference(self):
         journal=SubmissionJournal(self.paths,'desktop');p={'channel':'desktop','persona_id':self.pid,'text':'same','request_id':'one','reference':{'kind':'event','id':'A'}}
@@ -262,7 +262,9 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
             from persona_runtime.schema_m73 import TABLES13
             for trigger, in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
                 conn.execute('DROP TRIGGER "'+trigger+'"')
-            # Remove the later selector schema before simulating a genuine v10 DB.
+            # Remove later schemas before simulating a genuine v10 DB.
+            from persona_runtime.schema_disposition import TABLES19
+            for table in reversed(TABLES19):conn.execute('DROP TABLE "'+table+'"')
             conn.execute('DROP INDEX delivery_display_message')
             conn.execute('ALTER TABLE reply_delivery_parts DROP COLUMN display_message_id')
             conn.execute('DROP TABLE reply_display_messages')
@@ -281,7 +283,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
         with closing(sqlite3.connect(self.store.path)) as conn:
             self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],10)
             self.assertFalse(conn.execute("SELECT 1 FROM sqlite_master WHERE name='partial_m70'").fetchone())
-        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],18)
+        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],19)
 
     async def test_legacy_standalone_event_audit_reports_unknown_scope_without_fabrication(self):
         session={'id':identifier()};eid=identifier()

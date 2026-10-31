@@ -38,6 +38,8 @@ class QuotaService:
                         'background_daily': conn.execute('SELECT count(*) FROM organization_attempts WHERE started_epoch>?', (now-86400,)).fetchone()[0],
                         'selector_hourly':conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-3600,)).fetchone()[0],
                         'selector_daily':conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-86400,)).fetchone()[0],
+                        'compiler_hourly':conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-3600,)).fetchone()[0],
+                        'compiler_daily':conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-86400,)).fetchone()[0],
                         'reserved':conn.execute("SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0],
                         'primary_hourly':conn.execute('SELECT count(*) FROM attempts WHERE started_epoch>?',(now-3600,)).fetchone()[0]}
         except RuntimeErrorBase:

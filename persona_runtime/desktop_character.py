@@ -27,12 +27,16 @@ def read_package(path):
     return json.loads(file.read_text(encoding='utf-8-sig'))
 
 
-class CharacterUI:
+from .desktop_disposition import DispositionUI
+
+
+class CharacterUI(DispositionUI):
     def character_bar(self, parent):
         bar=self.bar(parent);bar.pack(fill="x",pady=3)
         return bar
 
     def init_character_vars(self):
+        self.init_disposition_vars()
         self.character_status=tk.StringVar(value='启动服务后读取角色资料。')
         self.character_summary=tk.StringVar()
         self.character_preview_channel=tk.StringVar(value='desktop')
@@ -51,6 +55,7 @@ class CharacterUI:
         self.button(bar,'导入为新角色',self.import_character,{'character-write'})
         tabs=ttk.Notebook(parent);tabs.pack(fill='both',expand=True,pady=8)
         basic=ttk.Frame(tabs,padding=8);tabs.add(basic,text='基本资料')
+        disposition=ttk.Frame(tabs,padding=8);tabs.add(disposition,text='人格倾向');self.build_disposition(disposition)
         ttk.Label(basic,textvariable=self.character_summary,wraplength=700,justify='left').pack(anchor='w')
         bar=self.character_bar(basic)
         self.button(bar,'编辑姓名与人格核心',self.edit_core,{'profile-read'})
@@ -282,6 +287,9 @@ class CharacterUI:
         dialog.protocol('WM_DELETE_WINDOW',close);dialog.transient(parent);dialog.grab_set()
 
     def character_can_leave(self):
+        if self.dispo_dirty:
+            if not messagebox.askyesno('保留倾向草稿','尚有未保存倾向修改。放弃后离开？',default='no',parent=self):return False
+            self.dispo_dirty=False;self.dispo_generation+=1
         for dialog in list(self.character_dialogs):
             if dialog.winfo_exists() and not dialog.character_close():return False
         return True

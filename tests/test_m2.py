@@ -57,6 +57,11 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         self.service.use_persona(self.persona["id"])
         self.model = FakeModel()
         self.engine = ChatEngine(self.store, self.cfg, self.model)
+        from persona_runtime.ingress import IngressService
+        policies=IngressService(self.engine)
+        for channel in ('desktop','qq'):
+            p=policies.current_policy(self.persona['id'],channel)
+            policies.update_policy(self.persona['id'],channel,'legacy_per_message',p['id'],'legacy-fixture-'+channel,reply_mode='legacy_full',character_retrieval_mode='lexical')
 
     async def asyncTearDown(self):
         if self.model.gate:self.model.gate.set()

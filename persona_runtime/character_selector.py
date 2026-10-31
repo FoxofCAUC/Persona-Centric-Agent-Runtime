@@ -53,6 +53,7 @@ class SelectorService:
         for field,period in (('hourly_limit',3600),('daily_limit',86400)):
             cap=cfg['character_selector'][field]
             count=conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-period,)).fetchone()[0]
+            count+=conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-period,)).fetchone()[0]
             if cap and count>=cap:raise SemanticFailure('selector_quota')
         aid=identifier();tid=turn['id'] if turn else None;revision=turn['execution_revision'] if turn else None
         from .archive import turn_scope

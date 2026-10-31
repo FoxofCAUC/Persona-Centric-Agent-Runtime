@@ -18,16 +18,26 @@ def values(policy):
     data=json.loads(policy['data_json']).get('context',{})
     from .character_policy import read
     return {'context_mode':data.get('context_mode','legacy_recent'),
-            'cross_session':bool(data.get('cross_session',False)), 'character_retrieval':read(data)}
+            'cross_session':bool(data.get('cross_session',False)), 'character_retrieval':read(data), 'disposition_mode':data.get('disposition_mode','baseline')}
 
 
-def snapshot(policy):
-    return {'schema_version':1,'policy_id':policy['id'],'revision':policy['revision'],**values(policy)}
+def snapshot(policy,conn=None):
+    result = {'schema_version':1,'policy_id':policy['id'],'revision':policy['revision'],**values(policy)}
+    if conn is not None:
+        from .disposition import accepted_snapshot, SHADOW_VERSION, COMPILER_VERSION
+        from .disposition_core.contracts import VERSION
+        try:result['disposition']=accepted_snapshot(conn,policy['persona_id'],result['disposition_mode'])
+        except Exception:
+            from .disposition_shadow import gap
+            gap('shadow_snapshot_failed')
+            result['disposition']={'mode':'shadow','policy':SHADOW_VERSION,'kernel':VERSION,'compiler':COMPILER_VERSION,
+                'version_id':None,'document_hash':None,'status':'snapshot_invalid'}
+    return result
 
 
 def current(conn,persona_id,channel):
     row=conn.execute('SELECT p.* FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(persona_id,channel)).fetchone()
-    if row:return snapshot(dict(row))
+    if row:return snapshot(dict(row),conn)
     return {'schema_version':1,'policy_id':None,'revision':0,**DEFAULT_CONTEXT}
 
 

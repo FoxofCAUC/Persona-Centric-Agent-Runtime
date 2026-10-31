@@ -1,0 +1,196 @@
+{
+  "version": "persona-decision-prototype-v1",
+  "explicit": [
+    [
+      "request_explain",
+      "explain",
+      [
+        "只解释",
+        "请解释",
+        "只讲原理"
+      ]
+    ],
+    [
+      "request_support",
+      "support",
+      [
+        "只安慰",
+        "请安慰我",
+        "先听我说",
+        "只听我说"
+      ]
+    ],
+    [
+      "request_ack",
+      "acknowledge",
+      [
+        "只确认",
+        "确认收到即可"
+      ]
+    ],
+    [
+      "request_challenge",
+      "challenge",
+      [
+        "请批评",
+        "请反驳",
+        "帮我检验"
+      ]
+    ],
+    [
+      "deny_support",
+      "!support",
+      [
+        "不要安慰",
+        "别安慰"
+      ]
+    ],
+    [
+      "deny_explain",
+      "!explain",
+      [
+        "不要解释",
+        "别解释"
+      ]
+    ]
+  ],
+  "categories": [
+    [
+      "acknowledgement",
+      [
+        "收到",
+        "谢谢",
+        "明白了"
+      ]
+    ],
+    [
+      "support_request",
+      [
+        "陪我聊聊",
+        "需要安慰",
+        "想找人倾诉"
+      ]
+    ],
+    [
+      "celebration",
+      [
+        "我成功了",
+        "拿到offer",
+        "通过考试",
+        "好消息"
+      ]
+    ],
+    [
+      "information_request",
+      [
+        "解释",
+        "代码",
+        "python",
+        "公式",
+        "多少",
+        "是什么"
+      ]
+    ],
+    [
+      "advice_request",
+      [
+        "给些建议",
+        "一些建议",
+        "给我建议",
+        "该怎么选"
+      ]
+    ],
+    [
+      "correction",
+      [
+        "请更正",
+        "你弄错了",
+        "更正一下"
+      ]
+    ]
+  ],
+  "topics": [
+    [
+      "technical",
+      [
+        "代码",
+        "python",
+        "公式"
+      ]
+    ],
+    [
+      "facts",
+      [
+        "多少",
+        "数字",
+        "版本号"
+      ]
+    ]
+  ],
+  "negations": [
+    "不要",
+    "别",
+    "不需要",
+    "先别",
+    "无需"
+  ],
+  "quote_pairs": [
+    [
+      "“",
+      "”"
+    ],
+    [
+      "「",
+      "」"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ]
+  ],
+  "eligibility": {
+    "unknown": [
+      "respond"
+    ],
+    "acknowledgement": [
+      "respond",
+      "acknowledge"
+    ],
+    "celebration": [
+      "respond",
+      "acknowledge"
+    ],
+    "support_request": [
+      "respond",
+      "support",
+      "acknowledge"
+    ],
+    "information_request": [
+      "respond",
+      "explain"
+    ],
+    "advice_request": [
+      "respond",
+      "explain",
+      "support"
+    ],
+    "correction": [
+      "respond",
+      "explain"
+    ],
+    "ambiguous_reference": [
+      "respond",
+      "clarify"
+    ]
+  },
+  "scoring": {
+    "activation_limit": 3,
+    "per_definition_limit": 2,
+    "total_limit": 3,
+    "base": 0
+  }
+}

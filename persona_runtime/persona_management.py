@@ -91,6 +91,8 @@ class PersonaManagement:
                 from .private_personas import canonical
                 if canonical(relationship)!=record['relationship_sha256']:raise RuntimeErrorBase('private_original_changed')
                 append_version(db,new_id,'relationship',{'description':relationship},actor='creator_copy')
+            from .disposition import clone_projection
+            clone_projection(db,persona_id,new_id)
             db.execute('INSERT INTO persona_lifecycle VALUES(?,?,?,?,NULL,0)',(new_id,LOCAL_USER_ID,persona_id,root))
             result=self._save(db,operation_id,fp,{'id':new_id,'copied_from':persona_id,'private_protected':bool(root),'history_copied':False})
         callback=getattr(self.store,'character_committed',None)
@@ -104,6 +106,7 @@ class PersonaManagement:
             ('organization_tasks',"status IN ('queued','running','waiting_quota','interrupted')"),
             ('reply_delivery_parts',"state IN ('pending','sending','failed','uncertain')"),
             ('character_selection_attempts',"status='running'"),
+            ('disposition_compile_attempts',"status='running'"),
             ('quota_reservations',"state='active'")):
             if db.execute('SELECT 1 FROM '+table+' WHERE persona_id=? AND '+condition+' LIMIT 1',(pid,)).fetchone():
                 raise RuntimeErrorBase('persona_has_pending_work')

@@ -32,6 +32,8 @@ class DriverTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.to_thread(Acceptance(out).desktop)
                     self.assertEqual(len(model.calls),3);self.assertEqual(driver.count_calls(),3)
                     service.use_persona(pid)
+                    p=app['ingress'].current_policy(pid,'qq')
+                    app['ingress'].update_policy(pid,'qq','legacy_per_message',p['id'],identifier(),reply_mode='legacy_full')
                     receipt=app['ingress'].accept({'channel':'qq','bot':'12345','sender':'67890','platform_message_id':'offline-q','request_id':'offline-q','text':'人工QQ来源'})
                     await app['engine'].wait();turn=app['engine'].get(receipt['turn_id'])
                     delivery=DeliveryService(store);stream=delivery.by_batch(turn['reply_batch']['id'])

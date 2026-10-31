@@ -142,14 +142,14 @@ class BubbleIntegrationTests(unittest.IsolatedAsyncioTestCase):
         with self.store.connection() as c:
             manifest=json.loads(c.execute('SELECT manifest_json FROM context_manifests WHERE turn_id=?',(t['id'],)).fetchone()[0])
             self.assertEqual(manifest['reply_output_contract'],descriptor('natural_structured',self.models[0]['_expression_snapshot']))
-            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],18)
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],19)
             self.assertFalse(c.execute('PRAGMA foreign_key_check').fetchall())
         from persona_runtime.reply_service import ReplyService
         preview=ReplyService(self.store).preview(self.pid,batch_id=t['reply_batch']['id'])
         self.assertEqual([r['text'] for r in preview['display_messages']],['你好，收到了']*6)
         from pathlib import Path
         exported=json.loads(Path(self.service.export_persona(self.pid)['path']).read_text(encoding='utf-8'))
-        self.assertEqual(exported['format_version'],15)
+        self.assertEqual(exported['format_version'],16)
 
     async def test_policy_preserved_pending_and_retry(self):
         p=self.policy();a=self.accept('收到吗')

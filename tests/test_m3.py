@@ -56,6 +56,11 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
         self.service.use_persona(self.persona["id"])
         self.model = ControlledModel()
         self.engine = ChatEngine(self.store, self.cfg, self.model)
+        from persona_runtime.ingress import IngressService
+        policies=IngressService(self.engine)
+        for channel in ('desktop','qq'):
+            p=policies.current_policy(self.persona['id'],channel)
+            policies.update_policy(self.persona['id'],channel,'legacy_per_message',p['id'],'legacy-fixture-'+channel,reply_mode='legacy_full',character_retrieval_mode='lexical')
 
     async def asyncTearDown(self):
         if self.model.gate:
@@ -267,7 +272,7 @@ class M3Tests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("cancelled_at", [r[1] for r in failed.execute("PRAGMA table_info(turns)")])
         failed.close()
         legacy.initialize()
-        self.assertEqual(legacy.status()["schema_version"],18)
+        self.assertEqual(legacy.status()["schema_version"],19)
         with legacy.connection() as migrated:
             self.assertEqual(migrated.execute("SELECT value FROM settings").fetchone()[0], "legacy-persona")
         self.assertTrue(list((legacy.paths.home / "backups").glob("before-m3-*.sqlite3")))

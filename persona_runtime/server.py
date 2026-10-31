@@ -25,6 +25,15 @@ from .quotas import QuotaService
 from .persona_management import PersonaManagement
 
 
+def health_status(config, engine, organization, ingress):
+    """Read-only payload shared by HTTP and stopped-instance deployment checks."""
+    from .disposition_shadow import HEALTH
+    return {"service": "persona-runtime", "instance_id": config.load()["instance_id"],
+                              "schema_version": SCHEMA_VERSION, "draining": engine.draining,
+                              "pending": len(engine.tasks), "background_running": organization.running,
+                              "version": "0.7.6.dev1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
+
+
 def create_app(paths, client=None):
     config = ConfigStore(paths)
     config.initialize()
@@ -42,6 +51,10 @@ def create_app(paths, client=None):
     from .session_organization import SessionOrganization
     sessions=SessionService(store);sessions.restart_observation()
     topics=TopicService(store);session_organization=SessionOrganization(organization)
+    from .disposition import DispositionService
+    from .disposition_compile import DispositionCompiler
+    dispositions=DispositionService(store,ingress)
+    compiler=DispositionCompiler(dispositions,config,engine.client);compiler.recover()
     profiles=ProfileService(store)
     characters=CharacterService(store)
     from .archive import ArchiveService
@@ -80,6 +93,8 @@ def create_app(paths, client=None):
 
     app = web.Application(middlewares=[guard], client_max_size=256*1024)
     app["engine"], app["config"], app["store"] = engine, config, store
+    app["disposition_compiler"] = compiler
+    app["dispositions"] = dispositions
     app["organization"] = organization
     app["sessions"] = sessions
     app["ingress"] = ingress
@@ -100,10 +115,7 @@ def create_app(paths, client=None):
                 raise web.HTTPForbidden()
 
     async def health(request):
-        return web.json_response({"service": "persona-runtime", "instance_id": config.load()["instance_id"],
-                                  "schema_version": SCHEMA_VERSION, "draining": engine.draining,
-                                  "pending": len(engine.tasks), "background_running": organization.running,
-                                  "version": "0.7.5.dev7", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "capabilities":["reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()})
+        return web.json_response(health_status(config,engine,organization,ingress))
 
     async def chat(request):
         value = await body(request)
@@ -356,6 +368,9 @@ def create_app(paths, client=None):
             'quota.update': lambda limits: QuotaService(store, config).update(limits),
             'quota.acceptance.begin': lambda: QuotaService(store, config).begin_acceptance(),
             'quota.acceptance.end': lambda: QuotaService(store, config).end_acceptance(),
+            **{'disposition.'+name:getattr(dispositions,name.replace('-','_')) for name in ('current','history','show','compare','sources','draft-update','confirm','restore','withdraw')},
+            'disposition.preview':engine.cognitive.shadow.preview,'disposition.inspect':engine.cognitive.shadow.inspect,
+            'disposition.status':compiler.status,'disposition.compile':compiler.compile,
             "interaction.current":ingress.current_policy,"interaction.update":ingress.update_policy,"batch.list":ingress.list,
             "reply.current":lambda persona_id,channel:ingress.current_policy(persona_id,channel),
             "reply.update":lambda persona_id,channel,reply_mode,expected_version,operation_id,pending_action=None:ingress.update_policy(persona_id,channel,ingress.current_policy(persona_id,channel)['mode'],expected_version,operation_id,pending_action=pending_action,reply_mode=reply_mode,conversation_policy_version=2,expression_policy_version=3),
@@ -391,6 +406,8 @@ def create_app(paths, client=None):
         }
         if (action not in handlers and action not in ('character.index-status','character.index-prepare')) or not isinstance(args, dict):
             raise RuntimeErrorBase("Unknown management action")
+        if action=='disposition.compile':return web.json_response(await compiler.compile(**args))
+        if action.startswith('disposition.') and action!='disposition.compile':return web.json_response(await asyncio.to_thread(handlers[action],**args))
         if action=='character.preview':return web.json_response(await asyncio.to_thread(engine.cognitive.characters.preview,**args))
         if action in ('character.index-status','character.index-prepare'):
             handler=engine.cognitive.characters.status if action.endswith('status') else engine.cognitive.characters.request_prepare
@@ -406,9 +423,11 @@ def create_app(paths, client=None):
         if operation in ("drain","stop") and ingress.unresolved_count():
             raise RuntimeErrorBase("unresolved_input_batches")
         engine.draining = operation != "resume"
+        compiler.draining = operation != "resume"
         if operation == "resume":
             organization.draining = False
         if operation == "stop":
+            await compiler.drain()
             await organization.drain()
             await engine.wait()
             app["stop"].set()
@@ -456,6 +475,8 @@ def create_app(paths, client=None):
         if ingress_worker:
             ingress_worker.cancel()
             await asyncio.gather(ingress_worker,return_exceptions=True)
+        await compiler.drain()
+        await asyncio.to_thread(engine.cognitive.shadow.close)
         await organization.drain()
         worker = app.get("organization_worker")
         if worker:

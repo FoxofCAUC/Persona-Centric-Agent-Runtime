@@ -229,7 +229,7 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 15, "exported_at": timestamp(), "persona": persona,
+            payload = {"format_version": 16, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             payload['persona_lifecycle']=[dict(r) for r in conn.execute('SELECT * FROM persona_lifecycle WHERE persona_id=?',(persona['id'],))]
             payload['persona_operations']=[dict(r) for r in conn.execute("SELECT * FROM persona_operations WHERE json_extract(result_json,'$.id')=?",(persona['id'],))]
@@ -266,6 +266,9 @@ class RuntimeService:
             # Model snapshots contain encrypted credentials and are never included in portable exports.
             for row in payload['input_batches']:
                 row.pop('model_snapshot',None);row.pop('selector_model_snapshot',None)
+            from .schema_disposition import TABLES19
+            for table in TABLES19:
+                payload[table]=[{k:v for k,v in dict(r).items() if k!='model_snapshot'} for r in conn.execute('SELECT * FROM '+table+' WHERE persona_id=? ORDER BY rowid',(persona['id'],))]
             payload['character_selection_attempts']=[{k:v for k,v in dict(r).items() if k!='model_snapshot'} for r in conn.execute('SELECT * FROM character_selection_attempts WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['quota_reservations']=[dict(r)|{'restore_active':False} for r in conn.execute('SELECT * FROM quota_reservations WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['turn_input_batches']=[dict(r) for r in conn.execute('SELECT id,input_batch_id FROM turns WHERE persona_id=?',(persona['id'],))]

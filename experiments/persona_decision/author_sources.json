@@ -1,0 +1,46 @@
+{
+  "synthetic": true,
+  "sources": [
+    {
+      "content_hash": "9fbaacc9d6826fe04da4ee21954c124ded0aede554d824d0b1557d45a007b540",
+      "artificial_author_content": "{\"explain\": 2}",
+      "origin": "hand_authored_structured_preference_fixture_not_model_compilation"
+    },
+    {
+      "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98",
+      "artificial_author_content": "{\"support\": 2}",
+      "origin": "hand_authored_structured_preference_fixture_not_model_compilation"
+    },
+    {
+      "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11",
+      "artificial_author_content": "{\"acknowledge\": 2}",
+      "origin": "hand_authored_structured_preference_fixture_not_model_compilation"
+    },
+    {
+      "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed",
+      "artificial_author_content": "{\"respond\": 2}",
+      "origin": "hand_authored_structured_preference_fixture_not_model_compilation"
+    },
+    {
+      "content_hash": "2bd17f49eff1c324b1e71ae26b842a2f4bf31bd136e0c45a687cada5ff081aea",
+      "artificial_author_content": "{\"ask\": 2, \"explain\": 2}",
+      "origin": "hand_authored_structured_preference_fixture_not_model_compilation"
+    },
+    {
+      "content_hash": "a9cc9dd0a82ebb7ee985ea1e603282d1161264c9208470e40ed8a3413092c115",
+      "artificial_author_content": "{\"clarify\": 2}",
+      "origin": "hand_authored_structured_preference_fixture_not_model_compilation"
+    },
+    {
+      "content_hash": "385fadeb733fd2d45a19a50e7980d65bfc8ed4f7ba861fac66609de5385d1b8e",
+      "artificial_author_content": "{\"defer\": 2}",
+      "origin": "hand_authored_structured_preference_fixture_not_model_compilation"
+    },
+    {
+      "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+      "artificial_author_content": "Artificial author: prefers supportive dialogue.",
+      "origin": "hand_authored_contract_source"
+    }
+  ],
+  "note": "Fixture source material only; no free-text compiler or author approval UI is implemented."
+}

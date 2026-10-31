@@ -1,5 +1,6 @@
 """Run the paid-acceptance driver through a real local API with mock models first."""
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,7 +21,11 @@ class MockProvider:
     def __init__(self):self.major=0;self.organizer=OrganizerModel()
     async def complete(self,model,messages):
         if messages[0]['content'].startswith('整理所给对话'):return await self.organizer.complete(model,messages)
-        self.major+=1;return '离线模拟回复',{'total_tokens':1}
+        self.major+=1
+        if model.get('_reply_mode')=='natural_structured':
+            from persona_runtime.reply_batch import expression_version
+            return json.dumps({'schema_version':3 if expression_version(model.get('_expression_snapshot'))==3 else 2,'behavior_intent':'respond','messages':[{'content':'离线模拟回复','content_kind':'chat','cancel_if_new_input':False}]},ensure_ascii=False),{'total_tokens':1}
+        return '离线模拟回复',{'total_tokens':1}
 
 
 class AcceptanceDriverTests(unittest.IsolatedAsyncioTestCase):

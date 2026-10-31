@@ -146,7 +146,7 @@ class RollingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(c.execute('SELECT count(*) FROM reply_delivery_parts').fetchone()[0],0)
         from pathlib import Path
         export=json.loads(Path(self.service.export_persona(self.pid)['path']).read_text(encoding='utf-8'))
-        self.assertEqual(export['format_version'],15);self.assertEqual(len(export['reply_display_messages']),4)
+        self.assertEqual(export['format_version'],16);self.assertEqual(len(export['reply_display_messages']),4)
 
     async def test_qq_display_claim_wait_and_restart(self):
         t=await self.natural_reply('qq');self.assertEqual(t['status'],'completed',t['error_code'])

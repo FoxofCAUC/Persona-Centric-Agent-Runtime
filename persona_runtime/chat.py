@@ -44,6 +44,11 @@ class ChatCompletionsClient:
                    "max_tokens": model["max_tokens"], "stream": False}
         from .reply_protocol import response_format
         fmt=response_format(model.get('_reply_mode'),model.get('_expression_snapshot'))
+        if model.get('_disposition_compile'):
+            # Reuse the selector's established text transport. Compilation JSON
+            # is validated atomically on return; no extra gateway capability
+            # (or repair call) is assumed for the selected provider.
+            fmt=None
         if fmt:payload['response_format']=fmt
         # One configured end-to-end budget. A hidden shorter connection cap
         # used to fail 60-second requests after five seconds of DNS/TLS work.
@@ -64,8 +69,18 @@ class ChatCompletionsClient:
         def diagnostic():
             return {**transport, 'timeout_seconds': budget,
                     'elapsed_ms': round((time.monotonic()-started)*1000, 3)}
+        connector=None
+        if model.get('_disposition_compile'):
+            # Explicit compiler-only trust bundle. Never disable certificate or
+            # hostname verification, and never retry a failed external request.
+            import ssl
+            import certifi
+            connector=aiohttp.TCPConnector(ssl=ssl.create_default_context(cafile=certifi.where()))
+        if model.get('_request_deadline') is not None:
+            budget=min(budget,max(.01,model['_request_deadline']-time.monotonic()-.1))
+            timeout=aiohttp.ClientTimeout(total=budget,connect=budget,ceil_threshold=math.inf)
         try:
-            async with aiohttp.ClientSession(timeout=timeout, trust_env=False, trace_configs=[trace]) as client:
+            async with aiohttp.ClientSession(timeout=timeout, trust_env=False, trace_configs=[trace],connector=connector) as client:
                 async with client.post(model["base_url"].rstrip("/") + "/chat/completions",
                                        headers=headers, json=payload, allow_redirects=False) as response:
                     transport.update(phase='reading_body', response_headers_received=True)

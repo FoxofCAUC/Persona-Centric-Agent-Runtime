@@ -65,7 +65,7 @@ class IngressService:
     def _remember(self,conn,persona,operation_id,fingerprint,result):
         conn.execute('INSERT INTO batch_operations VALUES (?,?,?,?,?,?)',(operation_id,persona,LOCAL_USER_ID,fingerprint,encoded(result),timestamp()))
 
-    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None):
+    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,disposition_mode=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None):
         if conversation_policy_version not in (None,2):raise RuntimeErrorBase('conversation_policy_invalid')
         if expression_policy_version not in (None,3):raise RuntimeErrorBase('expression_policy_invalid')
         if mode not in MODES:raise RuntimeErrorBase('invalid_interaction_mode')
@@ -73,12 +73,16 @@ class IngressService:
         if context_mode is not None and context_mode not in ('working_set','legacy_recent'):raise RuntimeErrorBase('invalid_context_mode')
         if cross_session is not None and type(cross_session) is not bool:raise RuntimeErrorBase('invalid_cross_session')
         from .character_policy import choose
+        requested_disposition_mode=disposition_mode
         selected_character=choose(character_retrieval_mode) if character_retrieval_mode is not None else None
         with self.store.connection(write=True) as conn:
             if self.store.current(conn)!=(persona_id if expected_selected is None else expected_selected):raise RuntimeErrorBase('persona_selection_conflict')
             self.engine.service._persona(conn,persona_id)
             current=self.policy(conn,persona_id,channel)
+            disposition_mode=current.get('disposition_mode','baseline') if disposition_mode is None else disposition_mode
+            if disposition_mode not in ('baseline','shadow'):raise RuntimeErrorBase('invalid_disposition_mode')
             value={'channel':channel,'mode':mode,'reply_mode':reply_mode,'context_mode':context_mode,'cross_session':cross_session,'expected_version':expected_version,'pending_action':pending_action}
+            if requested_disposition_mode is not None:value['disposition_mode']=requested_disposition_mode
             if character_retrieval_mode is not None:value['character_retrieval_mode']=character_retrieval_mode
             if expected_selected is not None:value['expected_selected']=expected_selected
             if conversation_policy_version is not None:value['conversation_policy_version']=conversation_policy_version
@@ -96,15 +100,15 @@ class IngressService:
             cross_session=current['cross_session'] if cross_session is None else cross_session
             character_policy=selected_character if selected_character is not None else current['character_retrieval']
             context_changed=(context_mode,cross_session,character_policy)!=(current['context_mode'],current['cross_session'],current['character_retrieval'])
-            pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall() if mode!=current['mode'] or context_changed or reply_mode!=current['reply_mode'] or strategy_changed else []
+            pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall() if mode!=current['mode'] or context_changed or reply_mode!=current['reply_mode'] or strategy_changed or disposition_mode!=current.get('disposition_mode','baseline') else []
             if pending and pending_action not in ('seal','cancel'):raise RuntimeErrorBase('pending_batch_resolution_required')
             for row in pending:
                 if pending_action=='seal':self._seal(conn,dict(row),'policy_changed')
                 else:conn.execute("UPDATE input_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE id=?",(timestamp(),row['id']))
-            if current['mode']==mode and current['reply_mode']==reply_mode and not context_changed and not strategy_changed:result=current
+            if current['mode']==mode and current['reply_mode']==reply_mode and not context_changed and not strategy_changed and disposition_mode==current.get('disposition_mode','baseline'):result=current
             else:
                 vid=identifier()
-                data=json.loads(current['data_json']);data['expression']=expression_snapshot(reply_mode,vid,version=target_expression);data['context']={**data.get('context',{}),'context_mode':context_mode,'cross_session':cross_session,'character_retrieval':character_policy}
+                data=json.loads(current['data_json']);data['expression']=expression_snapshot(reply_mode,vid,version=target_expression);data['context']={**data.get('context',{}),'context_mode':context_mode,'cross_session':cross_session,'character_retrieval':character_policy,'disposition_mode':disposition_mode}
                 if conversation_policy_version==2:data.update(ROLLING_PARAMS)
                 conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',(vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,mode,encoded(data),timestamp(),reply_mode))
                 conn.execute('INSERT INTO interaction_heads VALUES (?,?,?,?) ON CONFLICT(persona_id,channel) DO UPDATE SET version_id=excluded.version_id',(persona_id,LOCAL_USER_ID,channel,vid))
@@ -219,7 +223,7 @@ class IngressService:
             from .private_personas import guard_acceptance_write
             guard_acceptance_write(self.store,pid)
             sid=self.engine._session(conn,pid,channel,value.get('session_id'),origin={'bot':bot,'sender':peer})
-            pol=self.policy(conn,pid,channel);policy={**buffer_policy(pol),'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol),'expression':json.loads(pol['data_json']).get('expression') or expression_snapshot(pol['reply_mode'],pol['id'],version=1)}
+            pol=self.policy(conn,pid,channel);policy={**buffer_policy(pol),'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol,conn),'expression':json.loads(pol['data_json']).get('expression') or expression_snapshot(pol['reply_mode'],pol['id'],version=1)}
             frozen=snapshot(conn,pid);character=character_head(conn,pid)
             scope=digest([pid,LOCAL_USER_ID,channel,bot,peer,sid,policy,frozen['core']['id'],frozen['expression']['id'],frozen['relationship']['id'],character['id']])
             # A change in settings or session seals collecting batches at the prior boundary.

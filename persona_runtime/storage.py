@@ -17,8 +17,9 @@ from .schema_m63 import SCHEMA10, TABLES10, refresh_development_scope_trigger
 from .schema_m70 import SCHEMA11, TABLES11
 from .schema_m72 import SCHEMA12, TABLES12
 from .schema_m73 import SCHEMA13, TABLES13
+from .schema_disposition import TABLES19
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
 M2_TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
 M3_TABLES = M2_TABLES + ("request_activity", "service_notices")
@@ -166,7 +167,7 @@ class Store:
         if version != SCHEMA_VERSION:
             raise RuntimeErrorBase(f"Incompatible database schema version {version}; expected {SCHEMA_VERSION}")
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if not set(TABLES + (('character_selection_attempts','quota_reservations') if SCHEMA_VERSION>=15 else ()) + (('persona_lifecycle','persona_operations') if SCHEMA_VERSION>=16 else ()) + (('reply_display_messages',) if SCHEMA_VERSION>=17 else ())).issubset(tables):
+        if not set(TABLES + (('character_selection_attempts','quota_reservations') if SCHEMA_VERSION>=15 else ()) + (('persona_lifecycle','persona_operations') if SCHEMA_VERSION>=16 else ()) + (('reply_display_messages',) if SCHEMA_VERSION>=17 else ()) + (TABLES19 if SCHEMA_VERSION>=19 else ())).issubset(tables):
             raise RuntimeErrorBase("Database schema is incomplete; restore a verified backup")
 
     @contextmanager
@@ -188,7 +189,7 @@ class Store:
         conn = self._connect(create=True)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16):
+            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not set(M1_TABLES).issubset(tables):
                     raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
@@ -198,7 +199,7 @@ class Store:
                 prefix = 'before-m754r2' if version == 14 else prefix
                 prefix = 'before-persona-management' if version == 15 else prefix
                 prefix = 'before-rolling-chat' if version == 16 else prefix
-                prefix = 'before-semantic-bubbles' if version == 17 else prefix
+                prefix = 'before-disposition' if version in (17,18) else prefix
                 backup = self.paths.home / "backups" / f"{prefix}-{uuid4()}.sqlite3"
                 target = sqlite3.connect(backup)
                 try:
@@ -253,7 +254,7 @@ class Store:
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif version == 12 and set(TABLES[:-len(TABLES13)]).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            elif version in (13,14,15,16,17) and set(TABLES).issubset(tables):
+            elif version in (13,14,15,16,17,18) and set(TABLES).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
@@ -296,6 +297,9 @@ class Store:
             if version < 18 and SCHEMA_VERSION>=18:
                 from .schema_bubbles import migrate as migrate_bubbles
                 migrate_bubbles(conn)
+            if version < 19 and SCHEMA_VERSION>=19:
+                from .schema_disposition import migrate as migrate_disposition
+                migrate_disposition(conn)
             refresh_development_scope_trigger(conn)
             if conn.execute("PRAGMA foreign_key_check").fetchone():
                 raise RuntimeErrorBase("Migration foreign key verification failed")
@@ -312,7 +316,7 @@ class Store:
             return {
                 "database": str(self.path), "schema_version": SCHEMA_VERSION,
                 "current_persona": self.current(conn, required=False),
-                "counts": {t: conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in TABLES + ('character_selection_attempts','quota_reservations','persona_lifecycle','persona_operations','reply_display_messages')},
+                "counts": {t: conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in TABLES + (TABLES19 if SCHEMA_VERSION>=19 else ()) + ('character_selection_attempts','quota_reservations','persona_lifecycle','persona_operations','reply_display_messages')},
             }
 
     @staticmethod

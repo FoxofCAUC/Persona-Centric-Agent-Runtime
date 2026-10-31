@@ -193,7 +193,7 @@ class DialogueTests(unittest.IsolatedAsyncioTestCase):
                     policies.update_policy(self.persona,channel,'legacy_per_message',old['id'],identifier(),reply_mode=mode)
                     text='**蓝色**'
                     self.fake.text=(json.dumps({'schema_version':1,'segments':[{'text':text,'format':'plain'}]},ensure_ascii=False) if mode=='context_structured' else
-                        json.dumps({'schema_version':2,'behavior_intent':'respond','messages':[{'content':text,'content_kind':'chat','cancel_if_new_input':False}]},ensure_ascii=False) if mode=='natural_structured' else text)
+                        json.dumps({'schema_version':3,'behavior_intent':'respond','messages':[{'content':text,'content_kind':'chat','cancel_if_new_input':False}]},ensure_ascii=False) if mode=='natural_structured' else text)
                     payload={'channel':channel,'text':'书桌旁放点什么好？','request_id':identifier(),'persona_id':self.persona}
                     if channel=='qq':payload.update(bot='456',sender='123',platform_message_id=identifier())
                     receipt=policies.accept(payload);turn=self.engine.get(receipt['turn_id'])

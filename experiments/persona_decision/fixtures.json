@@ -1,0 +1,4382 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "description": "Artificial development/contracts, not independent quality evidence",
+  "development": [
+    {
+      "id": "D01",
+      "group": "persona_counterfactual",
+      "pair_id": "P1",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D01",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D01",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9fbaacc9d6826fe04da4ee21954c124ded0aede554d824d0b1557d45a007b540",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D01",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9fbaacc9d6826fe04da4ee21954c124ded0aede554d824d0b1557d45a007b540"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "explain": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "advice_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "advice_request"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D02",
+      "group": "persona_counterfactual",
+      "pair_id": "P1",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D02",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D02",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D02",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "support",
+        "categories": [
+          "advice_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "advice_request"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D03",
+      "group": "persona_counterfactual",
+      "pair_id": "P2",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D03",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "我拿到offer了"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D03",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D03",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "acknowledge": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "acknowledge",
+        "categories": [
+          "celebration"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "celebration"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D04",
+      "group": "persona_counterfactual",
+      "pair_id": "P2",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D04",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "我拿到offer了"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D04",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D04",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "celebration"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "celebration"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D05",
+      "group": "persona_counterfactual",
+      "pair_id": "P3",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D05",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "可以陪我聊聊吗"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D05",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D05",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "support",
+        "categories": [
+          "support_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "support_request"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D06",
+      "group": "persona_counterfactual",
+      "pair_id": "P3",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D06",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "可以陪我聊聊吗"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D06",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D06",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "support_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "support_request"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D07",
+      "group": "persona_counterfactual",
+      "pair_id": "P4",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D07",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "收到谢谢"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D07",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D07",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "acknowledge": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "acknowledge",
+        "categories": [
+          "acknowledgement"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "acknowledgement"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D08",
+      "group": "persona_counterfactual",
+      "pair_id": "P4",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-D08",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "收到谢谢"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-D08",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-D08",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "acknowledgement"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "acknowledgement"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D09",
+      "group": "situation_counterfactual",
+      "pair_id": "S1",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "2bd17f49eff1c324b1e71ae26b842a2f4bf31bd136e0c45a687cada5ff081aea",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "2bd17f49eff1c324b1e71ae26b842a2f4bf31bd136e0c45a687cada5ff081aea"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "ask": 2,
+              "explain": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "advice_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "advice_request"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D10",
+      "group": "situation_counterfactual",
+      "pair_id": "S1",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "2bd17f49eff1c324b1e71ae26b842a2f4bf31bd136e0c45a687cada5ff081aea",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "2bd17f49eff1c324b1e71ae26b842a2f4bf31bd136e0c45a687cada5ff081aea"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "ask": 2,
+              "explain": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": true,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "ask",
+        "categories": [
+          "advice_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "advice_request"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D11",
+      "group": "situation_counterfactual",
+      "pair_id": "S2",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "请安慰我"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "support",
+        "categories": [
+          "support_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "support_request"
+        ],
+        "requested_actions": [
+          "support"
+        ],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D12",
+      "group": "situation_counterfactual",
+      "pair_id": "S2",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只解释原因"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "f2efbb5d57b6c220a6815f88d2cbc6fcf4a5e6230d157dba219e7698733611ed"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "information_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "information_request"
+        ],
+        "requested_actions": [
+          "explain"
+        ],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D13",
+      "group": "situation_counterfactual",
+      "pair_id": "S3",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "那一条"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "a9cc9dd0a82ebb7ee985ea1e603282d1161264c9208470e40ed8a3413092c115",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "a9cc9dd0a82ebb7ee985ea1e603282d1161264c9208470e40ed8a3413092c115"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "clarify": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "unknown"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "unknown"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D14",
+      "group": "situation_counterfactual",
+      "pair_id": "S3",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "那一条"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "a9cc9dd0a82ebb7ee985ea1e603282d1161264c9208470e40ed8a3413092c115",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "a9cc9dd0a82ebb7ee985ea1e603282d1161264c9208470e40ed8a3413092c115"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "clarify": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": true,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "clarify",
+        "categories": [
+          "ambiguous_reference"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "ambiguous_reference"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D15",
+      "group": "situation_counterfactual",
+      "pair_id": "S4",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "今天聊什么"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "385fadeb733fd2d45a19a50e7980d65bfc8ed4f7ba861fac66609de5385d1b8e",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "385fadeb733fd2d45a19a50e7980d65bfc8ed4f7ba861fac66609de5385d1b8e"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "defer": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "unknown"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "unknown"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D16",
+      "group": "situation_counterfactual",
+      "pair_id": "S4",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "今天聊什么"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "385fadeb733fd2d45a19a50e7980d65bfc8ed4f7ba861fac66609de5385d1b8e",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "385fadeb733fd2d45a19a50e7980d65bfc8ed4f7ba861fac66609de5385d1b8e"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "defer": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": true,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "defer",
+        "categories": [
+          "unknown"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "unknown"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D17",
+      "group": "invariant",
+      "pair_id": "I1",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只解释这段Python代码"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "information_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "information_request"
+        ],
+        "requested_actions": [
+          "explain"
+        ],
+        "forbidden_actions": [],
+        "topics": [
+          "technical"
+        ],
+        "flags": []
+      }
+    },
+    {
+      "id": "D18",
+      "group": "invariant",
+      "pair_id": "I1",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只解释这段Python代码"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "acknowledge": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "information_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "information_request"
+        ],
+        "requested_actions": [
+          "explain"
+        ],
+        "forbidden_actions": [],
+        "topics": [
+          "technical"
+        ],
+        "flags": []
+      }
+    },
+    {
+      "id": "D19",
+      "group": "invariant",
+      "pair_id": "I2",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只确认数字42"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "acknowledge",
+        "categories": [
+          "acknowledgement"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "acknowledgement"
+        ],
+        "requested_actions": [
+          "acknowledge"
+        ],
+        "forbidden_actions": [],
+        "topics": [
+          "facts"
+        ],
+        "flags": []
+      }
+    },
+    {
+      "id": "D20",
+      "group": "invariant",
+      "pair_id": "I2",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只确认数字42"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "acknowledge": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "acknowledge",
+        "categories": [
+          "acknowledgement"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "acknowledgement"
+        ],
+        "requested_actions": [
+          "acknowledge"
+        ],
+        "forbidden_actions": [],
+        "topics": [
+          "facts"
+        ],
+        "flags": []
+      }
+    },
+    {
+      "id": "D21",
+      "group": "invariant",
+      "pair_id": "I3",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只解释如何更正一下代码"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "correction",
+          "information_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "correction",
+          "information_request"
+        ],
+        "requested_actions": [
+          "explain"
+        ],
+        "forbidden_actions": [],
+        "topics": [
+          "technical"
+        ],
+        "flags": []
+      }
+    },
+    {
+      "id": "D22",
+      "group": "invariant",
+      "pair_id": "I3",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只解释如何更正一下代码"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "acknowledge": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "correction",
+          "information_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "correction",
+          "information_request"
+        ],
+        "requested_actions": [
+          "explain"
+        ],
+        "forbidden_actions": [],
+        "topics": [
+          "technical"
+        ],
+        "flags": []
+      }
+    },
+    {
+      "id": "D23",
+      "group": "invariant",
+      "pair_id": "I4",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "确认收到即可：v2.3.1"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c28cfebf8797610fbf36f0b36114a77b2fdb21f3d5e984523495a617919a4c98"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "acknowledge",
+        "categories": [
+          "acknowledgement"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "acknowledgement"
+        ],
+        "requested_actions": [
+          "acknowledge"
+        ],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D24",
+      "group": "invariant",
+      "pair_id": "I4",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "确认收到即可：v2.3.1"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "c2d31dcefd45c427f1338b95b40a558a8363f2c2cbee0ab1e67342ad7f971b11"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "acknowledge": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "acknowledge",
+        "categories": [
+          "acknowledgement"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "acknowledgement"
+        ],
+        "requested_actions": [
+          "acknowledge"
+        ],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D25",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "院子里有一把椅子"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "unknown"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "unknown"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D26",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "他说“只解释原因”"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "unknown"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "unknown"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D27",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "不要安慰，请解释原因"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "information_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "information_request"
+        ],
+        "requested_actions": [
+          "explain"
+        ],
+        "forbidden_actions": [
+          "support"
+        ],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D28",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只解释，也只安慰"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "clarify",
+        "categories": [
+          "information_request",
+          "support_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "information_request",
+          "support_request"
+        ],
+        "requested_actions": [
+          "explain",
+          "support"
+        ],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": [
+          "conflicting_explicit_requests"
+        ]
+      }
+    },
+    {
+      "id": "D29",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "只解"
+          },
+          {
+            "id": "m2",
+            "text": "释"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "unknown"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "unknown"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D30",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "天气真好"
+          },
+          {
+            "id": "m2",
+            "text": "只解释原因"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "explain",
+        "categories": [
+          "information_request"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "information_request"
+        ],
+        "requested_actions": [
+          "explain"
+        ],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D31",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "谢谢谢谢谢谢"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "acknowledgement"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "acknowledgement"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": []
+      }
+    },
+    {
+      "id": "D32",
+      "group": "language_edges",
+      "pair_id": "",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "他说“只解释原因"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "respond": 0
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "categories": [
+          "unknown"
+        ]
+      },
+      "fixture_frame": {
+        "categories": [
+          "unknown"
+        ],
+        "requested_actions": [],
+        "forbidden_actions": [],
+        "topics": [],
+        "flags": [
+          "unclosed_quote"
+        ]
+      }
+    }
+  ],
+  "contracts": [
+    {
+      "id": "C01",
+      "label": "unconfirmed",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": false,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "excluded_reason": "unconfirmed"
+      }
+    },
+    {
+      "id": "C02",
+      "label": "disabled",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": false,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "excluded_reason": "disabled"
+      }
+    },
+    {
+      "id": "C03",
+      "label": "withdrawn",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": true
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "excluded_reason": "source_withdrawn"
+      }
+    },
+    {
+      "id": "C04",
+      "label": "unavailable",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": false,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond",
+        "excluded_reason": "source_unavailable"
+      }
+    },
+    {
+      "id": "C05",
+      "label": "persona",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "foreign",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "scope_mismatch"
+      }
+    },
+    {
+      "id": "C06",
+      "label": "scope",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "other",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "scope_mismatch"
+      }
+    },
+    {
+      "id": "C07",
+      "label": "version",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v2",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "source_version_mismatch"
+      }
+    },
+    {
+      "id": "C08",
+      "label": "hash",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "source_fingerprint_mismatch"
+      }
+    },
+    {
+      "id": "C09",
+      "label": "source_missing",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "missing_source"
+      }
+    },
+    {
+      "id": "C10",
+      "label": "duplicate_member",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          },
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "duplicate_id"
+      }
+    },
+    {
+      "id": "C11",
+      "label": "duplicate_definition",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          },
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "duplicate_id"
+      }
+    },
+    {
+      "id": "C12",
+      "label": "foreign_authority",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "memory",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "unsupported_source_kind"
+      }
+    },
+    {
+      "id": "C13",
+      "label": "bad_action",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "silence": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "invalid_action"
+      }
+    },
+    {
+      "id": "C14",
+      "label": "bad_policy",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "latest"
+      },
+      "expected": {
+        "error": "unknown_policy"
+      }
+    },
+    {
+      "id": "C15",
+      "label": "bad_predicate",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [
+              {
+                "field": "category",
+                "op": "exec",
+                "value": "unknown"
+              }
+            ],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "invalid_predicate"
+      }
+    },
+    {
+      "id": "C16",
+      "label": "empty",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "invalid_contract"
+      }
+    },
+    {
+      "id": "C17",
+      "label": "whitespace",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "  "
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "invalid_contract"
+      }
+    },
+    {
+      "id": "C18",
+      "label": "over_budget",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "invalid_contract"
+      }
+    },
+    {
+      "id": "C19",
+      "label": "extra_field",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1",
+        "script": "do_not_execute"
+      },
+      "expected": {
+        "error": "invalid_contract"
+      }
+    },
+    {
+      "id": "C20",
+      "label": "boolean_score",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": true
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "invalid_contract"
+      }
+    },
+    {
+      "id": "C21",
+      "label": "unbacked_relationship",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "close",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "error": "missing_source"
+      }
+    },
+    {
+      "id": "C22",
+      "label": "priority_tie",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          },
+          {
+            "id": "z-last",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "explain": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "support"
+      }
+    },
+    {
+      "id": "C23",
+      "label": "unauthorized_ask",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "ask": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "respond"
+      }
+    },
+    {
+      "id": "C24",
+      "label": "body_free",
+      "input": {
+        "scope": {
+          "persona_id": "fiction-persona",
+          "user_id": "fiction-user",
+          "channel": "desktop",
+          "bot": "",
+          "peer": ""
+        },
+        "members": [
+          {
+            "id": "m1",
+            "text": "给些建议 CANARY_BODY_760"
+          }
+        ],
+        "sources": [
+          {
+            "id": "author-source",
+            "scope": {
+              "persona_id": "fiction-persona",
+              "user_id": "fiction-user",
+              "channel": "desktop",
+              "bot": "",
+              "peer": ""
+            },
+            "kind": "core",
+            "version": "v1",
+            "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb",
+            "allowed": true,
+            "withdrawn": false
+          }
+        ],
+        "definitions": [
+          {
+            "id": "inclination",
+            "persona_id": "fiction-persona",
+            "source_refs": [
+              {
+                "id": "author-source",
+                "version": "v1",
+                "content_hash": "9c5ee11b25b5a5468407a729cef3393ae3eba9ac8ae751f2dce8559d9f7356cb"
+              }
+            ],
+            "confirmed": true,
+            "enabled": true,
+            "triggers": [],
+            "preferences": {
+              "support": 2
+            },
+            "priority": 10,
+            "revision": 1
+          }
+        ],
+        "context": {
+          "relationship": "neutral",
+          "relationship_source_id": "",
+          "information_gap": false,
+          "reference_gap": false,
+          "resource_unavailable": false,
+          "boundary_source_id": ""
+        },
+        "policy": "persona-decision-prototype-v1"
+      },
+      "expected": {
+        "chosen_action": "support"
+      }
+    }
+  ]
+}

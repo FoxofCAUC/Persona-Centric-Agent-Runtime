@@ -33,6 +33,9 @@ class Model:
             summary=[{'text':'人工资料摘要','sources':[{'source_id':x['id'],'quote':x['text']}]} for x in events[:3]]
             candidates=[{'category':'preference','text':'用户偏好蓝色','sources':[{'source_id':e['id'],'quote':e['text']}],'conflicts':[]}]
             return json.dumps({'format_version':2,'summary':summary if source['mode']!='candidates' else [],'candidates':candidates if source['mode']!='summary' else []},ensure_ascii=False),{'total_tokens':2}
+        if model.get('_reply_mode')=='natural_structured':
+            from persona_runtime.reply_batch import expression_version
+            return json.dumps({'schema_version':3 if expression_version(model.get('_expression_snapshot'))==3 else 2,'behavior_intent':'respond','messages':[{'content':'离线纯文本确认','content_kind':'chat','cancel_if_new_input':False}]},ensure_ascii=False),{'total_tokens':1}
         return '离线纯文本确认',{'total_tokens':1}
 
 
@@ -45,6 +48,9 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.pid=self.service.create_persona(generic_persona())['id'];self.service.use_persona(self.pid)
         self.sid=self.engine.session()['session_id'];self.now=0.;self.sessions=SessionService(self.store,lambda:self.now)
         self.ingress=IngressService(self.engine);self.topics=TopicService(self.store)
+        for channel in ('desktop','qq'):
+            p=self.ingress.current_policy(self.pid,channel)
+            self.ingress.update_policy(self.pid,channel,'legacy_per_message',p['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.org=OrganizationEngine(self.store,self.config,self.model,self.engine);self.org.model=lambda:self.config.load()['model']
         self.organize=SessionOrganization(self.org)
     async def asyncTearDown(self):await self.engine.wait()
@@ -246,7 +252,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
 
     def test_export10_has_lifecycle_no_credentials(self):
         self.seed();self.seal();path=Path(self.service.export_persona()['path']);value=json.loads(path.read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],15);self.assertEqual(len(value['session_packages']),1)
+        self.assertEqual(value['format_version'],16);self.assertEqual(len(value['session_packages']),1)
         self.assertNotIn('encrypted_key',path.read_text(encoding='utf-8'))
 
     async def test_manifest_failure_prevents_organization_call(self):
@@ -332,7 +338,7 @@ class MigrationTests(unittest.TestCase):
                         db.execute('INSERT INTO users VALUES(?,?,?)',(LOCAL_USER_ID,'人工',timestamp()));db.execute(f'PRAGMA user_version={v}')
                 store.initialize();store.initialize()
                 with store.connection() as db:
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],18)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],19)
                     self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok');self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
 
     def test_schema12_failure_rolls_back(self):

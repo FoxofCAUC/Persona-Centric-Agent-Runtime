@@ -5,7 +5,7 @@ from tkinter import ttk
 from .quotas import QuotaService
 from .storage import Store
 
-LABELS = {'project_hourly': '全部模型调用 / 小时', 'background_hourly': '后台整理调用 / 小时', 'background_daily': '后台整理调用 / 24 小时', 'selector_hourly':'角色选择调用 / 小时','selector_daily':'角色选择调用 / 24 小时'}
+LABELS = {'project_hourly': '全部模型调用 / 小时', 'background_hourly': '后台整理调用 / 小时', 'background_daily': '后台整理调用 / 24 小时', 'selector_hourly':'选择与编译共享调用 / 小时','selector_daily':'选择与编译共享调用 / 24 小时'}
 
 
 class QuotaUI:
@@ -27,9 +27,11 @@ class QuotaUI:
             lines = []
             for key, label in LABELS.items():
                 limit = value['limits'][key]
-                used = str(value['used'][key]) if value['used'] is not None else '未知'
+                used_value=(value['used'][key]+value['used'].get('compiler_'+key.removeprefix('selector_'),0)) if value['used'] is not None and key.startswith('selector_') else value['used'][key] if value['used'] is not None else None
+                used = str(used_value) if used_value is not None else '未知'
                 lines.append(f'{label}：已用 {used} / {limit if limit else "不限额"}')
             if value['used'] is not None:
+                lines.append('其中编译：小时 '+str(value['used'].get('compiler_hourly',0))+' / 日 '+str(value['used'].get('compiler_daily',0)))
                 lines.append(f"主回复已调用：{value['used']['primary_hourly']}；未消费的回复预留：{value['used']['reserved']}")
             if value['acceptance_active']:
                 lines.append('机器验收临时不限额；结束后恢复保存的额度。')
