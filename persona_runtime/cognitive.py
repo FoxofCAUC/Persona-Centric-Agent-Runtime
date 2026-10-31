@@ -15,7 +15,7 @@ from .turn_input import load_turn_input
 class CognitiveService:
     def __init__(self,store,engine):
         from .disposition_shadow import ShadowService
-        self.shadow=ShadowService(store)
+        self.shadow=ShadowService(store,engine)
         self.store=store;self.engine=engine;self.dialogue=DialogueBuilder(store,engine)
         from .character_runtime import CharacterRuntime
         self.characters=CharacterRuntime(store)
@@ -87,7 +87,7 @@ class CognitiveService:
             'evidence_refs':evidence,'hard_constraints':['identity_scope','core_boundary','complete_current_input','mandatory_character_facts','accepted_reference_binding'],
             'soft_tendencies':{'behavior':(details.get('behavior') or {}).get('signals',[]),'manual_state':bool(details.get('state_version'))},
             'truncation_info':details.get('removed',[])+character.get('removed',[]),'missing_data':missing,
-            'retrieval':retrieval,'character_retrieval':character.get('retrieval'),'partitions':{'hard':['core','current_input','required_character_facts','explicit_references'],
+            'retrieval':retrieval,'character_retrieval':character.get('retrieval'),**({'decision_capsule':details['decision_capsule']} if 'decision_capsule' in details else {}),'partitions':{'hard':['core','current_input','required_character_facts','explicit_references'],
                 'soft_priority':['recent_turns','relevant_memories','retrieved_turns','lossy_summary','optional_character']},
             'input_characters':sum(len(m['content']) for m in messages),
             'reply_output_contract':descriptor(turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot')),'persisted':False}
@@ -99,35 +99,54 @@ class CognitiveService:
         except RuntimeErrorBase as exc:
             from .chat import ModelError
             raise ModelError(str(exc)) from None
+        decision=self.shadow.prepare(turn)
+        from .decision_capsule import capsule
         evidence=self.dialogue.evidence(turn)
         with self.store.connection() as conn:
             if evidence is not None:
                 selected=turn_scope(conn,turn)
                 if any(binding(read_exact(conn,selected,{'kind':'turn','id':i['group']['turn_id']}))!=binding(i['group']) for i in evidence['items']):
                     evidence=self.dialogue.basic_evidence(conn,turn)
-            messages,details=self.dialogue.render(conn,turn,evidence,character)
+            messages,details=self.dialogue.render(conn,turn,evidence,character,capsule=capsule(decision))
+            decision=self.bind_decision(decision,details)
             guard=self._guard(conn,turn,details,expected=True)
             manifest=self._manifest(conn,turn,messages,details)
-        manifest['_shadow_prepared']=self.shadow.prepare(turn)
+        manifest['_shadow_prepared']=decision
         manifest['preparation_ms']=round((time.perf_counter()-started)*1000,3)
-        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character}
+        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character,'accepted_policy_hash':fingerprint(turn.get('context_policy_snapshot'))}
+
+    @staticmethod
+    def bind_decision(decision,details):
+        if decision is None or decision.get('mode')!='assist':return decision
+        from .decision_capsule import capsule,metadata
+        budget=details.get('capsule_budget') or {}
+        text=capsule(decision) if budget.get('applied') else ''
+        meta=metadata(decision,text,budget.get('removed',[]),budget.get('reason'))
+        details['decision_capsule']=meta
+        return decision|{'applied_to_prompt':bool(text),'capsule':meta}
 
     def finalize(self,conn,turn,prepared):
         started=time.perf_counter()
         from .references import prepare
+        if (prepared['manifest'].get('_shadow_prepared') or {}).get('mode')=='assist' and prepared.get('accepted_policy_hash')!=fingerprint(turn.get('context_policy_snapshot')):
+            from .chat import ModelError
+            raise ModelError('assist_snapshot_invalid')
         if turn['channel']!='test':prepare(conn,turn)
         try:character=self.characters.recheck(conn,turn,prepared.get('character_prepared'))
         except RuntimeErrorBase as exc:
             from .chat import ModelError
             raise ModelError(str(exc)) from None
-        if character!=prepared.get('character_prepared') or prepared['guard']!=self._guard(conn,turn,prepared['details']):
+        decision=self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
+        from .decision_capsule import capsule
+        if decision!=prepared['manifest'].get('_shadow_prepared') or character!=prepared.get('character_prepared') or prepared['guard']!=self._guard(conn,turn,prepared['details']):
             evidence=self.dialogue.basic_evidence(conn,turn)
             original=(prepared['details'].get('retrieval') or {}).get('degraded_reason')
             if original:evidence['retrieval']['degraded_reason']=original
-            messages,details=self.dialogue.render(conn,turn,evidence,character)
+            messages,details=self.dialogue.render(conn,turn,evidence,character,capsule=capsule(decision))
+            decision=self.bind_decision(decision,details)
             manifest=self._manifest(conn,turn,messages,details)
             manifest['preparation_ms']=prepared['manifest'].get('preparation_ms',0)
-            manifest['_shadow_prepared']=prepared['manifest'].get('_shadow_prepared')
+            manifest['_shadow_prepared']=decision
             prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character}
         prepared['manifest']['final_verification_ms']=round((time.perf_counter()-started)*1000,3)
         prepared['manifest']['_shadow_prepared']=self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))

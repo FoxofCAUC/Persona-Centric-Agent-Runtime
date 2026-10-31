@@ -31,15 +31,15 @@ def health_status(config, engine, organization, ingress):
     return {"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                               "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                               "pending": len(engine.tasks), "background_running": organization.running,
-                              "version": "0.7.6.dev1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
+                              "version": "0.7.6.dev2", "assist_admitted": bool(getattr(engine,"assist_admission",None)), "decision_capsule_version":"decision-capsule-v1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
 
 
-def create_app(paths, client=None):
+def create_app(paths, client=None, *, assist_admission=None):
     config = ConfigStore(paths)
     config.initialize()
     store = Store(paths)
     store.initialize()
-    engine = ChatEngine(store, config, client)
+    engine = ChatEngine(store, config, client, assist_admission=assist_admission)
     engine.recover()
     ingress=IngressService(engine)
     delivery_service=DeliveryService(store)

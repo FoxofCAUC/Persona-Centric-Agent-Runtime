@@ -33,7 +33,8 @@ class DispositionUI:
         self.dispo_source_list.pack(fill='x')
         bar=self.character_bar(parent)
         ttk.Combobox(bar,textvariable=self.dispo_channel,values=('desktop','qq'),state='readonly',width=10).grid(row=0,column=0)
-        ttk.Combobox(bar,textvariable=self.dispo_mode,values=('baseline','shadow'),state='readonly',width=10).grid(row=0,column=1)
+        self.dispo_mode_combo=ttk.Combobox(bar,textvariable=self.dispo_mode,values=('baseline','shadow'),state='readonly',width=10)
+        self.dispo_mode_combo.grid(row=0,column=1)
         self.button(bar,'保存观察模式',self.save_disposition_mode,{'character-write'})
         self.button(bar,'查询编译结果',self.disposition_compile_status,{'character-read'})
         self.dispo_definition_list=tk.Listbox(parent,height=5,width=1,exportselection=False);self.dispo_definition_list.pack(fill='x',pady=5)
@@ -46,7 +47,7 @@ class DispositionUI:
             self.button(bar,label,fn,{'character-read' if label.startswith(('查看','与')) else 'character-write'})
         self.dispo_preview_text=scrolledtext.ScrolledText(parent,height=2,width=1);self.dispo_preview_text.pack(fill='x',pady=5)
         bar=self.character_bar(parent)
-        self.button(bar,'预览Shadow（零模型）',self.preview_disposition,{'character-read'})
+        self.dispo_preview_button=self.button(bar,'预览Shadow（零模型）',self.preview_disposition,{'character-read'})
         self.button(bar,'查看决策记录',self.inspect_dispositions,{'character-read'})
 
     def _dispo_token(self):
@@ -70,8 +71,11 @@ class DispositionUI:
         def loaded(value):
             self.dispo_pid=value['pid'];self.dispo_state=value['state'];self.dispo_sources=value['sources']
             self.dispo_document=value['document'];self.dispo_history=value['history'];self.dispo_policy=value['policy'];self.dispo_dirty=False
+            self.dispo_mode_combo.configure(values=('baseline','shadow','assist') if value['policy'].get('assist_admitted') else ('baseline','shadow'))
             self.dispo_mode.set(value['policy'].get('disposition_mode','baseline'))
-            self.dispo_status.set('状态：'+value['state']['status']+'；修订 '+str(value['state']['revision'])+'；仅观察，不进入Prompt')
+            self.dispo_preview_button.configure(text='预览胶囊（零模型）' if value['policy'].get('assist_admitted') else '预览Shadow（零模型）')
+            note='隔离Assist，本实例允许受控渲染' if self.dispo_mode.get()=='assist' else '仅观察，不进入Prompt'
+            self.dispo_status.set('状态：'+value['state']['status']+'；修订 '+str(value['state']['revision'])+'；'+note)
             self.dispo_source_list.delete(0,'end')
             for source in self.dispo_sources:self.dispo_source_list.insert('end',source['kind']+' · '+source['path']+' · '+source['entry_id']+' · '+str(len(source['text']))+'字')
             self._render_disposition_defs();self.dispo_version_list.delete(0,'end')
@@ -227,9 +231,9 @@ class DispositionUI:
 
     def preview_disposition(self):
         if not self.dispo_state:return
-        pid=self.dispo_pid;text=self.dispo_preview_text.get('1.0','end-1c');token=self._dispo_token()
-        self._dispo_run('Shadow只读预览',lambda:self.client.manage('disposition.preview',persona_id=pid,members=[text]),
-            lambda v:self.show_json('Shadow预览（不进入Prompt）',v) if text==self.dispo_preview_text.get('1.0','end-1c') and token==self._dispo_token() else None)
+        pid=self.dispo_pid;text=self.dispo_preview_text.get('1.0','end-1c');token=self._dispo_token();mode=self.dispo_mode.get()
+        self._dispo_run('Shadow只读预览',lambda:self.client.manage('disposition.preview',persona_id=pid,members=[text],mode='assist' if mode=='assist' else 'shadow'),
+            lambda v:self.show_json('隔离Assist预览' if mode=='assist' else 'Shadow预览（不进入Prompt）',v) if mode==self.dispo_mode.get() and text==self.dispo_preview_text.get('1.0','end-1c') and token==self._dispo_token() else None)
 
     def inspect_dispositions(self):
         if self.dispo_state:self._dispo_run('读取Shadow记录',lambda:self.client.manage('disposition.inspect',persona_id=self.dispo_pid),lambda v:self.show_json('观察记录；不同于模型behavior_intent',v))

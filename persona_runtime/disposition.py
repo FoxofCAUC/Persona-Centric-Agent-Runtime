@@ -90,7 +90,7 @@ def status_for(conn,pid,vid,*,current=True):
 
 
 def accepted_snapshot(conn,pid,mode):
-    if mode not in ('baseline','shadow'):fail('invalid_disposition_mode')
+    if mode not in ('baseline','shadow','assist'):fail('invalid_disposition_mode')
     if mode=='baseline':return {'mode':'baseline','policy':SHADOW_VERSION,'kernel':VERSION,'compiler':COMPILER_VERSION,'version_id':None,'status':'disabled','document_hash':None}
     h=projection_head(conn,pid);vid=h['active_id']
     state=status_for(conn,pid,vid)

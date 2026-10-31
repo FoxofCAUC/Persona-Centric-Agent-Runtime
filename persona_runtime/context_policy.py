@@ -26,8 +26,13 @@ def snapshot(policy,conn=None):
     if conn is not None:
         from .disposition import accepted_snapshot, SHADOW_VERSION, COMPILER_VERSION
         from .disposition_core.contracts import VERSION
-        try:result['disposition']=accepted_snapshot(conn,policy['persona_id'],result['disposition_mode'])
+        try:
+            result['disposition']=accepted_snapshot(conn,policy['persona_id'],result['disposition_mode'])
+            if result['disposition_mode']=='assist':
+                from .decision_capsule import VERSION
+                result['disposition']['renderer']=VERSION
         except Exception:
+            if result['disposition_mode']=='assist':raise
             from .disposition_shadow import gap
             gap('shadow_snapshot_failed')
             result['disposition']={'mode':'shadow','policy':SHADOW_VERSION,'kernel':VERSION,'compiler':COMPILER_VERSION,

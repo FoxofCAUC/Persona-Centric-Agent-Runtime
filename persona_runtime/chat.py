@@ -34,6 +34,9 @@ class ModelClient(Protocol):
 
 
 class ChatCompletionsClient:
+    def __init__(self, *, ssl_context=None):
+        self.ssl_context=ssl_context
+
     async def complete(self, model, messages):
         if not model["base_url"] or not model["name"]:
             raise ModelError("model_not_configured")
@@ -69,7 +72,7 @@ class ChatCompletionsClient:
         def diagnostic():
             return {**transport, 'timeout_seconds': budget,
                     'elapsed_ms': round((time.monotonic()-started)*1000, 3)}
-        connector=None
+        connector=aiohttp.TCPConnector(ssl=self.ssl_context) if self.ssl_context else None
         if model.get('_disposition_compile'):
             # Explicit compiler-only trust bundle. Never disable certificate or
             # hostname verification, and never retry a failed external request.
@@ -142,8 +145,9 @@ def recall(query, memories):
 
 
 class ChatEngine:
-    def __init__(self, store, config, client=None):
+    def __init__(self, store, config, client=None, *, assist_admission=None):
         self.store, self.config = store, config
+        self.assist_admission = assist_admission
         from .cognitive import CognitiveService
         self.cognitive=CognitiveService(store,self)
         self.client = client or ChatCompletionsClient()

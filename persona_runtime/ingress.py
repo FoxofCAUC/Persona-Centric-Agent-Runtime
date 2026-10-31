@@ -50,7 +50,13 @@ class IngressService:
     def current_policy(self,persona_id,channel):
         with self.store.connection() as conn:
             self.engine.service._persona(conn,persona_id)
-            return self.policy(conn,persona_id,channel)
+            admitted=False
+            if getattr(self.engine,'assist_admission',None):
+                from .decision_capsule import require_admission
+                try:require_admission(self.engine,persona_id)
+                except RuntimeErrorBase:pass
+                else:admitted=True
+            return self.policy(conn,persona_id,channel)|{'assist_admitted':admitted}
 
     def _operation(self,conn,persona,operation_id,value):
         require_text(operation_id,'operation_id')
@@ -80,7 +86,10 @@ class IngressService:
             self.engine.service._persona(conn,persona_id)
             current=self.policy(conn,persona_id,channel)
             disposition_mode=current.get('disposition_mode','baseline') if disposition_mode is None else disposition_mode
-            if disposition_mode not in ('baseline','shadow'):raise RuntimeErrorBase('invalid_disposition_mode')
+            if disposition_mode not in ('baseline','shadow','assist'):raise RuntimeErrorBase('invalid_disposition_mode')
+            if disposition_mode=='assist':
+                from .decision_capsule import require_admission
+                require_admission(self.engine,persona_id)
             value={'channel':channel,'mode':mode,'reply_mode':reply_mode,'context_mode':context_mode,'cross_session':cross_session,'expected_version':expected_version,'pending_action':pending_action}
             if requested_disposition_mode is not None:value['disposition_mode']=requested_disposition_mode
             if character_retrieval_mode is not None:value['character_retrieval_mode']=character_retrieval_mode

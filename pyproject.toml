@@ -1,6 +1,6 @@
 [project]
 name = "persona-centric-agent-runtime"
-version = "0.7.6.dev1"
+version = "0.7.6.dev2"
 description = "Persona-centric companion runtime with persistent local state"
 license = "MIT"
 license-files = ["LICENSE"]

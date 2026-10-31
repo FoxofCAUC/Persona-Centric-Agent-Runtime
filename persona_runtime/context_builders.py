@@ -125,9 +125,9 @@ class DialogueBuilder:
     def __init__(self,store,engine):
         self.store=store;self.engine=engine;self.index=ArchiveIndex(store)
 
-    def render(self,conn,turn,evidence,character=None):
+    def render(self,conn,turn,evidence,character=None,capsule=None):
         from .context_m4 import build_context
-        return build_context(self.engine,conn,turn,evidence,character=character)
+        return build_context(self.engine,conn,turn,evidence,character=character,capsule=capsule)
 
     def evidence(self,turn,*,fallback=False):
         budget=Budget();started=time.perf_counter();mode=policy_for(turn)['context_mode'];reason=None

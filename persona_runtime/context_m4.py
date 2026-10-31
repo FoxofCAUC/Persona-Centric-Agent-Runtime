@@ -7,7 +7,7 @@ from .organization import eligible_turns
 from .profile import snapshot,head,active_state,source_blocked
 
 
-def build_context(engine, conn, turn, evidence=None, character=None):
+def build_context(engine, conn, turn, evidence=None, character=None, capsule=None):
     from .chat import terms, ModelError
     if turn['channel'] == 'test':
         if turn.get('reply_mode_snapshot') in ('natural_structured','context_structured'):
@@ -105,13 +105,31 @@ def build_context(engine, conn, turn, evidence=None, character=None):
     character_parts = list(character['parts']) if character else []
     character_removed = []
     removed = initial_removed
+    capsule_text = capsule or ''
+    original_character = character
+    def optional_index():
+        choices=[i for i,p in enumerate(character_parts) if not p['required'] and (not capsule_text or p['kind']!='anchor')]
+        if capsule_text:
+            examples=[i for i in choices if character_parts[i]['kind']=='example']
+            if examples:return examples[-1]
+        return choices[-1] if choices else None
+    def fallback_capsule():
+        result,details=build_context(engine,conn,turn,evidence,original_character)
+        details['capsule_budget']={'applied':False,'reason':'capsule_budget_unavailable','removed':[]}
+        return result,details
+    while capsule_text and len(render_parts(character_parts))+len(capsule_text)>3000:
+        optional=optional_index()
+        if optional is None:return fallback_capsule()
+        item=character_parts.pop(optional)
+        character_removed.append({'kind':item['kind'],'id':item['id'],'reason':'capsule_budget'})
     while True:
         reference = '\n已确认长期记忆：'+json.dumps([{'id': r[3]['id'], 'text': r[3]['text'], 'revision': r[3]['revision']} for r in memories], ensure_ascii=False)
         reference += '\n本会话有损摘要（仅作参考）：'+json.dumps(summary_items, ensure_ascii=False)
-        result = [{'role': 'system', 'content': base+render_parts(character_parts)+reference+reference_block+protocol}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
+        result = [{'role': 'system', 'content': base+render_parts(character_parts)+reference+reference_block+protocol+capsule_text}]+[event for pair in history for event in pair]+[{'role': 'user', 'content': text}]
         if sum(len(m['content']) for m in result) <= limit:
             break
-        optional = next((i for i in range(len(character_parts)-1,-1,-1) if not character_parts[i]['required']), None)
+        optional = optional_index()
+        if capsule_text and optional is None:return fallback_capsule()
         if optional is not None:
             item = character_parts.pop(optional)
             character_removed.append({'kind':item['kind'],'id':item['id'],'reason':'input_budget'})
@@ -148,6 +166,7 @@ def build_context(engine, conn, turn, evidence=None, character=None):
                                 'guidance':'advisory_lexical_cues_only' if contextual else 'disabled_for_compatibility'},
                     'character':(manifest(character,character_parts,character_removed)|{'retrieval':character_audit}) if character else None,
                     'character_snapshot_origin':'accepted' if character else 'legacy_without_character',
+                    **({'capsule_budget':{'applied':True,'removed':character_removed}} if capsule_text else {}),
                     'profile_versions':{kind:{'id':v['id'],'revision':v['revision']} for kind,v in frozen.items()},
                     'profile_snapshot_origin':'accepted' if turn.get('profile_snapshot') else 'legacy_execution_fallback',
                     'relationship_requires_review':bool(relation_blocked),
