@@ -18,7 +18,7 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(checked(policy),policy)
         self.assertEqual(prompt_for('character-selector-v1'),SYSTEM)
         self.assertNotEqual(prompt_for(PROMPT_VERSION),SYSTEM)
-        for version in ('character-selector-v3',None,{},''):
+        for version in ('character-selector-v5',None,{},''):
             policy['selector_contract']['prompt']=version
             with self.subTest(version=version),self.assertRaisesRegex(RuntimeErrorBase,'invalid_character_policy_snapshot'):
                 checked(policy)

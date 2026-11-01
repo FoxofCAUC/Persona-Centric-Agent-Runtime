@@ -46,12 +46,13 @@ class SelectorTests(prior.IntegrationTests):
         self.assertEqual(self.engine.get(t['id'])['status'],'completed');self.assertEqual(len(self.model.calls),1)
         self.assertEqual(self.engine.selector.list(self.pid),[])
 
-    async def test_invalid_output_fallback_and_usage(self):
+    async def test_invalid_output_exhaustion_aborts_and_keeps_usage(self):
         self.enable();t=await self.turn('书店')
         with patch.object(self.rt,'local_pool',side_effect=self.pool):await self.engine._run(t['id'])
-        self.assertEqual(self.engine.get(t['id'])['status'],'completed')
-        rows=self.engine.selector.list(self.pid);self.assertEqual(rows[0]['error_code'],'selector_invalid_output')
-        self.assertIsNotNone(rows[0]['usage_json']);self.assertEqual(len(self.model.calls),2)
+        self.assertEqual(self.engine.get(t['id'])['status'],'failed')
+        rows=self.engine.selector.list(self.pid);self.assertEqual(rows[0]['error_code'],'provider_retries_exhausted')
+        self.assertEqual(len(json.loads(rows[0]['usage_json'])['generation_retry']['attempts']),4)
+        self.assertEqual(len(self.model.calls),4)
 
     async def test_empty_success_not_degradation(self):
         self.enable();t=await self.turn('书店')
@@ -80,7 +81,7 @@ class SelectorTests(prior.IntegrationTests):
         with patch.object(self.rt,'local_pool',side_effect=self.pool):result=self.rt.preview(self.pid,'书店',channel='desktop',mode='hybrid_llm')
         self.assertEqual(result['effective_mode'],'lexical');self.assertFalse(self.model.calls)
         path=self.service.export_persona()['path'];value=json.loads(__import__('pathlib').Path(path).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],16);self.assertNotIn('encrypted_key',json.dumps(value))
+        self.assertEqual(value['format_version'],17);self.assertNotIn('encrypted_key',json.dumps(value))
 
     async def test_probe_durable_no_turn_and_idempotent(self):
         self.enable();op=identifier()
@@ -97,8 +98,11 @@ class SelectorTests(prior.IntegrationTests):
             except asyncio.CancelledError:await gate.wait()
             return '{"schema_version":1,"lore_ids":["book"],"example_ids":[]}',{'total_tokens':7}
         with patch.object(self.model,'complete',side_effect=stubborn):
-            start=time.monotonic();answer,error,aid=await self.engine.selector._call(self.pid,self.raw(t['id']),model,messages(pool,['书店'],'',2,48000,prompt_version=PROMPT_VERSION),pool,2)
-            self.assertLess(time.monotonic()-start,0.5);self.assertEqual(error,'selector_timeout');self.assertIsNone(answer)
+            from persona_runtime.models import RuntimeErrorBase
+            start=time.monotonic()
+            with self.assertRaisesRegex(RuntimeErrorBase,'provider_cancellation_unsettled'):
+                await self.engine.selector._call(self.pid,self.raw(t['id']),model,messages(pool,['书店'],'',2,48000,prompt_version=PROMPT_VERSION),pool,2)
+            self.assertLess(time.monotonic()-start,1.5)
             self.assertTrue(self.engine.selector.busy)
             with self.assertRaisesRegex(SemanticFailure,'selector_busy'):await self.engine.selector._call(self.pid,None,model,[],pool,2,identifier())
             gate.set();await asyncio.sleep(.02)
@@ -110,7 +114,9 @@ class SelectorTests(prior.IntegrationTests):
         with self.store.connection(write=True) as db:
             aid=self.engine.selector._start(db,self.pid,self.raw(t['id']),model,messages(pool,['书店'],'',2,48000,prompt_version=PROMPT_VERSION),pool)
         with self.store.connection(write=True) as db:
-            with self.assertRaisesRegex(SemanticFailure,'selector_project_quota'):self.engine.selector._start(db,self.pid,None,model,messages(pool,['书店'],'',2,48000,prompt_version=PROMPT_VERSION),pool,identifier())
+            from persona_runtime.character_selector import probe_material
+            probe_pool,probe_payload=probe_material(model)
+            with self.assertRaisesRegex(SemanticFailure,'selector_project_quota'):self.engine.selector._start(db,self.pid,None,model,probe_payload,probe_pool,identifier())
         with self.store.connection(write=True) as db:self.engine.selector.recover(db)
         with self.store.connection() as db:
             self.assertEqual(db.execute('SELECT state FROM quota_reservations').fetchone()[0],'released')
@@ -183,13 +189,15 @@ class SelectorTests(prior.IntegrationTests):
     async def test_reference_failed_before_and_after_selection(self):
         from persona_runtime.references import ReferenceError
         for after in (False,True):
-            self.enable();t=await self.turn('书店'+str(after));seen=0
+            self.enable();t=await self.turn('书店'+str(after));responded=False
             def references(conn,turn):
-                nonlocal seen
-                seen+=1
-                if not after or seen>=3:raise ReferenceError('reference_unavailable',{'references':[]})
+                if not after or responded:raise ReferenceError('reference_unavailable',{'references':[]})
                 return '',{'references':[]}
-            with patch.object(self.rt,'local_pool',side_effect=self.pool),patch('persona_runtime.references.prepare',side_effect=references),patch.object(self.model,'complete',return_value=('{"schema_version":1,"lore_ids":[],"example_ids":[]}',{})) as call:
+            async def provider(*_):
+                nonlocal responded
+                responded=True
+                return '{"schema_version":1,"lore_ids":[],"example_ids":[]}',{}
+            with patch.object(self.rt,'local_pool',side_effect=self.pool),patch('persona_runtime.references.prepare',side_effect=references),patch.object(self.model,'complete',side_effect=provider) as call:
                 await self.engine._run(t['id'])
             self.assertEqual(call.call_count,1 if after else 0)
             self.assertEqual(self.engine.get(t['id'])['attempt_count'],0)

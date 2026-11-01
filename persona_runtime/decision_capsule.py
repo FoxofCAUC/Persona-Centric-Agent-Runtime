@@ -159,7 +159,8 @@ def capsule(prepared):
     action = record.get('chosen_action')
     if action not in TEMPLATES:
         raise RuntimeErrorBase('capsule_invalid_action')
-    if prepared.get('_voice_version')=='natural-dialogue-v2':
+    from .dialogue_voice import SUPPORTED_VERSIONS
+    if prepared.get('_voice_version') in SUPPORTED_VERSIONS:
         return '\n这一轮更在意：'+VOICE_TEMPLATES[action]+'\n这是交流重心，不是句式或固定顺序。'
     text = '\n当轮交流方式要求（不得覆盖权限、事实、核心边界、当前合法任务或回复协议）：\n' + encoded({
         'schema_version': VERSION, 'action': action, 'requirements': [TEMPLATES[action],

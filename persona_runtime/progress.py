@@ -51,6 +51,8 @@ def recovery(phase, error=None):
     if phase in ("awaiting_delivery", "delivering"):
         return "模型已生成；等待原投递流程，恢复连接不会再次调用模型。"
     if phase in ("failed", "interrupted"):
+        if error == 'provider_retries_exhausted':
+            return '首次请求失败后的3次自动重试均未完成，已中止；每次尝试和已知用量已保留。请检查失败原因后再决定是否手动重试。'
         if error in ('reply_schema_invalid','reply_output_truncated'):
             return '模型已返回，但回复结构不合规或输出被截断；未发送聊天正文。请检查上下文中的结构校验诊断，不自动重试。'
         if error == "hourly_limit_reached":

@@ -10,7 +10,7 @@ class SelectorDesktopTests(unittest.TestCase):
     def test_controls_and_save_failure_preserves_draft(self):
         w=self.window();w.show_page('model');w.update();w.selector_vars['name'].set('unsaved')
         labels={b.cget('text') for b,_ in w.buttons}
-        self.assertTrue({'复制主模型配置','保存选择配置','测试选择模型（计费一次）','最近选择调用'}<=labels)
+        self.assertTrue({'复制主模型配置','保存选择配置','测试选择模型（计费，最多4次）','最近选择调用'}<=labels)
         calls=[]
         with patch.object(w,'run_task',side_effect=lambda n,r,a,done=None,**kw:calls.append((a,done,kw))),patch.object(w.config,'update',side_effect=OSError('disk')):
             w.save_selector()
@@ -31,3 +31,12 @@ class SelectorDesktopTests(unittest.TestCase):
         with patch.object(w,'run_task',side_effect=lambda n,r,a,done=None,**kw:calls.append(a)),patch.object(w.client,'manage',return_value={}) as manage:
             w.save_context_policy();calls[-1](None)
         self.assertEqual(manage.call_args.kwargs['character_retrieval_mode'],'hybrid_llm')
+
+    def test_probe_waits_for_saved_timeout_and_all_runtime_retries(self):
+        w=self.window();w.persona_id='a';w.show_page('model');callbacks=[]
+        w.config.update({'character_selector':{'timeout':240}})
+        w.selector_vars['timeout'].set('60')  # unsaved draft is not sent
+        with patch.object(w,'run_task',side_effect=lambda n,r,a,done=None,**kw:callbacks.append(a)),patch.object(w.client,'call',return_value={}) as call:
+            w.test_selector();callbacks[-1](None)
+        self.assertEqual(call.call_args.kwargs['timeout'],977)
+        self.assertEqual(call.call_count,1)  # desktop adds no retry layer

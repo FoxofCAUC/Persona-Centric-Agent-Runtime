@@ -85,7 +85,7 @@ class CognitiveService:
         from .provider_compat import describe_request
         wire=describe_request(json.loads(turn['model_snapshot'])|{'_reply_mode':turn.get('reply_mode_snapshot'),
                               '_expression_snapshot':turn.get('expression_snapshot')})
-        return {**({'evaluation':evaluation} if evaluation else {}),'context_id':identifier(),'task_type':'dialogue','purpose':'provider_probe' if turn['channel']=='test' else 'conversation',
+        manifest={**({'evaluation':evaluation} if evaluation else {}),'context_id':identifier(),'task_type':'dialogue','purpose':'provider_probe' if turn['channel']=='test' else 'conversation',
             'scope':selected,'turn_id':turn['id'],'builder_version':BUILDER_VERSION,'created_at':timestamp(),
             'input_snapshot_hash':fingerprint(messages),'model_snapshot_hash':fingerprint({k:v for k,v in json.loads(turn['model_snapshot']).items() if k!='encrypted_key'}),
             'included_state_refs':states,'excluded_state_refs':details.get('removed',[]),
@@ -97,6 +97,18 @@ class CognitiveService:
             'input_characters':sum(len(m['content']) for m in messages),
             'reply_output_contract':descriptor(turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot')),
             'provider_request_contract':wire,'dialogue_voice':details.get('dialogue_voice'),'persisted':False}
+        from .prompt_assembly import attach
+        selection_record=None
+        aid=(character.get('retrieval') or {}).get('selection_attempt_id')
+        if aid:
+            row=conn.execute('SELECT a.status,a.selected_json,m.manifest_json FROM character_selection_attempts a '
+                'LEFT JOIN context_manifests m ON m.selection_attempt_id=a.id AND m.task_type=\'character_selection\' '
+                'WHERE a.id=? AND a.turn_id=? AND a.execution_revision=? AND a.persona_id=?',
+                (aid,turn['id'],turn.get('execution_revision'),turn['persona_id'])).fetchone()
+            if row:
+                selection_record={'status':row['status'],'selected':json.loads(row['selected_json']) if row['selected_json'] else None,
+                                  'prompt_version':json.loads(row['manifest_json']).get('prompt_version') if row['manifest_json'] else None}
+        return attach(manifest,turn,details,selection_record)
 
     def prepare(self,turn_id,character_selection=None,observation=None):
         started=time.perf_counter()
@@ -159,6 +171,8 @@ class CognitiveService:
             prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character}
         prepared['manifest']['final_verification_ms']=round((time.perf_counter()-started)*1000,3)
         prepared['manifest']['_shadow_prepared']=self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
+        from .prompt_assembly import fit_manifest
+        prepared['manifest']=fit_manifest(prepared['manifest'])
         return prepared
 
     @staticmethod
@@ -168,6 +182,8 @@ class CognitiveService:
             from .disposition_shadow import persist_shadow
             persist_shadow(conn,turn,manifest,attempt_id)
         else:manifest.pop('_shadow_prepared',None)
+        from .prompt_assembly import fit_manifest
+        manifest=fit_manifest(manifest)
         if len(encoded(manifest).encode('utf-8'))>128*1024:raise RuntimeErrorBase('context_manifest_too_large')
         try:
             conn.execute('INSERT INTO context_manifests (id,persona_id,user_id,task_type,turn_id,organization_task_id,attempt_id,organization_attempt_id,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',

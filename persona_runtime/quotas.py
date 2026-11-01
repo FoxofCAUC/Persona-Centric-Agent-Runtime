@@ -6,6 +6,7 @@ import time
 from .config import atomic_json
 from .instance import InstanceLock
 from .memory_policy import project_calls
+from .generation_retry import call_count
 from .models import RuntimeErrorBase, timestamp
 
 FIELDS = ('project_hourly', 'background_hourly', 'background_daily', 'selector_hourly', 'selector_daily')
@@ -34,16 +35,16 @@ class QuotaService:
             with self.store.connection() as conn:
                 now = time.time()
                 used = {'project_hourly': project_calls(conn, now-3600),
-                        'background_hourly': conn.execute('SELECT count(*) FROM organization_attempts WHERE started_epoch>?', (now-3600,)).fetchone()[0],
-                        'background_daily': conn.execute('SELECT count(*) FROM organization_attempts WHERE started_epoch>?', (now-86400,)).fetchone()[0],
-                        'selector_hourly':conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-3600,)).fetchone()[0],
-                        'selector_daily':conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-86400,)).fetchone()[0],
-                        'understanding_hourly':conn.execute('SELECT count(*) FROM situation_observation_attempts WHERE started_epoch>?',(now-3600,)).fetchone()[0],
-                        'understanding_daily':conn.execute('SELECT count(*) FROM situation_observation_attempts WHERE started_epoch>?',(now-86400,)).fetchone()[0],
-                        'compiler_hourly':conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-3600,)).fetchone()[0],
-                        'compiler_daily':conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-86400,)).fetchone()[0],
+                        'background_hourly': call_count(conn,'organization_attempts',now-3600),
+                        'background_daily': call_count(conn,'organization_attempts',now-86400),
+                        'selector_hourly':call_count(conn,'character_selection_attempts',now-3600),
+                        'selector_daily':call_count(conn,'character_selection_attempts',now-86400),
+                        'understanding_hourly':call_count(conn,'situation_observation_attempts',now-3600),
+                        'understanding_daily':call_count(conn,'situation_observation_attempts',now-86400),
+                        'compiler_hourly':call_count(conn,'disposition_compile_attempts',now-3600),
+                        'compiler_daily':call_count(conn,'disposition_compile_attempts',now-86400),
                         'reserved':conn.execute("SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0],
-                        'primary_hourly':conn.execute('SELECT count(*) FROM attempts WHERE started_epoch>?',(now-3600,)).fetchone()[0]}
+                        'primary_hourly':call_count(conn,'attempts',now-3600)}
         except RuntimeErrorBase:
             pass  # Settings remain editable before storage is initialized/upgraded.
         active = record.get('status') == 'active'

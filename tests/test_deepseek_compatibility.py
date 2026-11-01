@@ -158,9 +158,9 @@ class Pipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.requests[0]['response_format'],{'type':'json_object'})
         self.assertEqual(m['input_snapshot_hash'],fingerprint(self.requests[0]['messages']))
         self.raw='{"schema_version":2,"schema_version":2,"messages":[]}'
-        failed=await self.submit();self.assertEqual(failed['error_code'],'reply_schema_invalid')
+        failed=await self.submit();self.assertEqual(failed['error_code'],'provider_retries_exhausted')
         self.assertEqual(failed['context']['reply_validation']['reason'],'duplicate_json_key')
-        self.assertIsNone(failed['reply_event_id']);self.assertEqual(len(self.requests),2)
+        self.assertIsNone(failed['reply_event_id']);self.assertEqual(len(self.requests),5)
 
 
 # unittest discovers imported TestCase objects too; only the concrete local

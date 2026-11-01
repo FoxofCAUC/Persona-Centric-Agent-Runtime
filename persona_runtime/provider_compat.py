@@ -16,6 +16,24 @@ CURRENT_DEEPSEEK=frozenset(('deepseek-flash','deepseek-v4-pro','deepseek-v4-flas
 LEGACY_DEEPSEEK=frozenset(('deepseek-chat','deepseek-reasoner'))
 
 
+def is_grok47(model):
+    # A routed model name selects a wire profile, not a claim of xAI provenance.
+    return not is_deepseek(model) and model.get('name','').strip().lower()=='grok-4.7'
+
+
+def grok_interactive(model):
+    return is_grok47(model) and (model.get('_character_selection') is True or
+        model.get('_reply_mode') in ('natural_structured','context_structured'))
+
+
+def selector_format():
+    properties={'schema_version':{'type':'integer','enum':[1]},
+                'lore_ids':{'type':'array','maxItems':4,'items':{'type':'string'}},
+                'example_ids':{'type':'array','maxItems':4,'items':{'type':'string'}}}
+    return {'type':'json_schema','json_schema':{'name':'pcar_character_selection_v1','strict':True,
+        'schema':{'type':'object','additionalProperties':False,'properties':properties,'required':list(properties)}}}
+
+
 def is_deepseek(model):
     return (urlsplit(model.get('base_url','')).hostname=='api.deepseek.com' or
             model.get('name','').strip().lower() in CURRENT_DEEPSEEK|LEGACY_DEEPSEEK)
@@ -24,7 +42,7 @@ def is_deepseek(model):
 def endpoint(model,resource='chat/completions'):
     if resource not in ('chat/completions','models'):raise ValueError('invalid_provider_resource')
     base=model.get('base_url','').rstrip('/')
-    if is_deepseek(model):
+    if is_deepseek(model) or is_grok47(model):
         path=urlsplit(base).path.rstrip('/')
         if path.startswith('/anthropic') or path.endswith('/responses'):
             raise ValueError('provider_endpoint_incompatible')
@@ -36,6 +54,7 @@ def _format(model):
     schema=response_format(model.get('_reply_mode'),model.get('_expression_snapshot'))
     wants_json=bool(schema or model.get('_json_output') or model.get('_disposition_compile'))
     if is_deepseek(model):return {'type':'json_object'} if wants_json else None
+    if is_grok47(model) and model.get('_character_selection') is True:return selector_format()
     return None if model.get('_disposition_compile') else schema
 
 
@@ -44,9 +63,11 @@ def describe_request(model):
     # Legacy aliases may refer to older single-mode APIs at third-party gateways.
     # Do not pretend a thinking-only legacy model was made non-thinking.
     thinking='disabled' if deepseek and model.get('name','').strip().lower() not in LEGACY_DEEPSEEK else 'provider_default'
-    return {'version':VERSION,'profile':'deepseek-chat-v1' if deepseek else 'openai-compatible-v1',
+    result={'version':VERSION,'profile':'deepseek-chat-v1' if deepseek else 'openai-compatible-v1',
             'response_format':fmt['type'] if fmt else 'text','thinking':thinking,
             'format_hash':fingerprint(fmt) if fmt else None,'application_validation_required':bool(fmt)}
+    if grok_interactive(model):result.update(version='provider-wire-grok47-v1',profile='grok47-chat-v1',reasoning_effort='low')
+    return result
 
 
 def build_request(model,messages):
@@ -59,6 +80,7 @@ def build_request(model,messages):
     payload={'model':model['name'],'messages':messages,'max_tokens':model['max_tokens'],'stream':False}
     if fmt:payload['response_format']=fmt
     if contract['thinking']=='disabled':payload['thinking']={'type':'disabled'}
+    if grok_interactive(model):payload['reasoning_effort']='low'
     if model.get('_dialogue_profile') is not None:
         from .dialogue_voice import read
         profile=read({'model_snapshot':model})
@@ -66,22 +88,24 @@ def build_request(model,messages):
     return payload,contract
 
 
-def usage_fields(value,*,deepseek=False):
+def usage_fields(value,*,deepseek=False,grok=False):
     if not isinstance(value,dict):return None
     names=('prompt_tokens','completion_tokens','total_tokens')
     if deepseek:names+=('prompt_cache_hit_tokens','prompt_cache_miss_tokens')
     result={k:v for k,v in value.items() if k in names and type(v) is int and v>=0}
-    if deepseek:
+    if deepseek or grok:
         for outer,inner in (('prompt_tokens_details','cached_tokens'),('completion_tokens_details','reasoning_tokens')):
             item=value.get(outer)
             if isinstance(item,dict) and type(item.get(inner)) is int and item[inner]>=0:result[outer]={inner:item[inner]}
     return result
 
 
-def response_metadata(data):
+def response_metadata(data,*,grok=False):
     """Public identifiers only. Never return reasoning_content or other text."""
     result={}
     if isinstance(data.get('model'),str) and data['model'] in CURRENT_DEEPSEEK|LEGACY_DEEPSEEK:result['response_model']=data['model']
+    if grok and isinstance(data.get('model'),str) and re.fullmatch(r'grok-4\.7(?:[-._a-zA-Z0-9]{0,64})',data['model']):result['response_model']=data['model']
     value=data.get('system_fingerprint')
     if isinstance(value,str) and re.fullmatch(r'[a-fA-F0-9]{16,128}',value):result['system_fingerprint']=value
+    elif grok and isinstance(value,str) and re.fullmatch(r'fp_[a-fA-F0-9]{8,128}',value):result['system_fingerprint']=value
     return result

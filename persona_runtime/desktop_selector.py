@@ -3,6 +3,7 @@ import json
 import tkinter as tk
 from tkinter import ttk,messagebox
 from .models import identifier
+from .generation_retry import MAX_RETRIES
 
 class SelectorUI:
     def build_selector(self,parent):
@@ -13,7 +14,7 @@ class SelectorUI:
         self.selector_clear=tk.BooleanVar(value=False);self.selector_epoch=0
         for var in (*self.selector_vars.values(),self.selector_enabled,self.selector_clear):
             var.trace_add('write',lambda *_:setattr(self,'selector_epoch',self.selector_epoch+1))
-        self.fields(group,self.selector_vars,(('base_url','接口基础地址'),('name','模型名称'),('api_key','新密钥（留空保留）'),('timeout','超时（最多60秒）'),('max_tokens','输出tokens'),('max_input_chars','输入字符上限'),('hourly_limit','选择调用/小时（0不限）'),('daily_limit','选择调用/24小时（0不限）')),secret='api_key')
+        self.fields(group,self.selector_vars,(('base_url','接口基础地址'),('name','模型名称'),('api_key','新密钥（留空保留）'),('timeout','超时（最多240秒）'),('max_tokens','输出tokens'),('max_input_chars','输入字符上限'),('hourly_limit','选择调用/小时（0不限）'),('daily_limit','选择调用/24小时（0不限）')),secret='api_key')
         ttk.Checkbutton(group,text='启用独立选择模型',variable=self.selector_enabled).pack(anchor='w')
         ttk.Checkbutton(group,text='明确清除选择模型密钥',variable=self.selector_clear).pack(anchor='w')
         self.selector_notice=tk.StringVar(value='密钥已保存' if cfg['has_key'] else '未设置密钥')
@@ -21,7 +22,7 @@ class SelectorUI:
         bar=self.bar(group);bar.pack(fill='x')
         self.button(bar,'保存选择配置',self.save_selector,{'config'})
         self.button(bar,'复制主模型配置',self.copy_selector,{'config'})
-        self.button(bar,'测试选择模型（计费一次）',self.test_selector,{'selector-test'})
+        self.button(bar,f'测试选择模型（计费，最多{MAX_RETRIES+1}次）',self.test_selector,{'selector-test'})
         self.button(bar,'最近选择调用',self.selector_records,{'selector-read'})
 
     def save_selector(self):
@@ -51,10 +52,13 @@ class SelectorUI:
     def test_selector(self):
         if not self.persona_id:return
         key=(self.persona_id,self.view_epoch,self.selector_epoch);op=identifier()
+        # The management request encloses the whole bounded retry sequence.
+        # Read saved configuration, as the server probe ignores unsaved drafts.
+        wait=(MAX_RETRIES+1)*self.config.load()['character_selector']['timeout']+sum(2**i for i in range(MAX_RETRIES))+10
         def done(value):
             if key!=(self.persona_id,self.view_epoch,self.selector_epoch):return
             self.show_json('选择模型真实测试（仅测试已保存配置）',value);self.refresh_quotas()
-        self.run_task('选择模型真实测试',{'selector-test'},lambda _:self.client.call('POST','/v1/manage',{'action':'character.selector-test','args':{'persona_id':key[0],'operation_id':op}},timeout=65),done,error_current=lambda:key==(self.persona_id,self.view_epoch,self.selector_epoch))
+        self.run_task('选择模型真实测试',{'selector-test'},lambda _:self.client.call('POST','/v1/manage',{'action':'character.selector-test','args':{'persona_id':key[0],'operation_id':op}},timeout=wait),done,error_current=lambda:key==(self.persona_id,self.view_epoch,self.selector_epoch))
 
     def selector_records(self):
         if not self.persona_id:return

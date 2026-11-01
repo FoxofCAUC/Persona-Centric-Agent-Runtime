@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 from .models import RuntimeErrorBase, identifier
 from .security import protect, unprotect
 
+SELECTOR_TIMEOUT_MAX = 240
+
 SELECTOR_DEFAULTS = {"enabled": False, "base_url": "", "name": "", "encrypted_key": "",
                      "timeout": 60, "max_tokens": 512, "max_input_chars": 48000,
                      "hourly_limit": 30, "daily_limit": 200}
@@ -79,7 +81,7 @@ class ConfigStore:
             url=urlsplit(selector['base_url'])
             if url.scheme not in ('http','https') or not url.hostname or url.username or url.password or url.query or url.fragment or (url.scheme=='http' and url.hostname not in ('localhost','127.0.0.1','::1')):
                 raise RuntimeErrorBase('Invalid character selector endpoint')
-        for field,low,high in (('timeout',1,60),('max_tokens',64,2048),('max_input_chars',1000,64000),('hourly_limit',0,10000),('daily_limit',0,10000)):
+        for field,low,high in (('timeout',1,SELECTOR_TIMEOUT_MAX),('max_tokens',64,2048),('max_input_chars',1000,64000),('hourly_limit',0,10000),('daily_limit',0,10000)):
             if type(selector[field]) is not int or not low<=selector[field]<=high:raise RuntimeErrorBase('Invalid character selector limit')
         ports = [value.get(key) for key in ("service_port", "napcat_port", "astrbot_port", "onebot_port")]
         if any(type(p) is not int or not 1024 <= p <= 65535 for p in ports) or len(set(ports)) != 4:

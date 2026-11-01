@@ -34,11 +34,9 @@ def exclude_memory(conn, memory, reason):
 
 
 def project_calls(conn, since):
-    compiler = conn.execute("SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?",(since,)).fetchone()[0] if conn.execute("SELECT 1 FROM sqlite_master WHERE name='disposition_compile_attempts'").fetchone() else 0
-    observation = conn.execute("SELECT count(*) FROM situation_observation_attempts WHERE started_epoch>?",(since,)).fetchone()[0] if conn.execute("SELECT 1 FROM sqlite_master WHERE name='situation_observation_attempts'").fetchone() else 0
-    return (observation + compiler + conn.execute("SELECT count(*) FROM attempts WHERE started_epoch>?", (since,)).fetchone()[0]
-            + conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (since,)).fetchone()[0]
-            + conn.execute("SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?", (since,)).fetchone()[0])
+    from .generation_retry import call_count
+    return sum(call_count(conn,table,since) for table in ('attempts','organization_attempts',
+        'character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
 
 
 def project_capacity_used(conn, since, exclude_turn=None):

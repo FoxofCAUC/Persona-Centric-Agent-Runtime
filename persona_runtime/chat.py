@@ -51,7 +51,7 @@ class ChatCompletionsClient:
         headers = {"Content-Type": "application/json"}
         if model["encrypted_key"]:
             headers["Authorization"] = "Bearer " + unprotect(model["encrypted_key"])
-        from .provider_compat import build_request,endpoint,usage_fields,response_metadata
+        from .provider_compat import build_request,endpoint,usage_fields,response_metadata,is_grok47
         try:
             payload,wire=build_request(model,messages);url=endpoint(model)
         except ValueError as error:
@@ -103,9 +103,15 @@ class ChatCompletionsClient:
                     diagnostics={**diagnostic(),'finish_reason':finish if finish in ('stop','length','content_filter','tool_calls','function_call','insufficient_system_resource','aborted') else 'unknown',
                                  'output_characters':len(text) if isinstance(text,str) else 0}
                     deepseek=wire['profile']=='deepseek-chat-v1'
-                    usage=usage_fields(data.get('usage'),deepseek=deepseek)
-                    if deepseek:
-                        diagnostics.update(response_metadata(data),reasoning_present=bool(choice['message'].get('reasoning_content')))
+                    grok=is_grok47(model)
+                    usage=usage_fields(data.get('usage'),deepseek=deepseek,grok=grok)
+                    if deepseek or grok:
+                        diagnostics.update(response_metadata(data,grok=grok),reasoning_present=bool(choice['message'].get('reasoning_content')))
+                        if grok:
+                            diagnostics.update(content_kind=('null' if text is None else 'non_string' if not isinstance(text,str) else
+                                'empty_string' if not text else 'ascii_spaces_only' if text==' '*len(text) else
+                                'whitespace_only' if not text.strip() else 'text'),http_status=response.status,
+                                reasoning_effort=wire.get('reasoning_effort','provider_default'))
                         if finish=='content_filter':raise ModelError('provider_content_filtered',usage=usage,diagnostics=diagnostics)
                         if finish in ('length','insufficient_system_resource','aborted'):
                             code='provider_output_truncated' if finish=='length' else 'provider_'+finish
@@ -386,7 +392,8 @@ class ChatEngine:
         # Compatibility helper also uses canonical scope and withdrawal rules.
         evidence=None if turn['channel']=='test' else self.cognitive.dialogue.basic_evidence(conn,turn)
         messages, details = self.cognitive.dialogue.render(conn,turn,evidence)
-        turn["_context_details"] = details
+        # Assembly observations belong only to the bounded Manifest field.
+        turn["_context_details"] = {k:v for k,v in details.items() if k!='prompt_assembly'}
         return messages
 
     async def _run(self, turn_id):
@@ -412,7 +419,7 @@ class ChatEngine:
                     prepared=self.cognitive.finalize(conn,turn,prepared)
                     evaluation=getattr(self,'evaluation_session',None)
                     if evaluation:evaluation.before_dispatch(self,turn,prepared)
-                    messages=prepared['messages'];turn['_context_details']=prepared['details']
+                    messages=prepared['messages'];turn['_context_details']={k:v for k,v in prepared['details'].items() if k!='prompt_assembly'}
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
@@ -434,7 +441,37 @@ class ChatEngine:
                     record_check(conn,turn,turn["_context_details"].get("references",{}),attempt_id=attempt_id)
                     record_progress(conn, turn_id, "provider_started", attempt_id)
                 from .reply_batch import ReplySchemaError, validate_reply
-                completion = await self.client.complete(dict(model,_reply_mode=turn.get('reply_mode_snapshot'),_expression_snapshot=turn.get('expression_snapshot')), messages)
+                from .generation_retry import audited_complete
+                def save_generation_audit(value):
+                    nonlocal usage
+                    usage=value
+                    with self.store.connection(write=True) as conn:
+                        changed=conn.execute("UPDATE attempts SET usage_json=? WHERE id=? AND status='running'",(json.dumps(value),attempt_id)).rowcount
+                        if changed!=1:raise ModelError('generation_retry_audit_invalid')
+                def before_generation_attempt(state):
+                    with self.store.connection(write=True) as conn:
+                        current=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
+                        if current['status']!='running' or current['cancelled_at'] or current['execution_revision']!=turn['execution_revision']:
+                            raise ModelError('generation_retry_request_inactive')
+                        from .private_personas import guard_cloud_dispatch
+                        guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
+                        fresh=self.cognitive.finalize(conn,current,prepared)
+                        if fresh['messages']!=messages:raise ModelError('generation_retry_sources_changed')
+                        if state['attempts']:
+                            from .memory_policy import project_capacity_used
+                            cap=self.config.load()['model']['hourly_limit']
+                            if cap and project_capacity_used(conn,time.time()-3600,turn_id)+1>cap:
+                                raise ModelError('hourly_limit_reached')
+                def validate_generation(text):
+                    try:return validate_reply(text,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
+                    except ReplySchemaError as error:
+                        from .reply_protocol import validation_failure
+                        error.output_validation=validation_failure(text,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
+                        raise
+                completion = await audited_complete(self.client,
+                    dict(model,_reply_mode=turn.get('reply_mode_snapshot'),_expression_snapshot=turn.get('expression_snapshot')),messages,
+                    validate=validate_generation,
+                    save=save_generation_audit,before_attempt=before_generation_attempt)
                 raw_reply, usage = completion
                 provider_diagnostics=getattr(completion,'diagnostics',{'finish_reason':'unreported'})
                 validation_error=None
@@ -523,7 +560,8 @@ class ChatEngine:
                     if attempt_id:
                         if getattr(error,'diagnostics',None):
                             details=dict(turn.get('_context_details',{}));details['reply_provider']=error.diagnostics
-                            details['reply_validation']={'status':'rejected','reason':code}
+                            details['reply_validation']=getattr(error,'output_validation',None) or {'status':'rejected','reason':code}
+                            if getattr(error,'output_fingerprint',None):details['reply_output_fingerprint']=error.output_fingerprint
                             conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',(json.dumps(details,ensure_ascii=False),attempt_id))
                         conn.execute("UPDATE attempts SET status='failed',error_code=?,usage_json=? WHERE id=?", (code,encoded,attempt_id))
                 if interrupted:

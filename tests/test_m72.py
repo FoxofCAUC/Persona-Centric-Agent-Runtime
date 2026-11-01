@@ -209,7 +209,8 @@ class ContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_export9_includes_policy_and_manifest_without_credentials(self):
         t=await self.turn('你好');await self.engine._run(t['id'])
         result=self.service.export_persona();payload=json.loads(Path(result['path']).read_text(encoding='utf-8'))
-        self.assertEqual(payload['format_version'],16);self.assertEqual(len(payload['context_manifests']),1)
+        # The R0 source baseline already exports version 17; assembly adds no format migration.
+        self.assertEqual(payload['format_version'],17);self.assertEqual(len(payload['context_manifests']),1)
         self.assertNotIn('encrypted_key',json.dumps(payload['context_manifests']))
 
     async def test_manifest_write_failure_rolls_back_attempt_and_never_calls_provider(self):

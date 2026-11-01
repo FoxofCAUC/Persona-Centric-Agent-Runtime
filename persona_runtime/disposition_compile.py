@@ -113,9 +113,8 @@ class DispositionCompiler:
             from .memory_policy import project_capacity_used
             if cfg['model']['hourly_limit'] and project_capacity_used(conn,now-3600)>=cfg['model']['hourly_limit']:fail('hourly_limit_reached')
             for seconds,key in ((3600,'hourly_limit'),(86400,'daily_limit')):
-                count=conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()[0]
-                count+=conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()[0]
-                count+=conn.execute('SELECT count(*) FROM situation_observation_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()[0]
+                from .generation_retry import call_count
+                count=sum(call_count(conn,t,now-seconds) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
                 if model[key] and count>=model[key]:fail('selector_limit_reached')
             refs=[{k:v for k,v in r.items() if k!='text'} for r in sources]
             conn.execute('INSERT INTO disposition_compile_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',

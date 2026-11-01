@@ -208,8 +208,8 @@ class SituationObservationService:
             # Exclude our own reservation, then count observation + eventual main.
             if limit and project_capacity_used(conn,now-3600,turn_id)+2>limit:return {'status':'project_quota'}
             for field,period in (('hourly_limit',3600),('daily_limit',86400)):
-                count=sum(conn.execute('SELECT count(*) FROM '+t+' WHERE started_epoch>?',(now-period,)).fetchone()[0]
-                    for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
+                from .generation_retry import call_count
+                count=sum(call_count(conn,t,now-period) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
                 if cfg['character_selector'][field] and count>=cfg['character_selector'][field]:return {'status':'auxiliary_quota'}
             conn.execute('INSERT INTO situation_observation_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (aid,turn_id,turn['execution_revision'],turn['persona_id'],LOCAL_USER_ID,'running',now,None,encoded(model),policy['version'],fingerprint(payload),encoded(turn_scope(conn,turn)),encoded(evidence),None,None,None,timestamp()))

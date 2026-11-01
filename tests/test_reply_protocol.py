@@ -107,11 +107,11 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.raw='普通回复';t=await self.submit('legacy_full');self.assertEqual(t['status'],'completed')
         self.assertNotIn('response_format',self.requests[-1])
 
-    async def test_bad_output_has_diagnostic_usage_and_zero_reply_or_retry(self):
+    async def test_bad_output_keeps_diagnostics_and_stops_after_three_retries(self):
         self.raw='{"schema_version":2,"never-save-this-body":1}'
-        t=await self.submit();self.assertEqual(t['error_code'],'reply_schema_invalid')
+        t=await self.submit();self.assertEqual(t['error_code'],'provider_retries_exhausted')
         self.assertEqual(t['context']['reply_validation']['reason'],'envelope_fields')
-        self.assertEqual(t['usage']['total_tokens'],12);self.assertEqual(len(self.requests),1)
+        self.assertEqual(t['usage']['total_tokens'],48);self.assertEqual(len(self.requests),4)
         with self.store.connection() as db:
             self.assertFalse(db.execute('SELECT 1 FROM reply_batches WHERE turn_id=?',(t['id'],)).fetchone())
             self.assertFalse(db.execute('SELECT 1 FROM reply_delivery_parts WHERE turn_id=?',(t['id'],)).fetchone())
@@ -120,9 +120,9 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_length_finish_does_not_lose_usage_or_accept_partial_answer(self):
         self.finish='length';t=await self.submit()
-        self.assertEqual(t['error_code'],'reply_output_truncated')
+        self.assertEqual(t['error_code'],'provider_retries_exhausted')
         self.assertEqual(t['context']['reply_validation']['reason'],'provider_length_limit')
-        self.assertEqual(t['usage']['total_tokens'],12);self.assertEqual(len(self.requests),1)
+        self.assertEqual(t['usage']['total_tokens'],48);self.assertEqual(len(self.requests),4)
 
     async def test_empty_filtered_response_keeps_usage_and_diagnostic(self):
         self.finish='content_filter';self.raw=None;t=await self.submit()
@@ -152,10 +152,10 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     'response_headers_received':False,'timeout_seconds':60,'elapsed_ms':60001}
         with patch.object(self.engine.client,'complete',side_effect=ModelError('provider_connection_timeout',diagnostics=diagnostic)) as call:
             t=await self.submit()
-        self.assertEqual(call.call_count,1)
-        self.assertEqual(t['error_code'],'provider_connection_timeout')
-        self.assertEqual(t['context']['reply_provider'],diagnostic)
-        self.assertIsNone(t['reply_event_id']);self.assertIsNone(t['usage'])
+        self.assertEqual(call.call_count,4)
+        self.assertEqual(t['error_code'],'provider_retries_exhausted')
+        self.assertEqual({k:t['context']['reply_provider'][k] for k in diagnostic},diagnostic)
+        self.assertIsNone(t['reply_event_id']);self.assertEqual(len(t['usage']['generation_retry']['attempts']),4)
 
     async def test_generic_probe_is_idempotent_and_has_no_persona_or_events(self):
         rid=identifier();a=await self.engine.submit('test','Reply with OK.',rid,test=True,test_reply_mode='natural_structured')
