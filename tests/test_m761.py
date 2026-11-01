@@ -265,7 +265,8 @@ class M761(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(before,after)
         result=self.service.export_persona()
         payload=json.loads(Path(result['path']).read_text(encoding='utf-8'))
-        self.assertEqual(payload['format_version'],16);self.assertIn('disposition_versions',payload)
+        self.assertEqual(payload['format_version'],17);self.assertIn('disposition_versions',payload)
+        self.assertIn('situation_observation_attempts',payload)
 
     async def test_timeout_busy_late_result_and_retry_records(self):
         import time

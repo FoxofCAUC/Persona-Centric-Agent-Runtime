@@ -48,7 +48,7 @@ class CognitiveService:
         # Hashes are internal transient guards. Full rows never enter the
         # persisted manifest or ordinary logs.
         settings=turn if expected else current
-        return fingerprint({'turn_settings':{k:settings.get(k) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','model_snapshot','reply_mode_snapshot','expression_snapshot','origin_json')},
+        return fingerprint({'turn_settings':{k:settings.get(k) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','observation_model_snapshot','model_snapshot','reply_mode_snapshot','expression_snapshot','origin_json')},
             'inputs':load_turn_input(conn,current),'history':history,'memories':memories,
             'summary':dict(summary) if summary else None,'summary_valid':summary_valid,
             'state':details.get('state_version') if expected else state['id'] if active_state(state) else None,
@@ -80,7 +80,12 @@ class CognitiveService:
         if retrieval.get('degraded_reason'):missing.append(retrieval['degraded_reason'])
         if retrieval.get('mode')=='working_set' and not retrieval.get('matched_targets'):missing.append('retrieval_no_matches')
         if not details.get('state_version'):missing.append('manual_state_unset_or_expired')
-        return {'context_id':identifier(),'task_type':'dialogue','purpose':'provider_probe' if turn['channel']=='test' else 'conversation',
+        from .evaluation_material import descriptor as evaluation_descriptor
+        evaluation=evaluation_descriptor(self.engine,conn,turn)
+        from .provider_compat import describe_request
+        wire=describe_request(json.loads(turn['model_snapshot'])|{'_reply_mode':turn.get('reply_mode_snapshot'),
+                              '_expression_snapshot':turn.get('expression_snapshot')})
+        return {**({'evaluation':evaluation} if evaluation else {}),'context_id':identifier(),'task_type':'dialogue','purpose':'provider_probe' if turn['channel']=='test' else 'conversation',
             'scope':selected,'turn_id':turn['id'],'builder_version':BUILDER_VERSION,'created_at':timestamp(),
             'input_snapshot_hash':fingerprint(messages),'model_snapshot_hash':fingerprint({k:v for k,v in json.loads(turn['model_snapshot']).items() if k!='encrypted_key'}),
             'included_state_refs':states,'excluded_state_refs':details.get('removed',[]),
@@ -90,16 +95,20 @@ class CognitiveService:
             'retrieval':retrieval,'character_retrieval':character.get('retrieval'),**({'decision_capsule':details['decision_capsule']} if 'decision_capsule' in details else {}),'partitions':{'hard':['core','current_input','required_character_facts','explicit_references'],
                 'soft_priority':['recent_turns','relevant_memories','retrieved_turns','lossy_summary','optional_character']},
             'input_characters':sum(len(m['content']) for m in messages),
-            'reply_output_contract':descriptor(turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot')),'persisted':False}
+            'reply_output_contract':descriptor(turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot')),
+            'provider_request_contract':wire,'dialogue_voice':details.get('dialogue_voice'),'persisted':False}
 
-    def prepare(self,turn_id,character_selection=None):
+    def prepare(self,turn_id,character_selection=None,observation=None):
         started=time.perf_counter()
         with self.store.connection() as conn:turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
         try:character=self.characters.prepare(turn,character_selection)
         except RuntimeErrorBase as exc:
             from .chat import ModelError
             raise ModelError(str(exc)) from None
-        decision=self.shadow.prepare(turn)
+        decision=self.shadow.prepare(turn,observation)
+        from .dialogue_voice import read as read_voice
+        voice=read_voice(turn)
+        if decision is not None and voice:decision={**decision,'_voice_version':voice['version']}
         from .decision_capsule import capsule
         evidence=self.dialogue.evidence(turn)
         with self.store.connection() as conn:
@@ -117,7 +126,7 @@ class CognitiveService:
 
     @staticmethod
     def bind_decision(decision,details):
-        if decision is None or decision.get('mode')!='assist':return decision
+        if decision is None or decision.get('mode') not in ('assist','live'):return decision
         from .decision_capsule import capsule,metadata
         budget=details.get('capsule_budget') or {}
         text=capsule(decision) if budget.get('applied') else ''
@@ -128,7 +137,7 @@ class CognitiveService:
     def finalize(self,conn,turn,prepared):
         started=time.perf_counter()
         from .references import prepare
-        if (prepared['manifest'].get('_shadow_prepared') or {}).get('mode')=='assist' and prepared.get('accepted_policy_hash')!=fingerprint(turn.get('context_policy_snapshot')):
+        if (prepared['manifest'].get('_shadow_prepared') or {}).get('mode') in ('assist','live') and prepared.get('accepted_policy_hash')!=fingerprint(turn.get('context_policy_snapshot')):
             from .chat import ModelError
             raise ModelError('assist_snapshot_invalid')
         if turn['channel']!='test':prepare(conn,turn)
@@ -181,6 +190,8 @@ class CognitiveService:
         manifest=ReflectionBuilder.build(task,payload,messages)|{'context_id':identifier(),'task_type':'reflection',
             'organization_task_id':task['id'],'created_at':timestamp(),'input_characters':sum(len(m['content']) for m in messages),
             'excluded_state_refs':[],'truncation_info':[],'soft_tendencies':[]}
+        from .provider_compat import describe_request
+        manifest['provider_request_contract']=describe_request(json.loads(task['model_snapshot'])|{'_json_output':task['mode']!='test'})
         return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
 
     @staticmethod

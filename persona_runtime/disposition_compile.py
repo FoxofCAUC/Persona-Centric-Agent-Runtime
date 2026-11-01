@@ -54,14 +54,16 @@ def parse_output(body,sources):
 def safe_diagnostics(value):
     if not isinstance(value,dict):return {}
     result={}
-    for k in ('request_headers_sent','response_headers_received'):
+    for k in ('request_headers_sent','response_headers_received','reasoning_present'):
         if type(value.get(k)) is bool:result[k]=value[k]
     for k in ('elapsed_ms','timeout_seconds','output_characters'):
         v=value.get(k)
         if type(v) in (int,float) and 0<=v<=1e9:result[k]=v
     allowed={'phase':('request_setup','connecting','awaiting_headers','reading_body','parsing_response'),
-             'finish_reason':('stop','length','content_filter','tool_calls','function_call','unknown'),
-             'response_format':('json_schema','text')}
+             'finish_reason':('stop','length','content_filter','tool_calls','function_call','unknown','aborted','insufficient_system_resource'),
+             'response_format':('json_schema','json_object','text'),
+             'transport_profile':('openai-compatible-v1','deepseek-chat-v1'),
+             'thinking':('disabled','provider_default')}
     for k,values in allowed.items():
         if value.get(k) in values:result[k]=value[k]
     return result
@@ -113,6 +115,7 @@ class DispositionCompiler:
             for seconds,key in ((3600,'hourly_limit'),(86400,'daily_limit')):
                 count=conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()[0]
                 count+=conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()[0]
+                count+=conn.execute('SELECT count(*) FROM situation_observation_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()[0]
                 if model[key] and count>=model[key]:fail('selector_limit_reached')
             refs=[{k:v for k,v in r.items() if k!='text'} for r in sources]
             conn.execute('INSERT INTO disposition_compile_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -122,6 +125,8 @@ class DispositionCompiler:
                 'input_snapshot_hash':fingerprint(payload),'source_refs':refs,
                 'model_snapshot_hash':fingerprint({k:v for k,v in model.items() if k!='encrypted_key'}),
                 'persisted':True,'created_at':timestamp()}
+            from .provider_compat import describe_request
+            manifest['provider_request_contract']=describe_request(model|{'_disposition_compile':True})
             raw=encoded(manifest)
             if len(raw.encode())>128*1024:fail('context_manifest_too_large')
             conn.execute("INSERT INTO context_manifests(id,persona_id,user_id,task_type,compile_attempt_id,manifest_json,created_at) VALUES(?,?,?,'disposition_compilation',?,?,?)",
@@ -170,7 +175,8 @@ class DispositionCompiler:
             if isinstance(exc,ModelError):
                 import re
                 provider=str(exc)
-                if provider in ('model_not_configured','provider_network_error','provider_invalid_response','provider_response_too_large','provider_connection_timeout','provider_timeout','provider_empty_response','provider_content_filtered') or re.fullmatch(r'provider_http_[1-5][0-9]{2}',provider):code=provider
+                if provider in ('model_not_configured','provider_network_error','provider_invalid_response','provider_response_too_large','provider_connection_timeout','provider_timeout','provider_empty_response','provider_content_filtered',
+                                'provider_output_truncated','provider_aborted','provider_insufficient_system_resource','provider_tool_call_not_supported','provider_json_instruction_missing','provider_endpoint_incompatible') or re.fullmatch(r'provider_http_[1-5][0-9]{2}',provider):code=provider
             diagnostics=safe_diagnostics(getattr(exc,'diagnostics',None)) or diagnostics
             diagnostics['exception_type']=type(exc).__name__ if type(exc).__name__ in ('ModelError','RuntimeErrorBase','ValueError','TypeError','OSError') else 'other'
             usage=getattr(exc,'usage',usage)

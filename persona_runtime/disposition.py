@@ -11,6 +11,28 @@ from .disposition_core.contracts import (ACTIONS, VERSION, ContractError,
 
 SHADOW_VERSION='persona-disposition-shadow-v1'
 COMPILER_VERSION='disposition-compiler-v1'
+CONTEXT_ADAPTER='disposition-context-v2'
+
+
+def document_refs(document):
+    refs=[r for d in document['definitions'] for r in d['source_refs']]
+    mapping=document.get('relationship_mapping')
+    if mapping:refs.append(mapping['source_ref'])
+    return refs
+
+
+def validate_reference(ref,catalog,current,require_current=True):
+    if not isinstance(ref,dict) or set(ref)!= {'source_id','version_id','path','entry_id','content_hash','start','end','fragment_hash'}:
+        fail('invalid_disposition_reference')
+    r=catalog.get(ref['source_id']);now=current.get(ref['source_id'])
+    if r is None or now is None:fail('disposition_source_unavailable')
+    if any(ref[k]!=r[k] for k in ('version_id','path','entry_id','content_hash')):fail('disposition_source_mismatch')
+    if require_current and now['version_id']!=r['version_id']:fail('disposition_source_changed')
+    start,end=ref['start'],ref['end']
+    if type(start) is not int or type(end) is not int or not 0<=start<end<=len(r['text']) or end-start>2000:
+        fail('invalid_disposition_span')
+    if fingerprint(r['text'][start:end])!=ref['fragment_hash']:fail('disposition_fragment_mismatch')
+    return r
 
 
 def fail(code):
@@ -78,34 +100,41 @@ def status_for(conn,pid,vid,*,current=True):
     try:
         frozen={r['source_id']:r for r in source_catalog(conn,pid,doc['source_versions'])}
         latest={r['source_id']:r for r in source_catalog(conn,pid)}
-        for d in doc['definitions']:
-            for ref in d['source_refs']:
-                old=frozen.get(ref['source_id']);now=latest.get(ref['source_id'])
-                if old is None or old['content_hash']!=ref['content_hash']:return 'source_invalid'
-                # Disappearance/disable/private is unavailable even to accepted old requests.
-                if now is None:return 'source_unavailable'
-                if current and now['version_id']!=ref['version_id']:return 'needs_review'
+        for ref in document_refs(doc):
+            old=frozen.get(ref['source_id']);now=latest.get(ref['source_id'])
+            if old is None or old['content_hash']!=ref['content_hash']:return 'source_invalid'
+            # Disappearance/disable/private is unavailable even to accepted old requests.
+            if now is None:return 'source_unavailable'
+            if current and now['version_id']!=ref['version_id']:return 'needs_review'
     except RuntimeErrorBase:return 'source_unavailable'
     return 'ready'
 
 
 def accepted_snapshot(conn,pid,mode):
-    if mode not in ('baseline','shadow','assist'):fail('invalid_disposition_mode')
+    if mode not in ('baseline','shadow','assist','live'):fail('invalid_disposition_mode')
     if mode=='baseline':return {'mode':'baseline','policy':SHADOW_VERSION,'kernel':VERSION,'compiler':COMPILER_VERSION,'version_id':None,'status':'disabled','document_hash':None}
     h=projection_head(conn,pid);vid=h['active_id']
     state=status_for(conn,pid,vid)
     return {'mode':mode,'policy':SHADOW_VERSION,'kernel':VERSION,'compiler':COMPILER_VERSION,
             'version_id':vid if state=='ready' else None,'status':state,
-            'document_hash':fingerprint(version(conn,pid,vid)['document']) if state=='ready' else None}
+            'document_hash':fingerprint(version(conn,pid,vid)['document']) if state=='ready' else None,'adapter':CONTEXT_ADAPTER}
 
 
 def normalized_document(conn,pid,document,*,require_current=True):
-    if not isinstance(document,dict) or set(document)!= {'schema_version','source_versions','definitions'} or type(document['schema_version']) is not int or document['schema_version']!=1:
+    if not isinstance(document,dict) or type(document.get('schema_version')) is not int or document['schema_version'] not in (1,2):
+        fail('invalid_disposition_document')
+    if set(document)!=({'schema_version','source_versions','definitions'}|({'relationship_mapping'} if document['schema_version']==2 else set())):
         fail('invalid_disposition_document')
     if not isinstance(document['source_versions'],dict) or not set(document['source_versions'])<= {'core','character','expression','relationship'}:
         fail('invalid_disposition_sources')
     catalog={r['source_id']:r for r in source_catalog(conn,pid,document['source_versions'])}
     current={r['source_id']:r for r in source_catalog(conn,pid)}
+    mapping=document.get('relationship_mapping')
+    if mapping is not None:
+        if type(mapping) is not dict or set(mapping)!={'value','source_ref'} or mapping['value'] not in ('neutral','close','distant'):
+            fail('invalid_relationship_mapping')
+        source=validate_reference(mapping['source_ref'],catalog,current,require_current)
+        if source['kind']!='relationship':fail('invalid_relationship_mapping_source')
     definitions=document['definitions']
     if type(definitions) is not list or len(definitions)>32:fail('invalid_disposition_document')
     scope={'persona_id':pid,'user_id':LOCAL_USER_ID,'channel':'desktop','bot':'','peer':''}
@@ -249,11 +278,10 @@ def clone_projection(conn,source_pid,target_pid):
     if not old or status_for(conn,source_pid,old)!='ready':return False
     document=deepcopy(version(conn,source_pid,old)['document']);new={r['source_id']:r for r in source_catalog(conn,target_pid)}
     versions={}
-    for d in document['definitions']:
-        for ref in d['source_refs']:
-            row=new.get(ref['source_id'])
-            if not row or row['content_hash']!=ref['content_hash']:return False
-            ref['version_id']=row['version_id'];versions[row['kind']]=row['version_id']
+    for ref in document_refs(document):
+        row=new.get(ref['source_id'])
+        if not row or row['content_hash']!=ref['content_hash']:return False
+        ref['version_id']=row['version_id'];versions[row['kind']]=row['version_id']
     document['source_versions']=versions
     document=normalized_document(conn,target_pid,document)
     vid=append_version(conn,target_pid,document,'confirmed')

@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "purpose": "development_contracts_not_independent",
+  "cases": [
+    {
+      "id": "D01",
+      "kind": "ranking",
+      "members": [
+        "刚核对完寄件清单，明白了"
+      ],
+      "expected": [
+        "acknowledgement"
+      ]
+    },
+    {
+      "id": "D02",
+      "kind": "ranking",
+      "members": [
+        "给些建议：纸板模型容易弯",
+        "只解释材料为什么变形"
+      ],
+      "expected": [
+        "information_request",
+        "advice_request"
+      ]
+    },
+    {
+      "id": "D03",
+      "kind": "ranking",
+      "members": [
+        "我成功了，做出了能站住的木结构"
+      ],
+      "expected": [
+        "celebration"
+      ]
+    },
+    {
+      "id": "D04",
+      "kind": "ranking",
+      "members": [
+        "这不是要你安慰我，请解释杠杆为什么省力"
+      ],
+      "expected": [
+        "information_request"
+      ]
+    },
+    {
+      "id": "D05",
+      "kind": "ranking",
+      "members": [
+        "哪种圆规更稳？给我建议",
+        "谢谢你上次说明包装方式"
+      ],
+      "expected": [
+        "advice_request",
+        "acknowledgement"
+      ]
+    },
+    {
+      "id": "D06",
+      "kind": "ranking",
+      "members": [
+        "先听我说，别解释，这次排练我很紧张"
+      ],
+      "expected": [
+        "support_request"
+      ]
+    },
+    {
+      "id": "D07",
+      "kind": "ranking",
+      "members": [
+        "远处的街灯映在玻璃上"
+      ],
+      "expected": [
+        "unknown"
+      ]
+    },
+    {
+      "id": "D08",
+      "kind": "ranking",
+      "members": [
+        "收到你的说明",
+        "请解释圆的周长公式"
+      ],
+      "expected": [
+        "information_request",
+        "acknowledgement"
+      ]
+    },
+    {
+      "id": "D09",
+      "kind": "readiness",
+      "capabilities": "production",
+      "expected": false,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D10",
+      "kind": "readiness",
+      "capabilities": {
+        "relationship": [
+          "neutral",
+          "close"
+        ],
+        "information_gap": [
+          false,
+          true
+        ]
+      },
+      "expected": true,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D11",
+      "kind": "readiness",
+      "capabilities": {
+        "relationship": [
+          "neutral"
+        ],
+        "information_gap": [
+          false,
+          true
+        ]
+      },
+      "expected": false,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D12",
+      "kind": "readiness",
+      "capabilities": {
+        "relationship": [
+          "neutral",
+          "close"
+        ],
+        "information_gap": [
+          false
+        ]
+      },
+      "expected": false,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D13",
+      "kind": "readiness",
+      "capabilities": {
+        "relationship": [
+          "neutral",
+          "close"
+        ],
+        "information_gap": [
+          "False",
+          "True"
+        ]
+      },
+      "expected": false,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D14",
+      "kind": "readiness",
+      "capabilities": {
+        "relationship": [
+          "neutral",
+          "Close"
+        ],
+        "information_gap": [
+          false,
+          true
+        ]
+      },
+      "expected": false,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D15",
+      "kind": "readiness",
+      "capabilities": {},
+      "expected": false,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D16",
+      "kind": "readiness",
+      "capabilities": {
+        "relationship": [
+          "neutral"
+        ],
+        "information_gap": [
+          false
+        ],
+        "resource_unavailable": [
+          true
+        ]
+      },
+      "expected": false,
+      "provenance": "synthetic_gate_contract_except_production"
+    },
+    {
+      "id": "D17",
+      "kind": "metric",
+      "metric": "situation_top1",
+      "value": 34,
+      "expected": true
+    },
+    {
+      "id": "D18",
+      "kind": "metric",
+      "metric": "situation_top1",
+      "value": 33,
+      "expected": false
+    },
+    {
+      "id": "D19",
+      "kind": "metric",
+      "metric": "situation_top2",
+      "value": 38,
+      "expected": true
+    },
+    {
+      "id": "D20",
+      "kind": "metric",
+      "metric": "situation_top2",
+      "value": 37,
+      "expected": false
+    },
+    {
+      "id": "D21",
+      "kind": "metric",
+      "metric": "implicit_gain",
+      "value": 6,
+      "expected": true
+    },
+    {
+      "id": "D22",
+      "kind": "metric",
+      "metric": "implicit_gain",
+      "value": 5,
+      "expected": false
+    },
+    {
+      "id": "D23",
+      "kind": "metric",
+      "metric": "natural_wins",
+      "value": 60,
+      "expected": true
+    },
+    {
+      "id": "D24",
+      "kind": "metric",
+      "metric": "natural_wins",
+      "value": 59,
+      "expected": false
+    }
+  ]
+}

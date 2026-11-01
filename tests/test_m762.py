@@ -178,7 +178,7 @@ class M762(unittest.IsolatedAsyncioTestCase):
         self.publish()
         with self.assertRaisesRegex(RuntimeErrorBase,'assist_not_admitted'):
             self.engine.cognitive.shadow.preview(self.pid,['我想找人倾诉'],mode='assist')
-        with self.assertRaisesRegex(RuntimeErrorBase,'invalid_disposition_mode'):self.mode('live')
+        with self.assertRaisesRegex(RuntimeErrorBase,'live_not_admitted'):self.mode('live')
 
     async def test_known_fact_and_complete_code_not_rewritten(self):
         self.publish();self.admit();self.mode('assist')

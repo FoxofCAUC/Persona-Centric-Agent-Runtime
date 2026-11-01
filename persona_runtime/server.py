@@ -31,15 +31,15 @@ def health_status(config, engine, organization, ingress):
     return {"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                               "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                               "pending": len(engine.tasks), "background_running": organization.running,
-                              "version": "0.7.6.dev2", "assist_admitted": bool(getattr(engine,"assist_admission",None)), "decision_capsule_version":"decision-capsule-v1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
+                              "version": "0.7.6.dev3", "assist_admitted": bool(getattr(engine,"assist_admission",None)), "live_admitted": bool(getattr(engine,"live_admission",None)), "decision_capsule_version":"decision-capsule-v1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["evaluation_review_v1","disposition_live_candidate_v1","situation_observation_v1","author_relationship_mapping_v2","static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
 
 
-def create_app(paths, client=None, *, assist_admission=None):
+def create_app(paths, client=None, *, assist_admission=None, live_admission=None):
     config = ConfigStore(paths)
     config.initialize()
     store = Store(paths)
     store.initialize()
-    engine = ChatEngine(store, config, client, assist_admission=assist_admission)
+    engine = ChatEngine(store, config, client, assist_admission=assist_admission,live_admission=live_admission)
     engine.recover()
     ingress=IngressService(engine)
     delivery_service=DeliveryService(store)
@@ -286,6 +286,19 @@ def create_app(paths, client=None, *, assist_admission=None):
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
+        if action.startswith('evaluation.'):
+            from .evaluation import EvaluationStore
+            evaluation=EvaluationStore(paths)
+            handlers={'evaluation.status':evaluation.status,'evaluation.review.load':evaluation.load,
+                      'evaluation.review.save':evaluation.save,'evaluation.review.export':evaluation.export}
+            if action.startswith('evaluation.ai.'):
+                from .evaluation_assistant import EvaluationAssistantStore
+                assisted=EvaluationAssistantStore(paths)
+                handlers.update({'evaluation.ai.status':assisted.status,'evaluation.ai.load':assisted.load,
+                                 'evaluation.ai.approve':assisted.approve,
+                                 'evaluation.ai.save-modified':assisted.save_modified})
+            if action not in handlers:raise RuntimeErrorBase('unknown_evaluation_action')
+            return web.json_response(await asyncio.to_thread(handlers[action],**args))
         if action in ('context.preview','context.inspect'):
             return web.json_response(await asyncio.to_thread(getattr(engine.cognitive,action.split('.')[1]),**args))
         search_handlers={"archive.search":archive_search.search,"archive.search-status":archive_search.status,
@@ -483,6 +496,7 @@ def create_app(paths, client=None, *, assist_admission=None):
             worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
         await engine.wait()
+        await engine.observer.drain()
         await asyncio.to_thread(engine.cognitive.characters.close)
     app.on_cleanup.append(cleanup)
     return app

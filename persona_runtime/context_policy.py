@@ -18,21 +18,27 @@ def values(policy):
     data=json.loads(policy['data_json']).get('context',{})
     from .character_policy import read
     return {'context_mode':data.get('context_mode','legacy_recent'),
-            'cross_session':bool(data.get('cross_session',False)), 'character_retrieval':read(data), 'disposition_mode':data.get('disposition_mode','baseline')}
+            'cross_session':bool(data.get('cross_session',False)), 'character_retrieval':read(data), 'disposition_mode':data.get('disposition_mode','baseline'), 'situation_observation_mode':data.get('situation_observation_mode','disabled')}
 
 
 def snapshot(policy,conn=None):
     result = {'schema_version':1,'policy_id':policy['id'],'revision':policy['revision'],**values(policy)}
     if conn is not None:
+        from .disposition import CONTEXT_ADAPTER
+        from .situation_observation import VERSION as OBSERVATION_VERSION
+        observed_mode=result['situation_observation_mode']
+        if result['disposition_mode'] in ('assist','live'):observed_mode='on_demand'
+        if result['disposition_mode']=='baseline':observed_mode='disabled'
+        result['situation_observation']={'version':OBSERVATION_VERSION,'mode':observed_mode,'adapter':CONTEXT_ADAPTER}
         from .disposition import accepted_snapshot, SHADOW_VERSION, COMPILER_VERSION
         from .disposition_core.contracts import VERSION
         try:
             result['disposition']=accepted_snapshot(conn,policy['persona_id'],result['disposition_mode'])
-            if result['disposition_mode']=='assist':
+            if result['disposition_mode'] in ('assist','live'):
                 from .decision_capsule import VERSION
                 result['disposition']['renderer']=VERSION
         except Exception:
-            if result['disposition_mode']=='assist':raise
+            if result['disposition_mode'] in ('assist','live'):raise
             from .disposition_shadow import gap
             gap('shadow_snapshot_failed')
             result['disposition']={'mode':'shadow','policy':SHADOW_VERSION,'kernel':VERSION,'compiler':COMPILER_VERSION,
@@ -46,7 +52,8 @@ def current(conn,persona_id,channel):
     return {'schema_version':1,'policy_id':None,'revision':0,**DEFAULT_CONTEXT}
 
 
-def initialize(conn,persona_id=None,*,new_persona=False):
+def initialize(conn,persona_id=None,*,new_persona=False,disposition_default='baseline'):
+    if disposition_default not in ('baseline','live'):raise ValueError('invalid_initial_disposition')
     from .ingress import PARAMS
     ids=[persona_id] if persona_id else [r[0] for r in conn.execute('SELECT id FROM personas')]
     for pid in ids:
@@ -59,6 +66,7 @@ def initialize(conn,persona_id=None,*,new_persona=False):
             data['context']=dict(DEFAULT_CONTEXT)
             defaults=new_persona_defaults() if new_persona else None
             if defaults:data=defaults['data']
+            if defaults:data['context']['disposition_mode']=disposition_default
             vid=identifier()
             mode=old['mode'] if old else (defaults['mode'] if defaults else 'legacy_per_message')
             reply_mode=old['reply_mode'] if old else (defaults['reply_mode'] if defaults else 'legacy_full')

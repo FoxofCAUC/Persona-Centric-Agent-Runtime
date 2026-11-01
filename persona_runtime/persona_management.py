@@ -74,6 +74,7 @@ class PersonaManagement:
         from .profile import initialize_profiles,append_version
         from .character import head,append
         from .context_policy import initialize
+        from .decision_capsule import new_identity_mode
         with self.store.connection(write=True) as db:
             fp,old=self._operation(db,operation_id,['clone',persona_id,expected_versions,expected_selected])
             if old:return old
@@ -82,7 +83,7 @@ class PersonaManagement:
             guard_acceptance_write(self.store,persona_id)
             spec=json.loads(db.execute('SELECT spec_json FROM personas WHERE id=?',(persona_id,)).fetchone()[0])
             new_id=identifier();db.execute('INSERT INTO personas VALUES(?,?,?,?,?)',(new_id,spec['name'],1,json.dumps(spec,ensure_ascii=False),timestamp()))
-            initialize_profiles(db,new_id,actor='copy');append(db,new_id,head(db,persona_id)['data'],'copy');initialize(db,new_id,new_persona=True)
+            initialize_profiles(db,new_id,actor='copy');append(db,new_id,head(db,persona_id)['data'],'copy');initialize(db,new_id,new_persona=True,disposition_default=new_identity_mode(self.store,new_id))
             root=persona_id if view['private_original'] else view['privacy_root']
             if root:
                 private=PrivatePersonas(self.store.paths)
@@ -107,6 +108,7 @@ class PersonaManagement:
             ('reply_delivery_parts',"state IN ('pending','sending','failed','uncertain')"),
             ('character_selection_attempts',"status='running'"),
             ('disposition_compile_attempts',"status='running'"),
+            ('situation_observation_attempts',"status='running'"),
             ('quota_reservations',"state='active'")):
             if db.execute('SELECT 1 FROM '+table+' WHERE persona_id=? AND '+condition+' LIMIT 1',(pid,)).fetchone():
                 raise RuntimeErrorBase('persona_has_pending_work')

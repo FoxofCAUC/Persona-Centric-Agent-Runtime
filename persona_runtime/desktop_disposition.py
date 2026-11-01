@@ -11,6 +11,7 @@ from .disposition_core.contracts import ACTIONS,CATEGORIES
 class DispositionUI:
     def init_disposition_vars(self):
         self.dispo_channel=tk.StringVar(value='desktop');self.dispo_mode=tk.StringVar(value='baseline')
+        self.dispo_observation=tk.StringVar(value='disabled')
         self.dispo_status=tk.StringVar(value='未读取人格倾向；Shadow不影响回复。')
         self.dispo_state=None;self.dispo_document=None;self.dispo_sources=[];self.dispo_history=[]
         self.dispo_dirty=False;self.dispo_generation=0
@@ -24,6 +25,8 @@ class DispositionUI:
         return self.dispo_operations[key]
 
     def build_disposition(self,parent):
+        from .desktop_evaluation import open_review
+        self.button(self.character_bar(parent),'独立评测盲审',lambda:open_review(self),{'character-read'})
         ttk.Label(parent,textvariable=self.dispo_status,wraplength=700).pack(anchor='w')
         bar=self.character_bar(parent)
         self.button(bar,'读取倾向与来源',self.refresh_dispositions,{'character-read'})
@@ -37,6 +40,10 @@ class DispositionUI:
         self.dispo_mode_combo.grid(row=0,column=1)
         self.button(bar,'保存观察模式',self.save_disposition_mode,{'character-write'})
         self.button(bar,'查询编译结果',self.disposition_compile_status,{'character-read'})
+        bar=self.character_bar(parent)
+        ttk.Label(bar,text='Shadow任务理解（按需收费）').grid(row=0,column=0)
+        ttk.Combobox(bar,textvariable=self.dispo_observation,values=('disabled','on_demand'),state='readonly',width=12).grid(row=0,column=1)
+        self.button(bar,'配置作者关系映射',self.edit_relationship_mapping,{'character-write'})
         self.dispo_definition_list=tk.Listbox(parent,height=5,width=1,exportselection=False);self.dispo_definition_list.pack(fill='x',pady=5)
         bar=self.character_bar(parent)
         for label,fn in [('修改草案项',self.edit_disposition),('拒绝草案项',self.reject_disposition),('保存草案',self.save_disposition_draft),('集中确认',self.confirm_dispositions)]:
@@ -71,10 +78,11 @@ class DispositionUI:
         def loaded(value):
             self.dispo_pid=value['pid'];self.dispo_state=value['state'];self.dispo_sources=value['sources']
             self.dispo_document=value['document'];self.dispo_history=value['history'];self.dispo_policy=value['policy'];self.dispo_dirty=False
-            self.dispo_mode_combo.configure(values=('baseline','shadow','assist') if value['policy'].get('assist_admitted') else ('baseline','shadow'))
+            self.dispo_mode_combo.configure(values=('baseline','shadow')+ (('assist',) if value['policy'].get('assist_admitted') else ()) + (('live',) if value['policy'].get('live_admitted') else ()))
             self.dispo_mode.set(value['policy'].get('disposition_mode','baseline'))
-            self.dispo_preview_button.configure(text='预览胶囊（零模型）' if value['policy'].get('assist_admitted') else '预览Shadow（零模型）')
-            note='隔离Assist，本实例允许受控渲染' if self.dispo_mode.get()=='assist' else '仅观察，不进入Prompt'
+            self.dispo_observation.set(value['policy'].get('situation_observation_mode','disabled'))
+            self.dispo_preview_button.configure(text='预览胶囊（零模型）' if (value['policy'].get('assist_admitted') or value['policy'].get('live_admitted')) else '预览Shadow（零模型）')
+            note={'assist':'隔离Assist，本实例允许受控渲染','live':'Live候选：按已授权策略受控渲染'}.get(self.dispo_mode.get(),'仅观察，不进入Prompt')
             self.dispo_status.set('状态：'+value['state']['status']+'；修订 '+str(value['state']['revision'])+'；'+note)
             self.dispo_source_list.delete(0,'end')
             for source in self.dispo_sources:self.dispo_source_list.insert('end',source['kind']+' · '+source['path']+' · '+source['entry_id']+' · '+str(len(source['text']))+'字')
@@ -172,6 +180,43 @@ class DispositionUI:
         if selected and self.dispo_document:
             self.dispo_document['definitions'].pop(selected[0]);self.dispo_dirty=True;self.dispo_generation+=1;self._render_disposition_defs()
 
+    def edit_relationship_mapping(self):
+        if not self.dispo_document:return
+        candidates=[s for s in self.dispo_sources if s['kind']=='relationship']
+        token=self._dispo_token();doc=deepcopy(self.dispo_document)
+        dialog,body,footer=self.dialog_shell('作者设定的关系类别',(700,500),(450,320))
+        ttk.Label(body,text='这不是实际亲密度测量。选择原文依据；保存仅修改草案，集中确认后生效。',wraplength=640).pack(anchor='w')
+        selection=tk.StringVar(value='未配置')
+        previous=doc.get('relationship_mapping')
+        if previous:selection.set(previous['value'])
+        ttk.Combobox(body,textvariable=selection,values=('未配置','neutral','close','distant'),state='readonly').pack(anchor='w')
+        source=candidates[0] if len(candidates)==1 else None
+        original=scrolledtext.ScrolledText(body,height=8,width=1);original.pack(fill='both',expand=True)
+        original.insert('1.0',source['text'] if source else '当前没有合格的作者关系来源。请先编辑作者关系资料。');original.configure(state='disabled')
+        ttk.Label(body,text='请在上方选中作为依据的原文（最多2000字符）。').pack(anchor='w')
+        def save():
+            if token!=self._dispo_token():
+                messagebox.showwarning('选择已变化','草稿保留，请返回原人格重新读取比较。',parent=dialog);return
+            mapping=None
+            if selection.get()!='未配置':
+                if not source:return
+                try:
+                    start=len(original.get('1.0','sel.first'));end=len(original.get('1.0','sel.last'))
+                except (tk.TclError,TypeError):
+                    messagebox.showwarning('缺少引文','请先选中支持该类别的原文。',parent=dialog);return
+                if not 0<end-start<=2000:return
+                mapping={'value':selection.get(),'source_ref':{k:source[k] for k in ('source_id','version_id','path','entry_id','content_hash')}|
+                    {'start':start,'end':end,'fragment_hash':fingerprint(source['text'][start:end])}}
+                doc['source_versions']['relationship']=source['version_id']
+            doc.update(schema_version=2,relationship_mapping=mapping)
+            self.dispo_document=doc;self.dispo_dirty=True;self.dispo_generation+=1;dialog.destroy()
+        ttk.Button(footer,text='保留到本地草案',command=save).grid(row=0,column=0)
+        def close():
+            if not messagebox.askyesno('关闭映射窗口','放弃本窗口未保存的选择？',default='no',parent=dialog):return False
+            dialog.destroy();return True
+        dialog.character_close=close;dialog.character_dirty=lambda:True;dialog.character_busy=lambda:False
+        self.character_dialogs.append(dialog);dialog.protocol('WM_DELETE_WINDOW',close)
+
     def _dispo_write(self,action,**args):
         if not self.dispo_state:return
         pid=self.dispo_pid;revision=self.dispo_state['revision'];operation=self._dispo_operation([action,pid,revision,args])
@@ -216,14 +261,14 @@ class DispositionUI:
 
     def save_disposition_mode(self):
         if not self.dispo_state:return
-        pid=self.dispo_pid;channel=self.dispo_channel.get();mode=self.dispo_mode.get();action=self._dispo_pending()
+        pid=self.dispo_pid;channel=self.dispo_channel.get();mode=self.dispo_mode.get();observation=self.dispo_observation.get();action=self._dispo_pending()
         if not action:return
         policy=self.dispo_policy
         if policy['channel']!=channel:
             messagebox.showwarning('先读取入口','入口已变化，请重新读取政策后保存。',parent=self);return
-        op=self._dispo_operation(['mode',pid,channel,mode,policy['id'],action])
+        op=self._dispo_operation(['mode',pid,channel,mode,observation,policy['id'],action])
         def save():
-            return self.client.manage('interaction.update',persona_id=pid,channel=channel,mode=policy['mode'],expected_version=policy['id'],operation_id=op,disposition_mode=mode,pending_action=action)
+            return self.client.manage('interaction.update',persona_id=pid,channel=channel,mode=policy['mode'],expected_version=policy['id'],operation_id=op,disposition_mode=mode,situation_observation_mode=observation,pending_action=action)
         def saved(value):
             self.dispo_policy=value
             self.dispo_status.set('观察模式已保存：'+value['disposition_mode'])
@@ -232,8 +277,8 @@ class DispositionUI:
     def preview_disposition(self):
         if not self.dispo_state:return
         pid=self.dispo_pid;text=self.dispo_preview_text.get('1.0','end-1c');token=self._dispo_token();mode=self.dispo_mode.get()
-        self._dispo_run('Shadow只读预览',lambda:self.client.manage('disposition.preview',persona_id=pid,members=[text],mode='assist' if mode=='assist' else 'shadow'),
-            lambda v:self.show_json('隔离Assist预览' if mode=='assist' else 'Shadow预览（不进入Prompt）',v) if mode==self.dispo_mode.get() and text==self.dispo_preview_text.get('1.0','end-1c') and token==self._dispo_token() else None)
+        self._dispo_run('Shadow只读预览',lambda:self.client.manage('disposition.preview',persona_id=pid,members=[text],mode=mode if mode in ('assist','live') else 'shadow'),
+            lambda v:self.show_json('受控胶囊预览' if mode in ('assist','live') else 'Shadow预览（不进入Prompt）',v) if mode==self.dispo_mode.get() and text==self.dispo_preview_text.get('1.0','end-1c') and token==self._dispo_token() else None)
 
     def inspect_dispositions(self):
         if self.dispo_state:self._dispo_run('读取Shadow记录',lambda:self.client.manage('disposition.inspect',persona_id=self.dispo_pid),lambda v:self.show_json('观察记录；不同于模型behavior_intent',v))

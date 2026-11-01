@@ -33,6 +33,14 @@ class ModelClient(Protocol):
     async def complete(self, model: dict, messages: list[dict]) -> tuple[str, dict | None]: ...
 
 
+def model_tls_context():
+    import ssl
+    import certifi
+    context=ssl.create_default_context()
+    context.load_verify_locations(cafile=certifi.where())
+    return context
+
+
 class ChatCompletionsClient:
     def __init__(self, *, ssl_context=None):
         self.ssl_context=ssl_context
@@ -43,16 +51,11 @@ class ChatCompletionsClient:
         headers = {"Content-Type": "application/json"}
         if model["encrypted_key"]:
             headers["Authorization"] = "Bearer " + unprotect(model["encrypted_key"])
-        payload = {"model": model["name"], "messages": messages,
-                   "max_tokens": model["max_tokens"], "stream": False}
-        from .reply_protocol import response_format
-        fmt=response_format(model.get('_reply_mode'),model.get('_expression_snapshot'))
-        if model.get('_disposition_compile'):
-            # Reuse the selector's established text transport. Compilation JSON
-            # is validated atomically on return; no extra gateway capability
-            # (or repair call) is assumed for the selected provider.
-            fmt=None
-        if fmt:payload['response_format']=fmt
+        from .provider_compat import build_request,endpoint,usage_fields,response_metadata
+        try:
+            payload,wire=build_request(model,messages);url=endpoint(model)
+        except ValueError as error:
+            raise ModelError(str(error)) from None
         # One configured end-to-end budget. A hidden shorter connection cap
         # used to fail 60-second requests after five seconds of DNS/TLS work.
         budget = model['timeout']
@@ -71,20 +74,18 @@ class ChatCompletionsClient:
         trace.on_request_headers_sent.append(sent)
         def diagnostic():
             return {**transport, 'timeout_seconds': budget,
-                    'elapsed_ms': round((time.monotonic()-started)*1000, 3)}
-        connector=aiohttp.TCPConnector(ssl=self.ssl_context) if self.ssl_context else None
-        if model.get('_disposition_compile'):
-            # Explicit compiler-only trust bundle. Never disable certificate or
-            # hostname verification, and never retry a failed external request.
-            import ssl
-            import certifi
-            connector=aiohttp.TCPConnector(ssl=ssl.create_default_context(cafile=certifi.where()))
+                    'elapsed_ms': round((time.monotonic()-started)*1000, 3),
+                    'transport_profile':wire['profile'],'response_format':wire['response_format'],
+                    'thinking':wire['thinking']}
+        # Keep the OS trust store and add the project's pinned public CA bundle
+        # for every model purpose. Isolated probes and production use one path.
+        connector=aiohttp.TCPConnector(ssl=self.ssl_context or model_tls_context())
         if model.get('_request_deadline') is not None:
             budget=min(budget,max(.01,model['_request_deadline']-time.monotonic()-.1))
             timeout=aiohttp.ClientTimeout(total=budget,connect=budget,ceil_threshold=math.inf)
         try:
             async with aiohttp.ClientSession(timeout=timeout, trust_env=False, trace_configs=[trace],connector=connector) as client:
-                async with client.post(model["base_url"].rstrip("/") + "/chat/completions",
+                async with client.post(url,
                                        headers=headers, json=payload, allow_redirects=False) as response:
                     transport.update(phase='reading_body', response_headers_received=True)
                     if response.status != 200:
@@ -99,15 +100,18 @@ class ChatCompletionsClient:
                     choice=data['choices'][0]
                     text = choice["message"]["content"]
                     finish=choice.get('finish_reason')
-                    diagnostics={**diagnostic(),'finish_reason':finish if finish in ('stop','length','content_filter','tool_calls','function_call') else 'unknown',
-                                 'response_format':'json_schema' if fmt else 'text',
+                    diagnostics={**diagnostic(),'finish_reason':finish if finish in ('stop','length','content_filter','tool_calls','function_call','insufficient_system_resource','aborted') else 'unknown',
                                  'output_characters':len(text) if isinstance(text,str) else 0}
-                    usage = data.get("usage")
-                    if not isinstance(usage, dict):
-                        usage = None
-                    else:
-                        usage = {k: v for k, v in usage.items() if k in (
-                            "prompt_tokens", "completion_tokens", "total_tokens") and type(v) is int and v >= 0}
+                    deepseek=wire['profile']=='deepseek-chat-v1'
+                    usage=usage_fields(data.get('usage'),deepseek=deepseek)
+                    if deepseek:
+                        diagnostics.update(response_metadata(data),reasoning_present=bool(choice['message'].get('reasoning_content')))
+                        if finish=='content_filter':raise ModelError('provider_content_filtered',usage=usage,diagnostics=diagnostics)
+                        if finish in ('length','insufficient_system_resource','aborted'):
+                            code='provider_output_truncated' if finish=='length' else 'provider_'+finish
+                            raise ModelError(code,usage=usage,diagnostics=diagnostics)
+                        if finish=='tool_calls' or choice['message'].get('tool_calls'):
+                            raise ModelError('provider_tool_call_not_supported',usage=usage,diagnostics=diagnostics)
                     if not isinstance(text, str) or not text.strip():
                         raise ModelError('provider_content_filtered' if finish=='content_filter' else 'provider_empty_response',usage=usage,diagnostics=diagnostics)
                     return ModelCompletion(text,usage,diagnostics)
@@ -145,14 +149,24 @@ def recall(query, memories):
 
 
 class ChatEngine:
-    def __init__(self, store, config, client=None, *, assist_admission=None):
+    def __init__(self, store, config, client=None, *, assist_admission=None, live_admission=None):
         self.store, self.config = store, config
         self.assist_admission = assist_admission
+        from .decision_capsule import load_live_release
+        self.live_admission = live_admission if live_admission is not None else load_live_release(store,config)
+        def new_identity_mode(persona_id):
+            live_admission=self.live_admission
+            if live_admission is None or not live_admission.initialize_new or live_admission.release_report is None:return 'baseline'
+            live_admission.check(store,config,persona_id)
+            return 'live'
+        store.new_identity_mode=new_identity_mode
         from .cognitive import CognitiveService
         self.cognitive=CognitiveService(store,self)
         self.client = client or ChatCompletionsClient()
         from .character_selector import SelectorService
         self.selector=SelectorService(store,config,self.client,self.cognitive.characters)
+        from .situation_observation import SituationObservationService
+        self.observer=SituationObservationService(self)
         self.service = RuntimeService(store)
         self.tasks = {}
         self.locks = defaultdict(asyncio.Lock)
@@ -161,6 +175,7 @@ class ChatEngine:
     def recover(self):
         with self.store.connection(write=True) as conn:
             self.selector.recover(conn)
+            self.observer.recover(conn)
             for row in conn.execute("SELECT id FROM turns WHERE status IN ('queued','running')").fetchall():
                 record_progress(conn, row[0], "interrupted")
             for row in conn.execute("SELECT turn_id FROM deliveries WHERE state='sending'").fetchall():
@@ -259,6 +274,7 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,persona_id),ensure_ascii=False),turn_id))
                 from .context_policy import current as context_policy
                 conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=1 WHERE id=?',(json.dumps(context_policy(conn,persona_id,channel)),json.dumps(self.config.load()['character_selector']),turn_id))
+                conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(self.config.load()['character_selector']),turn_id))
             if channel == "qq":
                 identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
                 conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
@@ -286,6 +302,7 @@ class ChatEngine:
             raise RuntimeErrorBase("Request not found")
         value = dict(row)
         value.pop("selector_model_snapshot",None)
+        value.pop("observation_model_snapshot",None)
         value.pop("model_snapshot")
         value.pop('profile_snapshot',None)
         value.pop('character_snapshot',None)
@@ -383,7 +400,8 @@ class ChatEngine:
                 latest=self.get(turn_id)
                 if latest['status']!='queued' or latest['execution_revision']!=initial['execution_revision']:return
                 selection=await self.selector.prepare(turn_id)
-                prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id,selection)
+                observation=await self.observer.prepare(turn_id)
+                prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id,selection,observation)
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
                     if turn["status"] != "queued" or turn["cancelled_at"] or turn["execution_revision"]!=initial["execution_revision"]:
@@ -392,6 +410,8 @@ class ChatEngine:
                     from .private_personas import guard_cloud_dispatch
                     guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
                     prepared=self.cognitive.finalize(conn,turn,prepared)
+                    evaluation=getattr(self,'evaluation_session',None)
+                    if evaluation:evaluation.before_dispatch(self,turn,prepared)
                     messages=prepared['messages'];turn['_context_details']=prepared['details']
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
@@ -540,6 +560,7 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',(reply_mode,json.dumps(json.loads(reply_policy[1]).get('expression') or expression_snapshot(reply_mode,reply_policy[2],version=1) if reply_policy else expression_snapshot(reply_mode,version=1)),turn_id))
                 from .context_policy import current as context_policy
                 conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=execution_revision+1 WHERE id=?',(json.dumps(context_policy(conn,turn['persona_id'],turn['channel'])),json.dumps(self.config.load()['character_selector']),turn_id))
+                conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(self.config.load()['character_selector']),turn_id))
             record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
         return self.get(turn_id)

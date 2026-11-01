@@ -13,6 +13,15 @@ from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, timestamp
 from .turn_input import load_turn_input
 
 
+def probe_material(model):
+    """Only these synthetic bytes may bypass a private-author upload grant."""
+    pool={'payload':{'roots':{'lore':['probe'],'example':[]},'groups':{'lore:probe':['probe']},
+          'sources':[{'kind':'lore','id':'probe','source_hash':digest('人工测试'),'title':'测试偏好','text':'人工测试角色喜欢紫色。'}]}}
+    pool['fingerprint']=digest(pool['payload'])
+    payload=messages(pool,['测试角色偏好什么颜色？'],'',2,model['max_input_chars'],prompt_version=PROMPT_VERSION)
+    return pool,payload
+
+
 class SelectorService:
     def __init__(self,store,config,client,characters):
         self.store,self.config,self.client,self.characters=store,config,client,characters
@@ -33,7 +42,12 @@ class SelectorService:
 
     def _start(self,conn,persona_id,turn,model,payload,pool,operation_id=None,*,prompt_version=PROMPT_VERSION):
         from .private_personas import guard_cloud_dispatch
-        guard_cloud_dispatch(self.store,persona_id,'selector',model)
+        if turn is not None:
+            guard_cloud_dispatch(self.store,persona_id,'selector',model)
+        else:
+            expected_pool,expected_payload=probe_material(model)
+            if pool!=expected_pool or payload!=expected_payload or prompt_version!=PROMPT_VERSION:
+                raise RuntimeErrorBase('selector_probe_material_invalid')
         system=prompt_for(prompt_version)
         if not payload or payload[0]!={'role':'system','content':system}:
             raise RuntimeErrorBase('selector_prompt_snapshot_mismatch')
@@ -54,6 +68,7 @@ class SelectorService:
             cap=cfg['character_selector'][field]
             count=conn.execute('SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?',(now-period,)).fetchone()[0]
             count+=conn.execute('SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?',(now-period,)).fetchone()[0]
+            count+=conn.execute('SELECT count(*) FROM situation_observation_attempts WHERE started_epoch>?',(now-period,)).fetchone()[0]
             if cap and count>=cap:raise SemanticFailure('selector_quota')
         aid=identifier();tid=turn['id'] if turn else None;revision=turn['execution_revision'] if turn else None
         from .archive import turn_scope
@@ -65,6 +80,8 @@ class SelectorService:
             'candidate_hash':pool['fingerprint'],'candidate_ids':pool['payload']['roots'],
             'source_hashes':[{k:r[k] for k in ('kind','id','source_hash')} for r in pool['payload']['sources']],
             'scope':scope,'model_name':model['name'],'model_snapshot_hash':digest({k:v for k,v in model.items() if k!='encrypted_key'}),'created_at':timestamp(),'persisted':True}
+        from .provider_compat import describe_request
+        manifest['provider_request_contract']=describe_request(model|{'_json_output':True})
         raw=encode(manifest)
         if len(raw.encode('utf-8'))>128*1024:raise RuntimeErrorBase('context_manifest_too_large')
         conn.execute('INSERT INTO context_manifests(id,persona_id,user_id,task_type,turn_id,selection_attempt_id,manifest_json,created_at) VALUES(?,?,?,\'character_selection\',?,?,?,?)',
@@ -82,7 +99,7 @@ class SelectorService:
             with self.store.connection(write=True) as conn:
                 aid=self._start(conn,persona_id,turn,model,payload,pool,operation_id,prompt_version=prompt_version)
             try:
-                task=asyncio.create_task(self.client.complete(model,payload))
+                task=asyncio.create_task(self.client.complete(model|{'_json_output':True},payload))
                 done,_=await asyncio.wait({task},timeout=min(60,model['timeout']))
                 if not done:
                     task.cancel()
@@ -114,6 +131,12 @@ class SelectorService:
         from .behavior import resolve_behavior
         with self.store.connection() as conn:
             turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
+            session=getattr(self,'evaluation_session',None)
+            if session:
+                row=session.get(self.engine,conn,turn)
+                if row and row['arm']=='A':return None
+                if row and row['arm']=='C':return session.reuse(self.engine,conn,turn)
+                if row and row['arm']=='B' and session.has_material(row):return session.reuse(self.engine,conn,turn)
             policy=read(policy_for(turn))
             if policy['mode']!='hybrid_llm' or turn['channel']=='test':return None
             version=validate_snapshot(conn,turn)
@@ -126,6 +149,17 @@ class SelectorService:
         fallback=select_context(version,'\n\n'.join(members),members=members,scenario=scenarios,example_limit=limit)
         fallback.update(requested_mode='hybrid_llm',effective_mode='lexical',degrade_reason=None)
         started=time.monotonic();aid=None
+        # Evaluation recovery must reuse a terminal paid attempt, including the
+        # production lexical fallback. Never turn a missing artifact into a new call.
+        if getattr(self,'evaluation_session',None):
+            with self.store.connection() as conn:
+                previous=conn.execute('SELECT * FROM character_selection_attempts WHERE turn_id=? AND execution_revision=?',(turn_id,turn['execution_revision'])).fetchone()
+            if previous is not None:
+                if previous['status'] not in ('failed','interrupted'):
+                    raise RuntimeErrorBase('evaluation_selection_recovery_requires_material')
+                result=fallback|{'degrade_reason':previous['error_code'],'selection_attempt_id':previous['id'],'preparation_ms':0}
+                self.evaluation_session.capture(self.engine,turn,result)
+                return result
         from .progress import record
         with self.store.connection(write=True) as conn:record(conn,turn_id,'character_local')
         try:
@@ -156,6 +190,8 @@ class SelectorService:
         result.update(selection_attempt_id=aid,preparation_ms=round((time.monotonic()-started)*1000,3))
         with self.store.connection(write=True) as conn:
             record(conn,turn_id,'character_fallback' if result['degrade_reason'] else 'character_selected')
+        session=getattr(self,'evaluation_session',None)
+        if session:session.capture(self.engine,turn,result)
         return result
 
     async def probe(self,persona_id,operation_id):
@@ -168,9 +204,6 @@ class SelectorService:
                 return {k:v for k,v in dict(old).items() if k!='model_snapshot'}
         model=self.config.load()['character_selector']
         if not model['enabled']:raise RuntimeErrorBase('selector_not_configured')
-        pool={'payload':{'roots':{'lore':['probe'],'example':[]},'groups':{'lore:probe':['probe']},
-              'sources':[{'kind':'lore','id':'probe','source_hash':digest('人工测试'),'title':'测试偏好','text':'人工测试角色喜欢紫色。'}]}}
-        pool['fingerprint']=digest(pool['payload'])
-        payload=messages(pool,['测试角色偏好什么颜色？'],'',2,model['max_input_chars'],prompt_version=PROMPT_VERSION)
+        pool,payload=probe_material(model)
         answer,error,aid=await self._call(persona_id,None,model,payload,pool,2,operation_id)
         return {'selection_attempt_id':aid,'answer':answer,'error':error}

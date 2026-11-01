@@ -140,8 +140,48 @@ class OrganizationUI:
         self.run_task('保存整理配置', {'config'}, lambda _: self.config.update({'organization': settings}), saved)
 
     def test_organization_model(self):
+        key=(self.persona_id,self.view_epoch)
+        pending=getattr(self,'org_model_test_pending',None)
+        if pending and pending['key']==key:
+            if pending.get('task_id'):
+                self.watch_organization_test({'id':pending['task_id'],'status':'queued'},key)
+            else:self.submit_organization_test(pending)
+            return
         if messagebox.askyesno('整理模型测试', '将使用已保存配置请求一次模型，计入后台和全项目额度。继续？'):
-            self.org_call('organization.model-test', title='整理模型测试任务')
+            pending={'key':key,'request_id':identifier()}
+            self.org_model_test_pending=pending
+            self.submit_organization_test(pending)
+
+    def submit_organization_test(self,pending):
+        key=pending['key']
+        self.notice.set('整理模型测试：正在受理；只测试已保存配置。')
+        self.run_task('受理整理模型测试',{'org-model-test'},
+            lambda _:self.client.manage('organization.model-test',request_id=pending['request_id']),
+            lambda value:self.watch_organization_test(value,key),error_current=lambda:key==(self.persona_id,self.view_epoch))
+
+    def watch_organization_test(self,value,key):
+        if self.closed or key!=(self.persona_id,self.view_epoch):return
+        pending=getattr(self,'org_model_test_pending',None)
+        if not pending or pending['key']!=key:return
+        pending['task_id']=value['id']
+        state=value['status']
+        self.notice.set('整理模型测试：'+STATES.get(state,state)+' · '+value['id'][:8])
+        if state in ('queued','running'):
+            # Poll the original task; never submit another paid test on refresh.
+            def poll():
+                if self.closed or key!=(self.persona_id,self.view_epoch):return
+                self.run_task('等待整理模型测试',{'org-model-test'},
+                    lambda _:self.client.manage('organization.show',task_id=value['id']),
+                    lambda result:self.watch_organization_test(result,key),error_current=lambda:key==(self.persona_id,self.view_epoch))
+            self.after(700,poll)
+        elif state=='waiting_quota':
+            self.notice.set('整理模型测试等待额度；未调用模型。可在记忆整理页查看或取消原任务。')
+        else:
+            self.org_model_test_pending=None
+            if state=='completed':self.notice.set('整理模型测试成功；调用用量见结果。')
+            else:self.notice.set('整理模型测试'+STATES.get(state,state)+'：'+str(value.get('error_code') or '请查看任务详情'))
+            self.show_json('整理模型测试结果',value)
+            self.refresh_quotas()
 
     def org_call(self, action, title=None, **args):
         self.run_task('记忆整理操作', {'org-write' if title is None else 'org-details'}, lambda _: self.client.manage(action, **args),

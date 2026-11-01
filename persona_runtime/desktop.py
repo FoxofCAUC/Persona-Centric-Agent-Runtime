@@ -47,6 +47,18 @@ ERRORS.update({"session_sealed":"此会话已封存。草稿保留，请在会�
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
                "request_failed": "本机处理失败，请查看请求详情和诊断记录。"})
 ERRORS.update(DISPLAY_ERRORS)
+ERRORS.update({
+    'provider_http_402':'模型账户余额不足，请检查供应商账户。',
+    'provider_http_422':'模型参数未被供应商接受，请核对模型名称及接口配置。',
+    'provider_http_503':'模型供应商暂时过载，请稍后恢复测试。',
+    'provider_endpoint_incompatible':'请填写Chat Completions基础地址，例如https://api.deepseek.com/v1。',
+    'provider_json_instruction_missing':'结构化请求缺少JSON格式合同，已在调用前停止。',
+    'provider_empty_response':'供应商未返回可显示的最终正文；思考内容不会作为回复展示。',
+    'provider_output_truncated':'供应商报告输出截断，未发布不完整正文。',
+    'provider_insufficient_system_resource':'供应商因资源不足终止了本次生成。',
+    'provider_aborted':'供应商终止了本次生成，原调用记录保留。',
+    'provider_tool_call_not_supported':'供应商返回了本入口不支持的工具调用，未执行或展示为回复。',
+})
 PHASES = {"character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}

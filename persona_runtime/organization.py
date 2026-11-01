@@ -476,7 +476,7 @@ class OrganizationEngine:
             conn.execute("UPDATE organization_tasks SET status='running',updated_at=? WHERE id=?", (timestamp(), task["id"]))
         self.running = True
         try:
-            reply, usage = await self.client.complete(model, messages)
+            reply, usage = await self.client.complete(model|{'_json_output':task['mode']!='test'}, messages)
             with self.store.connection(write=True) as conn:
                 if task["mode"] != "test":
                     if payload["guard"] != self.guard(conn, task["persona_id"], task["session_id"]) or not valid(conn,payload):
@@ -499,15 +499,22 @@ class OrganizationEngine:
             self.running = False
         return True
 
-    def test_model(self):
+    def test_model(self, request_id=None):
+        request_id=request_id or identifier()
+        if not isinstance(request_id,str) or not 1<=len(request_id)<=200:
+            raise RuntimeErrorBase('invalid_request_id')
         with self.store.connection(write=True) as conn:
+            persona_id = self.store.current(conn)
+            old=conn.execute('SELECT * FROM organization_tasks WHERE request_id=?',(request_id,)).fetchone()
+            if old:
+                if old['persona_id']!=persona_id or old['mode']!='test':raise RuntimeErrorBase('submission_conflict')
+                return self._view(old)
             if self.draining or self.chat.draining:
                 raise RuntimeErrorBase("service_draining")
-            persona_id = self.store.current(conn)
             if conn.execute("SELECT count(*) FROM organization_tasks WHERE status IN ('queued','waiting_quota')").fetchone()[0] >= 10:
                 raise RuntimeErrorBase("organization_queue_full")
             task_id, now = identifier(), timestamp()
-            conn.execute("INSERT INTO organization_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (task_id, identifier(), persona_id, LOCAL_USER_ID, None, None, "test", 0, identifier(), "{}", encoded(self.model()), "queued", None, now, now))
+            conn.execute("INSERT INTO organization_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (task_id, request_id, persona_id, LOCAL_USER_ID, None, None, "test", 0, identifier(), "{}", encoded(self.model()), "queued", None, now, now))
             return self._view(conn.execute("SELECT * FROM organization_tasks WHERE id=?", (task_id,)).fetchone())
 
     def skip(self, task_id):

@@ -35,7 +35,8 @@ def exclude_memory(conn, memory, reason):
 
 def project_calls(conn, since):
     compiler = conn.execute("SELECT count(*) FROM disposition_compile_attempts WHERE started_epoch>?",(since,)).fetchone()[0] if conn.execute("SELECT 1 FROM sqlite_master WHERE name='disposition_compile_attempts'").fetchone() else 0
-    return (compiler + conn.execute("SELECT count(*) FROM attempts WHERE started_epoch>?", (since,)).fetchone()[0]
+    observation = conn.execute("SELECT count(*) FROM situation_observation_attempts WHERE started_epoch>?",(since,)).fetchone()[0] if conn.execute("SELECT 1 FROM sqlite_master WHERE name='situation_observation_attempts'").fetchone() else 0
+    return (observation + compiler + conn.execute("SELECT count(*) FROM attempts WHERE started_epoch>?", (since,)).fetchone()[0]
             + conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (since,)).fetchone()[0]
             + conn.execute("SELECT count(*) FROM character_selection_attempts WHERE started_epoch>?", (since,)).fetchone()[0])
 
