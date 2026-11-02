@@ -8,7 +8,8 @@ EXPRESSION_REALIZATION_VERSION='natural-dialogue-v3'
 LIVELINESS_VERSION='natural-dialogue-v4'
 EXPRESSION_TAIL_VERSION='natural-dialogue-v5'
 HABIT_REALIZATION_VERSION='natural-dialogue-v6'
-SUPPORTED_VERSIONS=frozenset((VERSION,EXPRESSION_REALIZATION_VERSION,LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION))
+PARTICIPATION_VERSION='natural-dialogue-v7'
+SUPPORTED_VERSIONS=frozenset((VERSION,EXPRESSION_REALIZATION_VERSION,LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION,PARTICIPATION_VERSION))
 VARIATIONS=(
     '顺着眼前最有意思的细节接话，想说的说完就停。',
     '可以先冒出一个很短的反应，再接自己的看法，长短随内容。',
@@ -64,6 +65,13 @@ CONVERSATION_V6=(
     '对方要求原样回复其提供的普通文字、符号或标签时，原样放进正文即可。')
 
 
+PARTICIPATION=(
+    '对方说想聊什么、不想听什么，是你选取话题的方向；配合体现在接着说出的具体内容里。'
+    '日常聊天直接给出那个笑点、立场或画面；只有对方要确认或确有歧义时，再说明如何理解。')
+CONVERSATION_V7=CONVERSATION_V4.replace(
+    '表达样例让你体会人物怎么关注事情；',PARTICIPATION+'表达样例让你体会人物怎么关注事情；',1)
+
+
 def read(turn):
     model=json.loads(turn['model_snapshot']) if isinstance(turn.get('model_snapshot'),str) else turn.get('model_snapshot',{})
     value=model.get('_dialogue_profile')
@@ -88,11 +96,11 @@ def freeze(seed,members,*,version=VERSION):
 def render(profile,*,ablated=False):
     if profile is None:return '',None
     version=profile['version']
-    lively=version in (LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION)
+    lively=version in (LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION,PARTICIPATION_VERSION)
     hard=HARD_LIVELY if lively else HARD
     if ablated:return hard,{'version':version,'variation':None,'ablation':True}
     choice=int(sha256(profile['seed'].encode()).hexdigest()[:8],16)%len(VARIATIONS)
-    conversation=CONVERSATION_V6 if version==HABIT_REALIZATION_VERSION else CONVERSATION_V4 if lively else CONVERSATION_V3 if version==EXPRESSION_REALIZATION_VERSION else CONVERSATION
+    conversation=CONVERSATION_V7 if version==PARTICIPATION_VERSION else CONVERSATION_V6 if version==HABIT_REALIZATION_VERSION else CONVERSATION_V4 if lively else CONVERSATION_V3 if version==EXPRESSION_REALIZATION_VERSION else CONVERSATION
     return hard+conversation+'\n这次的表达余地：'+VARIATIONS[choice],{
         'version':version,'variation':choice,'temperature':profile['temperature'],'ablation':False}
 

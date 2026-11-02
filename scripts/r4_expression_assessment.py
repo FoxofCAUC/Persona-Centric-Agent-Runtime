@@ -65,7 +65,7 @@ def assess(root):
     values={p.stem:read(p) for p in (root/'results').glob('*.json')}
     validate_reading(review,prepared,values,data)
     result=calculate(review,prepared,metrics,diff,rules)
-    has_lively_voice=any(i['voice']['version'] in ('natural-dialogue-v4','natural-dialogue-v5','natural-dialogue-v6') for i in prepared['items'])
+    has_lively_voice=any(i['voice']['version'] in ('natural-dialogue-v4','natural-dialogue-v5','natural-dialogue-v6','natural-dialogue-v7') for i in prepared['items'])
     result.update(policy_version=amendment['version'],policy_authority='用户2026-11-01追加并要求长期沿用的原则',
         frozen_request_boundary_note=('本批新版表达已纳入活泼性优先原则；两臂阅读同用新口径，已受理请求不改写。' if has_lively_voice else
             '本批提示仍为事前冻结版本；新原则用于验收阅读，未改写已受理请求。'),
