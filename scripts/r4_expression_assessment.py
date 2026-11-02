@@ -27,7 +27,8 @@ def validate_reading(review,prepared,values,fixture):
     if any(p['verdict'] not in ('win','tie','loss','unknown') or not p['reason'] for p in pairs):raise StopRun('pair_reading_invalid')
 
 
-def calculate(review,prepared,metrics,differences,rubric):
+def calculate(review,prepared,metrics,differences,rubric,*,task_control_policy='both-arms-v1'):
+    if task_control_policy not in ('both-arms-v1','candidate-all-tasks-v1'):raise StopRun('unknown_task_control_policy')
     rows={r['key']:r for r in review['requests']};items=prepared['items'];primary=set(rubric['primary_cases']);stats={}
     for arm in ('control','experiment'):
         all_rows=[rows[i['key']] for i in items if i['arm']==arm]
@@ -45,7 +46,8 @@ def calculate(review,prepared,metrics,differences,rubric):
         'issues_reduced_at_least_two':stats['control']['issue_requests']-stats['experiment']['issue_requests']>=2,
         'specific_engagement_not_decreased':stats['experiment']['specific_engagement']>=stats['control']['specific_engagement'],
         'no_hard_boundary_regression':not regressions and stats['experiment']['hard_boundary_failures']<=stats['control']['hard_boundary_failures'],
-        'all_task_controls_pass':all(stats[a]['task_control_failures']==0 for a in stats),
+        'all_task_controls_pass':(stats['experiment']['task_control_failures']==0 if task_control_policy=='candidate-all-tasks-v1'
+                                  else all(stats[a]['task_control_failures']==0 for a in stats)),
         'eligible_primary_pairs_at_least_four':len(eligible)>=4,'eligible_primary_wins_more_than_losses':causal['win']>causal['loss']}
     passed=all(checks.values())
     return {'engineering_complete':metrics['complete_requests']==48 and metrics['all_complete_differences_explained'],
@@ -64,8 +66,28 @@ def assess(root):
     if review.get('policy_version')!=amendment['version']:raise StopRun('current_user_reading_policy_required')
     values={p.stem:read(p) for p in (root/'results').glob('*.json')}
     validate_reading(review,prepared,values,data)
-    result=calculate(review,prepared,metrics,diff,rules)
-    has_lively_voice=any(i['voice']['version'] in ('natural-dialogue-v4','natural-dialogue-v5','natural-dialogue-v6','natural-dialogue-v7') for i in prepared['items'])
+    # New policy is opt-in through the pre-call frozen authorization. Old packs
+    # never inherit a later global scoring change.
+    task_policy='both-arms-v1'
+    authorization_path=root/'authorization.json'
+    if authorization_path.exists():
+        authorization=read(authorization_path);task_policy=authorization.get('task_control_policy',task_policy)
+        if task_policy=='candidate-all-tasks-v1':
+            from scripts.r4_expression_realization import sha,verify_freeze
+            change_path=OUT/'task-gate-amendment-20261102.json';change=read(change_path)
+            if (change.get('version')!=task_policy or change.get('historical_regrading') is not False
+                    or authorization.get('task_control_authorization_hash')!=sha(change_path)):
+                raise StopRun('task_control_authorization_mismatch')
+            from datetime import datetime
+            if datetime.fromisoformat(prepared['created_at'])<datetime.fromisoformat(change['at']):
+                raise StopRun('task_control_policy_predates_authorization')
+            freeze=read(root/'freeze.json')
+            if freeze['files'].get('authorization.json')!=sha(authorization_path):raise StopRun('task_control_policy_not_frozen')
+            if not prepared['real']:raise StopRun('task_control_amendment_real_only')
+            verify_freeze(root)
+    result=calculate(review,prepared,metrics,diff,rules,task_control_policy=task_policy)
+    if task_policy!='both-arms-v1':result['task_control_policy']=task_policy
+    has_lively_voice=any(i['voice']['version'] in ('natural-dialogue-v4','natural-dialogue-v5','natural-dialogue-v6','natural-dialogue-v7','natural-dialogue-v8') for i in prepared['items'])
     result.update(policy_version=amendment['version'],policy_authority='用户2026-11-01追加并要求长期沿用的原则',
         frozen_request_boundary_note=('本批新版表达已纳入活泼性优先原则；两臂阅读同用新口径，已受理请求不改写。' if has_lively_voice else
             '本批提示仍为事前冻结版本；新原则用于验收阅读，未改写已受理请求。'),

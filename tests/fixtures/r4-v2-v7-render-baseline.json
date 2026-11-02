@@ -1,0 +1,385 @@
+{
+  "created_before_v8": true,
+  "profiles": [
+    {
+      "profile": {
+        "version": "natural-dialogue-v2",
+        "seed": "pre-v8-0",
+        "temperature": 1.1
+      },
+      "normal_sha256": "a9061f5ab463ca7dc86f3ce025a698d722081a43fcca8e3b74d1912c2229e091",
+      "ablation_sha256": "0be7925b62d9a57d08358a430ebe3cac81b465ef3dbde3a42dff39cbea50b559"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v2",
+        "seed": "pre-v8-1",
+        "temperature": 1.1
+      },
+      "normal_sha256": "b61669ef78225108fb03bcf8ec8975d21379809edc94b2b29d98960afe4a1a64",
+      "ablation_sha256": "0be7925b62d9a57d08358a430ebe3cac81b465ef3dbde3a42dff39cbea50b559"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v2",
+        "seed": "pre-v8-2",
+        "temperature": 1.1
+      },
+      "normal_sha256": "754959b50c7e4686bcb0500927ed1ffef8c4a88a187eb7f83f477e3b857867b9",
+      "ablation_sha256": "0be7925b62d9a57d08358a430ebe3cac81b465ef3dbde3a42dff39cbea50b559"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v2",
+        "seed": "pre-v8-3",
+        "temperature": 1.1
+      },
+      "normal_sha256": "34051785f4a865222a2efe40ca82b57b6cc10d4dfbf3f0db99e84de76476685f",
+      "ablation_sha256": "0be7925b62d9a57d08358a430ebe3cac81b465ef3dbde3a42dff39cbea50b559"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v2",
+        "seed": "pre-v8-4",
+        "temperature": 1.1
+      },
+      "normal_sha256": "ebbe10455305cfd5322e7ffbb6c82f70db7c66712eac75429d5480e0ffc6f653",
+      "ablation_sha256": "0be7925b62d9a57d08358a430ebe3cac81b465ef3dbde3a42dff39cbea50b559"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v2",
+        "seed": "pre-v8-6",
+        "temperature": 1.1
+      },
+      "normal_sha256": "c78a840e4b720057546aba60e884b4e8b7ab58177239113baaeeab5a0c6168c4",
+      "ablation_sha256": "0be7925b62d9a57d08358a430ebe3cac81b465ef3dbde3a42dff39cbea50b559"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v2",
+        "seed": "pre-v8-precise",
+        "temperature": 0.3
+      },
+      "normal_sha256": "7370ef1f9450851af6e4065822020f491a7106f0ab8e992927d29f45ff9203f9",
+      "ablation_sha256": "0be7925b62d9a57d08358a430ebe3cac81b465ef3dbde3a42dff39cbea50b559"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v3",
+        "seed": "pre-v8-0",
+        "temperature": 1.1
+      },
+      "normal_sha256": "8dc6ede70607f87f5631c0c5c8061c97b5b26a214e415f9727befc7cc5cc55b6",
+      "ablation_sha256": "9973aef04107cbfa5d340fe883670c4015bef7b9b0b8488ba6b0dec9386e706b"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v3",
+        "seed": "pre-v8-1",
+        "temperature": 1.1
+      },
+      "normal_sha256": "a6aa84550252a0f8d357482a7c6558416a4c3d688f84a5455676ce846e82c045",
+      "ablation_sha256": "9973aef04107cbfa5d340fe883670c4015bef7b9b0b8488ba6b0dec9386e706b"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v3",
+        "seed": "pre-v8-2",
+        "temperature": 1.1
+      },
+      "normal_sha256": "a42cd06a4e1dc1424af7b95c13c8d8bae079bdc23d7d57151c6adb661b840232",
+      "ablation_sha256": "9973aef04107cbfa5d340fe883670c4015bef7b9b0b8488ba6b0dec9386e706b"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v3",
+        "seed": "pre-v8-3",
+        "temperature": 1.1
+      },
+      "normal_sha256": "1e7580cafeafde44dff036b7d7f4e90c6fea237f12cd28eaf012764078e64f25",
+      "ablation_sha256": "9973aef04107cbfa5d340fe883670c4015bef7b9b0b8488ba6b0dec9386e706b"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v3",
+        "seed": "pre-v8-4",
+        "temperature": 1.1
+      },
+      "normal_sha256": "fd35a5bb6f6aeef20e5d1b3ef5d29d2cc199b16f8dd2750ba15f20c5d9b87e8a",
+      "ablation_sha256": "9973aef04107cbfa5d340fe883670c4015bef7b9b0b8488ba6b0dec9386e706b"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v3",
+        "seed": "pre-v8-6",
+        "temperature": 1.1
+      },
+      "normal_sha256": "6fd76b27956a3dc5169836076d2b4837732e75e47e22569792b805f9af83e411",
+      "ablation_sha256": "9973aef04107cbfa5d340fe883670c4015bef7b9b0b8488ba6b0dec9386e706b"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v3",
+        "seed": "pre-v8-precise",
+        "temperature": 0.3
+      },
+      "normal_sha256": "35287787a2cbcdd6809e72b4fcaca91d14b4c1944dbbb0f2b0904d8d844bffde",
+      "ablation_sha256": "9973aef04107cbfa5d340fe883670c4015bef7b9b0b8488ba6b0dec9386e706b"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v4",
+        "seed": "pre-v8-0",
+        "temperature": 1.1
+      },
+      "normal_sha256": "cb44b6abc9f61bbcc1f864a6740115b408cd0295d84b87f2791c69c9678268ee",
+      "ablation_sha256": "522e7d2f2402a8e523a40a9009213983ddca52dfb2a3d0ebd26523b7614bebba"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v4",
+        "seed": "pre-v8-1",
+        "temperature": 1.1
+      },
+      "normal_sha256": "f34d5b4fd1cef58725b62239257255aa67c7fe91bbc060283eaad0fb2e423298",
+      "ablation_sha256": "522e7d2f2402a8e523a40a9009213983ddca52dfb2a3d0ebd26523b7614bebba"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v4",
+        "seed": "pre-v8-2",
+        "temperature": 1.1
+      },
+      "normal_sha256": "5dfb9b64d532974a3b7802bc720b850a9665d9f78243af430f039c477545e869",
+      "ablation_sha256": "522e7d2f2402a8e523a40a9009213983ddca52dfb2a3d0ebd26523b7614bebba"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v4",
+        "seed": "pre-v8-3",
+        "temperature": 1.1
+      },
+      "normal_sha256": "ba846f66565c1d2ff5d878d9f2ff081b67dbf662fa0cf8b5b90e09d12a79c6fe",
+      "ablation_sha256": "522e7d2f2402a8e523a40a9009213983ddca52dfb2a3d0ebd26523b7614bebba"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v4",
+        "seed": "pre-v8-4",
+        "temperature": 1.1
+      },
+      "normal_sha256": "9a481d64cd30a80cc90e15b69e557d5a366677c447829aba377a0a20dea66c0e",
+      "ablation_sha256": "522e7d2f2402a8e523a40a9009213983ddca52dfb2a3d0ebd26523b7614bebba"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v4",
+        "seed": "pre-v8-6",
+        "temperature": 1.1
+      },
+      "normal_sha256": "ba13d865f7bb716494821393c94f49b4cd98158fde6c3f043b7330304373ef4c",
+      "ablation_sha256": "522e7d2f2402a8e523a40a9009213983ddca52dfb2a3d0ebd26523b7614bebba"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v4",
+        "seed": "pre-v8-precise",
+        "temperature": 0.3
+      },
+      "normal_sha256": "a0feb9ea6d205092264138ff2b49e616cb2a92fede08930cc4550b343c31cedf",
+      "ablation_sha256": "522e7d2f2402a8e523a40a9009213983ddca52dfb2a3d0ebd26523b7614bebba"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v5",
+        "seed": "pre-v8-0",
+        "temperature": 1.1
+      },
+      "normal_sha256": "ce64b95dd7b1ec4de3855908fda40b7c27072a1fd442bc225f4d50c456070ea6",
+      "ablation_sha256": "b0f568ad19f68cb9d518ceaea88ca6295c1c632ef410189ca225674d253cf718"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v5",
+        "seed": "pre-v8-1",
+        "temperature": 1.1
+      },
+      "normal_sha256": "d8587c66087e23c09094dcf2d465926015fbf829e8969e4262d0d3f929b5e2da",
+      "ablation_sha256": "b0f568ad19f68cb9d518ceaea88ca6295c1c632ef410189ca225674d253cf718"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v5",
+        "seed": "pre-v8-2",
+        "temperature": 1.1
+      },
+      "normal_sha256": "e792f3ae4cda4fbd8b2bf821d2529aa33393e933d8b63ba2071315e83b2bfbe5",
+      "ablation_sha256": "b0f568ad19f68cb9d518ceaea88ca6295c1c632ef410189ca225674d253cf718"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v5",
+        "seed": "pre-v8-3",
+        "temperature": 1.1
+      },
+      "normal_sha256": "d942a470dbc8f04666b324d07ccf3501793ea0654d598b8868825269903b2867",
+      "ablation_sha256": "b0f568ad19f68cb9d518ceaea88ca6295c1c632ef410189ca225674d253cf718"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v5",
+        "seed": "pre-v8-4",
+        "temperature": 1.1
+      },
+      "normal_sha256": "ed1fbbebea14fa09e0c458c3f6796c627e9d84398b3c4d5eaddf30108ea3985e",
+      "ablation_sha256": "b0f568ad19f68cb9d518ceaea88ca6295c1c632ef410189ca225674d253cf718"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v5",
+        "seed": "pre-v8-6",
+        "temperature": 1.1
+      },
+      "normal_sha256": "fe3a0eebd36beb4ee3bca0fe60e67b562b94a2429cc4a1ba8ddf2d0942520c5e",
+      "ablation_sha256": "b0f568ad19f68cb9d518ceaea88ca6295c1c632ef410189ca225674d253cf718"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v5",
+        "seed": "pre-v8-precise",
+        "temperature": 0.3
+      },
+      "normal_sha256": "c665419b2d7aaff6597649bf757fa5ca6c1c7fe10275cccd23a574b1af65ef3d",
+      "ablation_sha256": "b0f568ad19f68cb9d518ceaea88ca6295c1c632ef410189ca225674d253cf718"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v6",
+        "seed": "pre-v8-0",
+        "temperature": 1.1
+      },
+      "normal_sha256": "d2b07337066bd5befc4cc2ed0a50631d79c4a11df645e2c7bd16a6fd0700f28b",
+      "ablation_sha256": "a2676036292b4d259e81acc128aa069e7b170bce75ae5e20bf22c88f2a653d70"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v6",
+        "seed": "pre-v8-1",
+        "temperature": 1.1
+      },
+      "normal_sha256": "5346c9b35c61145209178c46cab181a4291c39e873633593b1f27969f1d192ea",
+      "ablation_sha256": "a2676036292b4d259e81acc128aa069e7b170bce75ae5e20bf22c88f2a653d70"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v6",
+        "seed": "pre-v8-2",
+        "temperature": 1.1
+      },
+      "normal_sha256": "285370c52b621a9710d13310f1c0d20da209579e82cb882a647b88cc78d5bce1",
+      "ablation_sha256": "a2676036292b4d259e81acc128aa069e7b170bce75ae5e20bf22c88f2a653d70"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v6",
+        "seed": "pre-v8-3",
+        "temperature": 1.1
+      },
+      "normal_sha256": "0bfc5192521bec870a1ee91bc04c067d1f8ba384c02c1e06e0deda6226351d03",
+      "ablation_sha256": "a2676036292b4d259e81acc128aa069e7b170bce75ae5e20bf22c88f2a653d70"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v6",
+        "seed": "pre-v8-4",
+        "temperature": 1.1
+      },
+      "normal_sha256": "51ad093691bf6b4adbd1b6fd8bcdf046cb10fa04c9cb7e456c4dddabdbdff726",
+      "ablation_sha256": "a2676036292b4d259e81acc128aa069e7b170bce75ae5e20bf22c88f2a653d70"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v6",
+        "seed": "pre-v8-6",
+        "temperature": 1.1
+      },
+      "normal_sha256": "6a2af1db9c46c27a1261badf650832430fb422f52fbe89579c643d59fa1a117d",
+      "ablation_sha256": "a2676036292b4d259e81acc128aa069e7b170bce75ae5e20bf22c88f2a653d70"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v6",
+        "seed": "pre-v8-precise",
+        "temperature": 0.3
+      },
+      "normal_sha256": "758532bcefd3983792456300d0d70742156a7d8c68a46c17466b16fb00059d07",
+      "ablation_sha256": "a2676036292b4d259e81acc128aa069e7b170bce75ae5e20bf22c88f2a653d70"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v7",
+        "seed": "pre-v8-0",
+        "temperature": 1.1
+      },
+      "normal_sha256": "06c451a512fb7d32db3cd0a851d1dfc5d2ab80c40e76c6f500d9a68e9488439c",
+      "ablation_sha256": "90e505b99687ca9b992694221be2499adba1f19e60c22800d7670f1fe7bc481e"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v7",
+        "seed": "pre-v8-1",
+        "temperature": 1.1
+      },
+      "normal_sha256": "9a8c4326ddcc878232f4f2291ee76a8e1827598a55de761574c9d69cdf4dcb4d",
+      "ablation_sha256": "90e505b99687ca9b992694221be2499adba1f19e60c22800d7670f1fe7bc481e"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v7",
+        "seed": "pre-v8-2",
+        "temperature": 1.1
+      },
+      "normal_sha256": "62e03c9367b4901e476fca142870958aa9e69df6d56a796a38a730cfe5f08fc2",
+      "ablation_sha256": "90e505b99687ca9b992694221be2499adba1f19e60c22800d7670f1fe7bc481e"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v7",
+        "seed": "pre-v8-3",
+        "temperature": 1.1
+      },
+      "normal_sha256": "c5caf452cac678c176502733ce3d6be0507741f39c76c130b4da903a4a5f94ec",
+      "ablation_sha256": "90e505b99687ca9b992694221be2499adba1f19e60c22800d7670f1fe7bc481e"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v7",
+        "seed": "pre-v8-4",
+        "temperature": 1.1
+      },
+      "normal_sha256": "891017d1450104874fe0c029fef2850fe9aa3301aba8e8a614eb8dae79fdc081",
+      "ablation_sha256": "90e505b99687ca9b992694221be2499adba1f19e60c22800d7670f1fe7bc481e"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v7",
+        "seed": "pre-v8-6",
+        "temperature": 1.1
+      },
+      "normal_sha256": "000d6d1b3ab5aa0ab242a68df7cdaa31a49af61e56d8b9a893dde96e005bd0d0",
+      "ablation_sha256": "90e505b99687ca9b992694221be2499adba1f19e60c22800d7670f1fe7bc481e"
+    },
+    {
+      "profile": {
+        "version": "natural-dialogue-v7",
+        "seed": "pre-v8-precise",
+        "temperature": 0.3
+      },
+      "normal_sha256": "89795b222b9296b83ab67018fe62d360cf3c0d294a38c4d5d51e57f15036610c",
+      "ablation_sha256": "90e505b99687ca9b992694221be2499adba1f19e60c22800d7670f1fe7bc481e"
+    }
+  ],
+  "format_sha256": "a2c8c43dde783c16e1311d29bf810d74134482f49980180e2ec0d3aa2018b28b",
+  "default": "natural-dialogue-v2"
+}

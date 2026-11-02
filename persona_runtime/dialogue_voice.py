@@ -9,7 +9,8 @@ LIVELINESS_VERSION='natural-dialogue-v4'
 EXPRESSION_TAIL_VERSION='natural-dialogue-v5'
 HABIT_REALIZATION_VERSION='natural-dialogue-v6'
 PARTICIPATION_VERSION='natural-dialogue-v7'
-SUPPORTED_VERSIONS=frozenset((VERSION,EXPRESSION_REALIZATION_VERSION,LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION,PARTICIPATION_VERSION))
+DEMONSTRATION_VERSION='natural-dialogue-v8'
+SUPPORTED_VERSIONS=frozenset((VERSION,EXPRESSION_REALIZATION_VERSION,LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION,PARTICIPATION_VERSION,DEMONSTRATION_VERSION))
 VARIATIONS=(
     '顺着眼前最有意思的细节接话，想说的说完就停。',
     '可以先冒出一个很短的反应，再接自己的看法，长短随内容。',
@@ -71,6 +72,15 @@ PARTICIPATION=(
 CONVERSATION_V7=CONVERSATION_V4.replace(
     '表达样例让你体会人物怎么关注事情；',PARTICIPATION+'表达样例让你体会人物怎么关注事情；',1)
 
+# Generic instruction demonstrations, not recalled character examples or history.
+RESPONSE_DEMONSTRATIONS=(
+    '\n下面是两段虚构的接话示范，只示范怎样接当前意思，不规定人物口气，也不是当前对话、人物经历或共同记忆。'
+    '\n示范一，对方说：群里说聚餐全员自愿，后面又接一句“都别缺席”。先不想怎么回，我就想吐槽这两句。'
+    '\n接话：“自愿”刚出场就被收回了。还不如一开始直说必须来，至少少演一段。'
+    '\n示范二，对方说：更正一下，我不是没报名，是报了但还没交钱。现在纠结的不是课程，是那笔钱看着肉疼。'
+    '\n接话：报名那一下手挺快，轮到付款又清醒了。这个疼我懂，页面上的数字突然有了重量。')
+CONVERSATION_V8=CONVERSATION_V4+RESPONSE_DEMONSTRATIONS
+
 
 def read(turn):
     model=json.loads(turn['model_snapshot']) if isinstance(turn.get('model_snapshot'),str) else turn.get('model_snapshot',{})
@@ -96,11 +106,11 @@ def freeze(seed,members,*,version=VERSION):
 def render(profile,*,ablated=False):
     if profile is None:return '',None
     version=profile['version']
-    lively=version in (LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION,PARTICIPATION_VERSION)
+    lively=version in (LIVELINESS_VERSION,EXPRESSION_TAIL_VERSION,HABIT_REALIZATION_VERSION,PARTICIPATION_VERSION,DEMONSTRATION_VERSION)
     hard=HARD_LIVELY if lively else HARD
     if ablated:return hard,{'version':version,'variation':None,'ablation':True}
     choice=int(sha256(profile['seed'].encode()).hexdigest()[:8],16)%len(VARIATIONS)
-    conversation=CONVERSATION_V7 if version==PARTICIPATION_VERSION else CONVERSATION_V6 if version==HABIT_REALIZATION_VERSION else CONVERSATION_V4 if lively else CONVERSATION_V3 if version==EXPRESSION_REALIZATION_VERSION else CONVERSATION
+    conversation=CONVERSATION_V8 if version==DEMONSTRATION_VERSION else CONVERSATION_V7 if version==PARTICIPATION_VERSION else CONVERSATION_V6 if version==HABIT_REALIZATION_VERSION else CONVERSATION_V4 if lively else CONVERSATION_V3 if version==EXPRESSION_REALIZATION_VERSION else CONVERSATION
     return hard+conversation+'\n这次的表达余地：'+VARIATIONS[choice],{
         'version':version,'variation':choice,'temperature':profile['temperature'],'ablation':False}
 
