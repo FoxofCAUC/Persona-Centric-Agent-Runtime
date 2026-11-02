@@ -1,0 +1,22 @@
+{
+  "version": "cr1-oracle-protocol-v1",
+  "approval": "2026-11-02 user: 采用推荐方案，继续完成这一阶段的目标",
+  "conditions": ["B0", "B1", "B2"],
+  "shared_selection_positions": 24,
+  "main_positions": 144,
+  "replicates": 2,
+  "dimensions": ["not_customer_service", "not_mechanical", "im_naturalness"],
+  "scale": {"min": 1, "max": 5, "anchors": {"1": "明显客服流程或机械生成感", "3": "内容合适但有明显模板痕迹", "5": "像当前人物在当前情境中自然接话"}},
+  "primary": "im_naturalness",
+  "research_signal": 0.5,
+  "not_a_release_gate": true,
+  "comparisons": [["B1", "B0"], ["B2", "B1"], ["B2", "B0"]],
+  "clustering": "scene; two roles and repeated positions are not independent scenes",
+  "interval": {"method": "scene-cluster percentile bootstrap", "coverage": 0.95, "resamples": 10000, "seed": 71301, "interpretation": "descriptive uncertainty, not a new acceptance gate"},
+  "task_gate": "candidate explicit tasks and boundaries all pass; no new errors relative to baseline",
+  "review": {"count": 12, "per_comparison": 4, "order": ["strongest_positive", "strongest_negative", "closest_tie_or_repeat_disagreement", "task_boundary"], "fallback": "take nearest available category without inventing a win/loss; deterministic ID tie-break; at most one pair per scene within each comparison", "anonymous_orientation_seed": "cr1-review-v1", "mapping_reveal": "after user review", "independent_human_blind_review": false},
+  "latency": {"measure_only": true, "new_P95_gate": null, "start": "first physical dispatch", "end": "complete valid protocol response", "selection_separate": true, "actual_QQ_delivery": false},
+  "generation": {"max_retries": 3, "retry_delays_seconds": [1, 2, 4], "aggregate_cap": null, "paid_judge": false, "quality_retry": false, "main_timeout": 180, "selector_timeout": 240},
+  "analysis": "machine reads every real output and provides exact excerpts and semantic reasons; scores are never inferred from length, punctuation counts or keyword bans",
+  "private_copies": "CR4; no private text in this artificial CR1 cohort"
+}
