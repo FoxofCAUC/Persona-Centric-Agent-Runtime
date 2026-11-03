@@ -1,3 +1,11 @@
+<!-- 2026-11-03 stream runner pre-smoke closure -->
+2026-11-03 流式恢复运行器完成、真实冒烟前阶段性收尾：新增scripts/dialogue_stream_recovery.py（cr3-stream-recovery-v1，包CR3-A.1-real-consumption-ablation-stream-4），以responses-3运行器为骨架仅改为anthropic-messages-stream-v1（stream:true、90秒空闲读超时、无总时限/max_tokens/reasoning_effort）；继承4个前序包（保守27预留/16失败/1未知），prepare前跑三份只读审计；--max-groups供冒烟，包内后续真实批次导入先前已结清结果不重放。运行器测试25项通过；以b12b40e为基线全量逐项对比无任何状态变化，新增49项全部通过，约800项为沙箱环境出错（盘符路径/DPAPI/缺D盘证据等）两边一致，须Windows复跑。
+
+收尾中修正：上一轮的手工清理补充记录误放入responses-3封存目录，会致其审计evidence_inventory_changed并阻断新包prepare；已原样移至PCAR-dialogue-refactor/CR3-A.1-post-seal-supplements/，449哈希与清单复核一致。零真实调用/QQ/正式服务/私人副本。
+
+下一步（用户在Windows执行）：复跑测试→stream-4\simulation-v1离线prepare/simulate/verify→另行授权后execute --real --max-groups 1冒烟（G11一组，预期约4、上限16次物理调用）。Responses传输与生产provider_compat仍非流式。入口：[运行器与冒烟前收尾](CR3-A.1-流式恢复运行器与冒烟前收尾.md)。
+<!-- /2026-11-03 stream runner pre-smoke closure -->
+
 <!-- 2026-11-03 gateway stream fix -->
 2026-11-03 网关500/524离线诊断与流式传输修复：CR3-A.1四轮恢复受阻的主因判定为所有实验传输均为stream:false，联合辅助长推理在约120秒内无字节返回，中转自身报500（120.7–121.8秒）或Cloudflare报524（125.8–126.5秒）；换协议无效因三种传输均非流式。同网关同G11请求的流式独立探测9/9成功（总136–219秒）。为强推断，未经网关方确认。
 
