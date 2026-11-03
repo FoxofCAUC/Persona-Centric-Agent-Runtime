@@ -155,8 +155,11 @@ def recall(query, memories):
 
 
 class ChatEngine:
-    def __init__(self, store, config, client=None, *, assist_admission=None, live_admission=None):
+    def __init__(self, store, config, client=None, *, assist_admission=None, live_admission=None, dialogue_pipeline=None, generation_audit_sink=None, generation_executor=None):
         self.store, self.config = store, config
+        self.generation_audit_sink = generation_audit_sink
+        self.generation_executor = generation_executor
+        self.dialogue_pipeline = dialogue_pipeline
         self.assist_admission = assist_admission
         from .decision_capsule import load_live_release
         self.live_admission = live_admission if live_admission is not None else load_live_release(store,config)
@@ -406,9 +409,12 @@ class ChatEngine:
             try:
                 latest=self.get(turn_id)
                 if latest['status']!='queued' or latest['execution_revision']!=initial['execution_revision']:return
-                selection=await self.selector.prepare(turn_id)
-                observation=await self.observer.prepare(turn_id)
-                prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id,selection,observation)
+                if self.dialogue_pipeline is not None:
+                    prepared=await self.dialogue_pipeline.prepare(self,turn_id)
+                else:
+                    selection=await self.selector.prepare(turn_id)
+                    observation=await self.observer.prepare(turn_id)
+                    prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id,selection,observation)
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
                     if turn["status"] != "queued" or turn["cancelled_at"] or turn["execution_revision"]!=initial["execution_revision"]:
@@ -448,6 +454,7 @@ class ChatEngine:
                     with self.store.connection(write=True) as conn:
                         changed=conn.execute("UPDATE attempts SET usage_json=? WHERE id=? AND status='running'",(json.dumps(value),attempt_id)).rowcount
                         if changed!=1:raise ModelError('generation_retry_audit_invalid')
+                    if self.generation_audit_sink:self.generation_audit_sink(value)
                 def before_generation_attempt(state):
                     with self.store.connection(write=True) as conn:
                         current=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
@@ -468,7 +475,8 @@ class ChatEngine:
                         from .reply_protocol import validation_failure
                         error.output_validation=validation_failure(text,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
                         raise
-                completion = await audited_complete(self.client,
+                generation_executor = self.generation_executor or audited_complete
+                completion = await generation_executor(self.client,
                     dict(model,_reply_mode=turn.get('reply_mode_snapshot'),_expression_snapshot=turn.get('expression_snapshot')),messages,
                     validate=validate_generation,
                     save=save_generation_audit,before_attempt=before_generation_attempt)

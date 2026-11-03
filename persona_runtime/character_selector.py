@@ -109,6 +109,7 @@ class SelectorService:
                 with self.store.connection(write=True) as conn:
                     changed=conn.execute("UPDATE character_selection_attempts SET usage_json=? WHERE id=? AND status='running'",(encode(value),aid)).rowcount
                     if changed!=1:raise RuntimeErrorBase('selector_retry_audit_invalid')
+                if getattr(self,'audit_sink',None):self.audit_sink(value)
             def before_attempt(state):
                 with self.store.connection(write=True) as conn:
                     from .private_personas import guard_cloud_dispatch

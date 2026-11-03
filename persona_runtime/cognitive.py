@@ -147,6 +147,10 @@ class CognitiveService:
         return decision|{'applied_to_prompt':bool(text),'capsule':meta}
 
     def finalize(self,conn,turn,prepared):
+        if prepared.get('_dialogue_pipeline'):
+            from .chat import ModelError
+            if self.engine.dialogue_pipeline is None:raise ModelError('dialogue_pipeline_missing')
+            return self.engine.dialogue_pipeline.finalize(self.engine,conn,turn,prepared)
         started=time.perf_counter()
         from .references import prepare
         if (prepared['manifest'].get('_shadow_prepared') or {}).get('mode') in ('assist','live') and prepared.get('accepted_policy_hash')!=fingerprint(turn.get('context_policy_snapshot')):

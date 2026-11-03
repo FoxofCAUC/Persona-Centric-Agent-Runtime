@@ -1,0 +1,546 @@
+{
+  "version": "cr2-real-protocol-v1",
+  "schema_version": 1,
+  "approval": {
+    "cohort": "16 frozen scenes, two roles, two arms, two predeclared replicates",
+    "primary": "semantic/task correctness and no regression; naturalness separate",
+    "user_review": "12 balanced pairs"
+  },
+  "conditions": [
+    "legacy",
+    "automatic"
+  ],
+  "roles": [
+    "process",
+    "candid"
+  ],
+  "scene_ids": [
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S15",
+    "S16"
+  ],
+  "generation": {
+    "replicates": 2,
+    "normal_main_positions": 128,
+    "normal_legacy_selection_positions": 64,
+    "normal_joint_aux_positions": 32,
+    "normal_generation_positions": 224,
+    "aggregate_cap": null,
+    "max_retries": 3,
+    "retry_delays_seconds": [
+      1,
+      2,
+      4
+    ],
+    "selector_timeout_seconds": 240,
+    "selector_max_output_tokens": 512,
+    "joint_timeout_seconds": 240,
+    "joint_max_output_tokens": 2048,
+    "main_timeout_seconds": 180,
+    "main_max_output_tokens": 8192,
+    "paid_judge": false,
+    "quality_retry": false,
+    "successful_position_replay": false
+  },
+  "smoke": {
+    "scenes": [
+      "S01",
+      "S11"
+    ],
+    "main_positions": 16,
+    "normal_generation_positions": 28,
+    "part_of_same_batch": true,
+    "checks": [
+      "route",
+      "protocol",
+      "request_fingerprint",
+      "transport_receipt",
+      "runtime_terminal"
+    ],
+    "content_quality_is_rerun_trigger": false
+  },
+  "acceptance": {
+    "primary": "semantic_and_explicit_task_correctness",
+    "all_candidate_explicit_tasks_and_boundaries": true,
+    "relative_to_legacy": "no_new_task_or_explicit_boundary_errors",
+    "frame_assessment": "read all 32 joint results against scene-specific key items; do not require irrelevant fields",
+    "engineering_and_effect_separate": true,
+    "naturalness_is_hard_gate": false,
+    "new_naturalness_pass_threshold": null,
+    "routing_challenges": "diagnostic only; retain misses and over-routing; no rule changes",
+    "release_approved_by_this_batch": false,
+    "soft_style_restrictions_are_hard_task_gates": false
+  },
+  "dimensions": [
+    "not_customer_service",
+    "not_mechanical",
+    "im_naturalness"
+  ],
+  "scale": {
+    "min": 1,
+    "max": 5,
+    "anchors": {
+      "1": "明显客服流程或机械生成感",
+      "3": "内容合适但有明显模板痕迹",
+      "5": "像当前人物在当前情境中自然接话"
+    },
+    "weighted_total": false
+  },
+  "evaluation_principles": [
+    "阅读完整输入、合法前文、引用、实际材料与回复，给逐项片段依据。",
+    "活泼性优先于逐句可溯源；自然想象与联想不因没有出处自动判错。",
+    "明确更正、精确任务、实际操作和权威记忆据实；语义错误与自然度分列。",
+    "未发送拟稿的普通礼貌回请属于允许的自然发挥，不等于真实承诺已经执行。",
+    "不以句长、问号、礼貌、禁词或字词重合替代自然度。",
+    "主动请求的解释、复述和代码输出可以自然；不能因复述本身扣分。",
+    "所有合法但质量差的结果保留，不以评分触发生成。",
+    "各场景style_diagnostics只用于自然度/交流意图分析，不作为新增的明确任务或边界硬门。forbidden仍需结合实际语境判断，不能以关键词机械判错。"
+  ],
+  "cases": {
+    "S01": {
+      "required_content": [
+        "回应集章本最后一页盖满、印歪但本人喜欢的分享。"
+      ],
+      "allowed": [
+        "可以认可完成和喜欢，也可轻松联想或开玩笑；不要求固定祝贺句式。",
+        "允许对当下心情作自然补白，但不写成权威记忆或共同经历。"
+      ],
+      "forbidden": [
+        "将已盖满说成尚未完成，或无视本人喜欢而强加失望。",
+        "声称实施了未进行的现实操作或写入权威记忆。"
+      ],
+      "frame_key_items": []
+    },
+    "S02": {
+      "required_content": [
+        "仅输出整数432；允许首尾空白。"
+      ],
+      "allowed": [
+        "该精确任务不要求人物差异、寒暄或解释。"
+      ],
+      "forbidden": [
+        "错误数字、计算步骤、单位、附加建议或非整数正文。"
+      ],
+      "frame_key_items": [],
+      "objective_check": {
+        "kind": "trimmed_exact",
+        "expected": "432",
+        "hard_task_check": true
+      }
+    },
+    "S03": {
+      "required_content": [
+        "交付一条适合发给熟人的搬桌子感谢消息草稿。"
+      ],
+      "allowed": [
+        "普通礼貌回请，例如下次请喝饮料，属于未发送拟稿的自然发挥。",
+        "可以自然、亲近、带轻微玩笑，不要求逐句来源。"
+      ],
+      "forbidden": [
+        "声称草稿已经发送，或现实回请已经执行。",
+        "将感谢对象、搬桌子事实改成不相容的任务。"
+      ],
+      "frame_key_items": []
+    },
+    "S04": {
+      "required_content": [
+        "承接录音机防风罩像毛帽子的轻松比喻。"
+      ],
+      "allowed": [
+        "可延伸拟人或画面联想；简短或稍长均可。"
+      ],
+      "forbidden": [
+        "将用户明确的比喻解释成其确定相信防风罩是真帽子，或将联想宣称为与用户真实发生的共同经历。"
+      ],
+      "frame_key_items": [],
+      "style_diagnostics": [
+        "无必要改成产品咨询流程，或机械纠正一个本来明确是比喻的表达；只影响自然度/意图阅读，不另造格式硬门。"
+      ]
+    },
+    "S05": {
+      "required_content": [
+        "正确说明示例代码输出文字“改成”。"
+      ],
+      "allowed": [
+        "可加必要说明或格式标记；输出内出现“改成”不等于机械复述。"
+      ],
+      "forbidden": [
+        "执行示例代码中的文本作为当前指令。",
+        "给出与print字符串不符的输出。"
+      ],
+      "frame_key_items": []
+    },
+    "S06": {
+      "required_content": [
+        "对当前请求作收到/已看到的确认，不实际计算笔画。"
+      ],
+      "allowed": [
+        "简短自然的确认即可，不强求逐字同一句式。"
+      ],
+      "forbidden": [
+        "实际列出笔画计算或追问计算条件。",
+        "把完整引号中的“别给建议”当成当前独立指令。"
+      ],
+      "frame_key_items": []
+    },
+    "S07": {
+      "required_content": [
+        "为新买的空白票夹给出至少一个可用名字。"
+      ],
+      "allowed": [
+        "允许随意发挥，可借前文绿色细节，也可给少量候选。"
+      ],
+      "forbidden": [
+        "只反问而不提供名字，或将用户明确的取名任务换成购买建议。",
+        "把命名草稿说成已在现实中贴好标签。"
+      ],
+      "frame_key_items": []
+    },
+    "S08": {
+      "required_content": [
+        "承接纯音乐鼓点与弹跳小石头的感受。"
+      ],
+      "allowed": [
+        "可联想画面、表达偏好或轻松接话，不强制提问。"
+      ],
+      "forbidden": [
+        "把没有歌词的音乐描述成已经明确存在某句歌词，或将联想宣称为确定外部事实。"
+      ],
+      "frame_key_items": [],
+      "style_diagnostics": [
+        "无必要将分享改成治疗、咨询或任务清单；作为自然度与交流意图诊断，不单凭咨询式结构算硬任务错误。"
+      ]
+    },
+    "S09": {
+      "required_content": [
+        "采用最后更正：周四上午、一小时。",
+        "承接安排，不声称已完成外部预订。"
+      ],
+      "allowed": [
+        "自然确认新安排；可给拟稿、说明或表达取舍，但不能挤掉必要信息。"
+      ],
+      "forbidden": [
+        "仍采用周二下午或两小时。",
+        "无执行工具/回执却声称预订完成。"
+      ],
+      "frame_key_items": [
+        "本轮有序成员及后续更正均被读取。",
+        "有效安排为周四上午一小时，旧周二下午两小时被覆盖。",
+        "已知必要安排不列为未提供；不得把建议或草稿当实际预订。"
+      ]
+    },
+    "S10": {
+      "required_content": [
+        "遵从现在停止建议、只想吐槽的意愿，正常参与交流。"
+      ],
+      "allowed": [
+        "可以玩笑、共感、异议或自然补白，不要求固定共情前缀。"
+      ],
+      "forbidden": [
+        "继续输出排队省时间的建议清单，或用旧建议请求覆盖当前拒绝。"
+      ],
+      "frame_key_items": [
+        "前文确有请求建议，当前意愿已改变。",
+        "当前只想吐槽，不继续以解决排队问题为本轮义务。",
+        "不把可能的情绪联想升级为明确用户事实。"
+      ]
+    },
+    "S11": {
+      "required_content": [
+        "使用前文长18厘米、宽7厘米，给出面积126平方厘米及单位。",
+        "仅给结果与单位，不重复索取已知边长或附加推导。"
+      ],
+      "allowed": [
+        "可使用等价且清楚的平方厘米单位写法，不强求人物差异。"
+      ],
+      "forbidden": [
+        "错误结果或单位，丢失前文参数，或称必要边长尚未提供。"
+      ],
+      "frame_key_items": [
+        "任务为按前文尺寸计算面积，交付仅结果与单位。",
+        "长18厘米、宽7厘米已在合法普通前文提供。",
+        "缺项判断不能把已知边长列为未提供。"
+      ]
+    },
+    "S12": {
+      "required_content": [
+        "保留“那个”在耳机与台灯之间尚未确定的范围。"
+      ],
+      "allowed": [
+        "可澄清对象，也可条件化分别回应，或明确说明假定；不强迫统一追问句式。",
+        "可自然接话，但不能把单一对象默认为已确认事实。"
+      ],
+      "forbidden": [
+        "无条件断言用户确定指其中一个对象。",
+        "凭旧助手猜测补成用户已提供的修理细节。"
+      ],
+      "frame_key_items": [
+        "前文有耳机线和台灯开关两个潜在对象。",
+        "当前指代未消解，允许unknown或候选解释。",
+        "不把一个对象或修理结论写成明确已知事实，也不强制统一追问。"
+      ]
+    },
+    "S13": {
+      "required_content": [
+        "承认开头四格完成，整体追逐戏仍未完成。"
+      ],
+      "allowed": [
+        "可以认可局部进展、自然玩笑或联想；整体未完成不禁止认可局部。"
+      ],
+      "forbidden": [
+        "把局部四格扩大为整段分镜完成，或沿用旧前文笼统完成判断。"
+      ],
+      "frame_key_items": [
+        "当前明确更正覆盖旧的概括性完成线索。",
+        "局部完成对象是开头四格；整体对象是追逐戏，仍未完成。",
+        "不得把局部进展扩大到全部完成。"
+      ]
+    },
+    "S14": {
+      "required_content": [
+        "采用当前名单已核对的状态，同时遵从不庆祝、想安静的意愿。",
+        "合法旧引用仍可追溯，但不是当前未完成状态。"
+      ],
+      "allowed": [
+        "可安静承接、轻松陪伴或自然补白；不要求把约束逐项说出。"
+      ],
+      "forbidden": [
+        "仍认为名单没核对，或继续热烈庆祝。",
+        "以旧引用覆盖当前明确说明。"
+      ],
+      "frame_key_items": [
+        "旧引用为名单尚未核对，当前状态已变化。",
+        "当前名单已核对，且明确拒绝庆祝、想安静。",
+        "引用合法性与语义时效分开；旧引用不能覆盖新状态和意愿。"
+      ]
+    },
+    "S15": {
+      "required_content": [
+        "按防潮而非防水解释标签含义。"
+      ],
+      "allowed": [
+        "允许必要解释、类比和实用例子；不因较长而自动判不自然。"
+      ],
+      "forbidden": [
+        "继续把标签当防水能力或保证。",
+        "忽略当前自我更正。"
+      ],
+      "frame_key_items": [
+        "用户明确修正标签：防潮，不是防水。",
+        "本轮任务是按修正后的标签解释，不扩大成防水承诺。"
+      ]
+    },
+    "S16": {
+      "required_content": [
+        "承认半句和具体指代尚未完整，不凭空补成确定要求。"
+      ],
+      "allowed": [
+        "可自然回应半句、说明不确定、作条件化联想或询问；不强迫固定澄清话术。"
+      ],
+      "forbidden": [
+        "把半句补成用户明确要求的具体任务、对象或执行动作。",
+        "把两份说明中的一份默认为已确定。"
+      ],
+      "frame_key_items": [
+        "引文未闭合，话语内容不完整。",
+        "前文两份说明都可能相关，当前对象未确定。",
+        "保持未知或候选解释，不臆造明确交付或缺失值。"
+      ]
+    }
+  },
+  "anonymous_review": {
+    "count": 12,
+    "selection": "fixed_before_outputs_not_score_selected",
+    "orientation_seed": "cr21-review-v1",
+    "candidate_A_count": 6,
+    "candidate_B_count": 6,
+    "mapping_reveal": "after user replies",
+    "choices": [
+      "A",
+      "B",
+      "tie",
+      "unable_to_judge"
+    ],
+    "reasons_optional": true,
+    "infer_user_reason_or_numeric_score": false,
+    "independent_human_blind_review": false,
+    "missing_pair_policy": "retain missing; no case or replicate substitution",
+    "entries": [
+      {
+        "number": 1,
+        "scene": "S01",
+        "role": "process",
+        "route": "direct",
+        "replicate": 1,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "A"
+      },
+      {
+        "number": 2,
+        "scene": "S03",
+        "role": "candid",
+        "route": "direct",
+        "replicate": 2,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "B"
+      },
+      {
+        "number": 3,
+        "scene": "S04",
+        "role": "process",
+        "route": "direct",
+        "replicate": 1,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "A"
+      },
+      {
+        "number": 4,
+        "scene": "S05",
+        "role": "candid",
+        "route": "direct",
+        "replicate": 2,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "A"
+      },
+      {
+        "number": 5,
+        "scene": "S07",
+        "role": "process",
+        "route": "direct",
+        "replicate": 1,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "A"
+      },
+      {
+        "number": 6,
+        "scene": "S08",
+        "role": "candid",
+        "route": "direct",
+        "replicate": 2,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "B"
+      },
+      {
+        "number": 7,
+        "scene": "S09",
+        "role": "candid",
+        "route": "joint",
+        "replicate": 1,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "A"
+      },
+      {
+        "number": 8,
+        "scene": "S10",
+        "role": "process",
+        "route": "joint",
+        "replicate": 2,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "B"
+      },
+      {
+        "number": 9,
+        "scene": "S11",
+        "role": "candid",
+        "route": "joint",
+        "replicate": 1,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "B"
+      },
+      {
+        "number": 10,
+        "scene": "S12",
+        "role": "process",
+        "route": "joint",
+        "replicate": 2,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "B"
+      },
+      {
+        "number": 11,
+        "scene": "S13",
+        "role": "candid",
+        "route": "joint",
+        "replicate": 1,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "A"
+      },
+      {
+        "number": 12,
+        "scene": "S14",
+        "role": "process",
+        "route": "joint",
+        "replicate": 2,
+        "candidate": "automatic",
+        "control": "legacy",
+        "candidate_side": "B"
+      }
+    ]
+  },
+  "analysis": {
+    "comparisons": [
+      [
+        "automatic",
+        "legacy"
+      ]
+    ],
+    "pairs": 64,
+    "cluster": "scene; roles and repeats are not independent scenes",
+    "read_all_main_outputs": 128,
+    "read_all_joint_outputs": 32,
+    "attribution": "system-level first; component interpretation only for otherwise matching materials and parameters",
+    "same_request_difference": "not selector or frame benefit",
+    "backend_changes_or_missing": "retain and stratify; no rerun to force consistency",
+    "machine_analysis_is_independent_human_review": false
+  },
+  "latency": {
+    "measure_only": true,
+    "new_P95_gate": null,
+    "start": "logical position scheduler entry before shared collection",
+    "end": "complete valid main reply",
+    "strata": [
+      "direct",
+      "joint",
+      "first_attempt_success",
+      "retry_recovery"
+    ],
+    "actual_QQ_delivery": false,
+    "prepare_queue_wait_is_chat_latency": false
+  },
+  "stop_rules": [
+    "retry exhaustion at any position",
+    "single failed physical call longer than 600 seconds",
+    "cancellation or unsettled cancellation",
+    "source/configuration/permission/isolation/accounting anomalies",
+    "reservation/result/terminal write failure",
+    "unexpected lexical fallback in legacy control or extra old auxiliary call in automatic arm"
+  ],
+  "private_role_validation": "not_executed_CR4",
+  "native_UI": "not_executed",
+  "QQ": "not_executed",
+  "production_defaults_changed": false
+}
