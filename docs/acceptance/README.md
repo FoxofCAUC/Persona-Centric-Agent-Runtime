@@ -1,3 +1,7 @@
+<!-- 2026-11-03 real streaming smoke -->
+2026-11-03 [流式单组实际结果](../CR3-A.1-流式单组真实冒烟结果.md)：5真实调用，辅助第1重试恢复、3主首尝成功，verify --smoke通过并限组停止。鉴权及临时目录清理被自动策略拒绝，收尾未完成。见[更新手册](CR3-A.1-流式真实冒烟验收手册.md)；不将本组通过写为全阶段或自然度收益，未续剩余21组。
+<!-- /2026-11-03 real streaming smoke -->
+
 <!-- 2026-11-03 Windows pre-smoke readiness -->
 2026-11-03 [CR3-A.1流式真实冒烟手册](CR3-A.1-流式真实冒烟验收手册.md)与[Windows准备记录](../CR3-A.1-Windows冒烟前准备.md)为最新入口。150去重局部/R0的34零差异、22组完整及首组离线演练已通过；真实冒烟、界面、QQ和私人副本均未执行，不据此判自然度收益。最新机器交接在D盘stream-4/windows-readiness-handoff.json；旧历史记录不覆盖。
 <!-- /2026-11-03 Windows pre-smoke readiness -->
