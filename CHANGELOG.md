@@ -1,3 +1,11 @@
+<!-- 2026-11-03 gateway stream fix -->
+2026-11-03 网关500/524离线诊断与流式传输修复：CR3-A.1四轮恢复受阻的主因判定为所有实验传输均为stream:false，联合辅助长推理在约120秒内无字节返回，中转自身报500（120.7–121.8秒）或Cloudflare报524（125.8–126.5秒）；换协议无效因三种传输均非流式。同网关同G11请求的流式独立探测9/9成功（总136–219秒）。为强推断，未经网关方确认。
+
+scripts/dialogue_anthropic_transport.py新增须显式选用的anthropic-messages-stream-v1：stream:true，SSE折叠为与非流式同一消息对象并复用parse_message；仅空闲读超时（默认90秒，可设None），无总时限或输出上限；断流/流内error/沉默分别映射provider_network_error/provider_aborted/provider_timeout（均为既有可重试码，用量未知不记0）。旧uncapped-v1默认合同17组输入逐字节不变。传输测试41项通过（新增24），变异检查与真实aiohttp本地模拟通过；依赖模块修改前后逐项状态一致，72项沙箱环境出错（D盘tmp路径69、msvcrt3）须Windows/Python3.12复跑。
+
+未接线运行器、未改Responses传输、生产provider_compat及reasoning_effort；零真实调用/QQ/正式服务，真实网关效果待授权冒烟。入口：[诊断与修复](docs/CR3-A.1-网关500-524诊断与流式传输修复.md)。
+<!-- /2026-11-03 gateway stream fix -->
+
 <!-- 2026-11-03 stage closure -->
 2026-11-03 阶段性收尾：dev19累计交流链路工程及隔离协议工具保存并纳入本地提交，用户已停止模型测试，不自动继续。Responses最后保守预留1次结果未知，真实效果未验；临时凭据已清理，两个运行目录删除受自动策略阻断，清空未完成。正式Shadow/default v2和数据版本不变，未推送或部署。详见[当前交接](docs/CR3-A.1-Responses恢复实测.md)及D盘对应handoff.json；下方原阶段状态保留历史。
 <!-- /2026-11-03 stage closure -->
