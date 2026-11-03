@@ -270,5 +270,13 @@ class Contracts(unittest.TestCase):
         self.assertEqual(parsed(value)['frame']['requests'][0]['text'], value['frame']['requests'][0]['text'])
 
 
+class ContextInputConflict(unittest.TestCase):
+    def test_dual_experimental_inputs_raise_model_error_not_unbound_local(self):
+        from persona_runtime.chat import ModelError
+        from persona_runtime.context_m4 import build_context
+        with self.assertRaisesRegex(ModelError, 'experimental_context_conflict'):
+            build_context(None, None, None, experimental_context='x', experimental_blocks=('y',))
+
+
 if __name__ == '__main__':
     unittest.main()

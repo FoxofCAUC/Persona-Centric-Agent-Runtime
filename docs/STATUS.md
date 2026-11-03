@@ -1,3 +1,9 @@
+<!-- 2026-11-03 post-commit review fix -->
+2026-11-03 提交后审查补记：CR2–CR3 阶段性收尾的本地提交为6ebab04（main，领先origin/main的bb68120一个提交，未推送）；该提交不代表CR3-A.1完成，阶段仍为user_stopped、stage_complete=false，真实自然度/人物取舍收益未验证。审查发现并修复一处遗留缺陷：persona_runtime/context_m4.py的build_context在experimental_context与experimental_blocks同时传入时，因ModelError在使用后才局部导入，原会抛UnboundLocalError，现按设计抛ModelError('experimental_context_conflict')；仅调整导入顺序，正常单输入路径、提示、预算、采样与正式配置均未改。
+
+验证口径：新增tests/test_communication_consumption.py::ContextInputConflict一项，在Linux/Python3.10沙箱中对原代码失败（UnboundLocalError）、对修复后通过；同批test_communication_consumption、test_dialogue_context、test_prompt_assembly共37项中11项因Windows专属依赖（DPAPI 8项、msvcrt 3项，含test_dialogue_context整模块无法导入）在该沙箱出错，修复前后出错集合逐项相同，因此这些模块未在本环境执行，仍须在Windows/Python3.12环境复跑，不记通过。该修改发生在各CR阶段封存之后，封存的源码哈希与closure不回写；未提交、未推送。
+<!-- /2026-11-03 post-commit review fix -->
+
 <!-- CR3-A.1 Responses current -->
 2026-11-03 用户已终止测试，要求临时数据清理及提交全部已完成改动。本任务停止派发，不自动恢复或开启下一阶段。施工基线bb68120，候选dev19保持；最终本地提交及工作区状态见D盘handoff.json，本次未授权远端推送。
 

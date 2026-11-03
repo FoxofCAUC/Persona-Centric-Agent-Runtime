@@ -82,9 +82,9 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
 
 
 def build_context(engine, conn, turn, evidence=None, character=None, capsule=None, *, shared_materials=None, experimental_context="", reserve_chars=0, experimental_blocks=()):
+    from .chat import terms, ModelError
     if experimental_context and experimental_blocks:
         raise ModelError('experimental_context_conflict')
-    from .chat import terms, ModelError
     from .references import ReferenceError
     from .evaluation_material import variant
     evaluation=variant(engine,conn,turn)
