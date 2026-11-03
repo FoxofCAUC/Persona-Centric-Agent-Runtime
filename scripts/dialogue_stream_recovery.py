@@ -15,6 +15,7 @@ results instead of replaying them.
 import argparse
 import asyncio
 from copy import deepcopy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -416,41 +417,96 @@ def report(root):
     atomic_json(root/'report.json',result);return result
 
 
-def verify(root):
-    p=frozen(root);s=report(root)
-    planned_conditions=sum(len(x['conditions']) for x in p['positions'])
-    require(s['state']['status']=='completed' and s['new_logical_conditions']==planned_conditions and s['new_auxiliary']==len(p['positions']),'recovery_incomplete')
+def verify_records(root,p,positions):
+    """Validate actual completed groups, including a deliberately limited smoke run."""
+    values={f.stem:read(f) for f in (root/'results').glob('*.json')}
+    expected={pos['id']+'-'+condition:(pos,condition) for pos in positions for condition in pos['conditions']}
+    require(set(values)==set(expected),'recovery_result_inventory')
+    auxiliary={f.stem:read(f) for f in (root/'auxiliary').glob('*.json')}
+    require(set(auxiliary)=={pos['id'] for pos in positions},'recovery_auxiliary_inventory')
     ids={x.name.split('.')[0] for x in (root/'receipts').glob('*.reserve.json')}
     for ext in ('transport','terminal'):require({x.name.split('.')[0] for x in (root/'receipts').glob('*.'+ext+'.json')}==ids,'recovery_unsettled')
-    for ident in ids:
-        r=read(root/'receipts'/(ident+'.reserve.json'));t=read(root/'receipts'/(ident+'.terminal.json'))
-        require(r['real']==t['real']==p['real'] and fingerprint(r)==t['reservation_hash'],'recovery_receipt_binding')
+    require(ids=={f'{i:04d}' for i in range(1,len(ids)+1)},'recovery_receipt_sequence')
+    slots={};attempts=set()
+    for ident in sorted(ids):
+        r=read(root/'receipts'/(ident+'.reserve.json'));t=read(root/'receipts'/(ident+'.terminal.json'));transport=read(root/'receipts'/(ident+'.transport.json'))
+        require(r['id']==ident and r['ordinal']==int(ident),'recovery_receipt_sequence')
+        require(r['real']==t['real']==transport['real']==p['real'] and fingerprint(r)==t['reservation_hash'],'recovery_receipt_binding')
+        require(r['protocol']==r['wire_protocol']==PROTOCOL,'recovery_wrong_protocol')
+        require(fingerprint(r['messages'])==r['input_hash'],'recovery_logical_receipt_changed')
         require(fingerprint(r['wire_request'])==r['request_hash']==t['runtime_attempt']['request_hash'],'recovery_actual_wire_changed')
-        require('max_tokens' not in r['wire_request'] and r['effective_timeout_seconds'] is None,'recovery_limit_returned')
+        require('max_tokens' not in r['wire_request'] and 'max_output_tokens' not in r['wire_request'] and r['effective_timeout_seconds'] is None and r['effective_output_max_tokens'] is None,'recovery_limit_returned')
         require(r['wire_request']['stream'] is True and r['idle_timeout_seconds']==p['idle_timeout_seconds'],'recovery_not_streaming')
-    for value in (read(f) for f in (root/'results').glob('*.json')):
-        require(value['protocol']==PROTOCOL,'recovery_wrong_protocol')
+        require(t['status']==t['runtime_attempt']['status'] and t['status'] in ('completed','failed'),'recovery_terminal_invalid')
+        attempt=t['runtime_attempt']['id'];require(attempt not in attempts,'recovery_attempt_duplicate');attempts.add(attempt)
+        previous=slots.setdefault(r['slot'],[])
+        require(len(previous)<4 and not any(x[1]['status']=='completed' for x in previous),'recovery_retry_or_success_replay')
+        require(all(x[0]['request_hash']==r['request_hash'] for x in previous),'recovery_retry_changed')
+        if t['status']=='completed':
+            require(transport['status']=='returned' and isinstance(transport.get('raw'),str),'recovery_transport_incomplete')
+            require(hashlib.sha256(transport['raw'].encode('utf-8')).hexdigest()==t['runtime_attempt']['output_fingerprint'],'recovery_output_changed')
+            diagnostics=transport.get('stream_diagnostics',{})
+            require(diagnostics.get('stream') is True and diagnostics.get('stream_downgraded') is not True and type(diagnostics.get('stream_events')) is int and diagnostics['stream_events']>0,'recovery_stream_not_observed')
+        previous.append((r,t,transport))
+    expected_slots={pos['id']+'/joint' for pos in positions}|{ident+'/main' for ident,value in values.items() if value['status']=='completed'}
+    require(set(slots)==expected_slots,'recovery_slot_inventory')
+    def success(slot,calls):
+        rows=slots[slot]
+        require([x[0]['id'] for x in rows]==calls and sum(x[1]['status']=='completed' for x in rows)==1 and rows[-1][1]['status']=='completed','recovery_slot_incomplete')
+        return rows[-1]
+    for ident,value in auxiliary.items():
+        require(value['real']==p['real'] and value['protocol']==PROTOCOL and value['stream'] is True,'recovery_wrong_protocol')
+        require(value['evidence_hash']==p['items'][ident]['evidence_hash'],'recovery_auxiliary_binding')
+        row=success(ident+'/joint',value['calls'])
+        require(value['raw']==row[2]['raw'],'recovery_output_changed')
+    for ident,value in values.items():
+        pos,condition=expected[ident]
+        require(value['id']==ident and value['group']==pos['id'] and value['condition']==condition,'recovery_result_binding')
+        require(value['real']==p['real'] and value['protocol']==PROTOCOL,'recovery_wrong_protocol')
         if value['status']=='aliased':
-            c=read(root/'results'/(value['canonical_id']+'.json'))
-            require(c['status']=='completed' and c['group']==value['group'] and all(c[k]==value[k] for k in ('request_hash','messages','reply')) and 'manifest' not in value,'recovery_alias_invalid')
-        else:require(fingerprint(value['messages'])==value['manifest']['input_snapshot_hash'],'recovery_logical_manifest_changed')
+            c=values.get(value['canonical_id'],{})
+            require(c.get('status')=='completed' and c['group']==value['group'] and all(c[k]==value[k] for k in ('request_hash','messages','reply')) and 'manifest' not in value and value['actual_manifest_from']==c['id'],'recovery_alias_invalid')
+        else:
+            require(value['status']=='completed','recovery_result_incomplete')
+            row=success(ident+'/main',value['calls']);r,_,transport=row
+            require(value['reply']==transport['raw'] and value['messages']==r['messages'] and value['request_hash']==r['request_hash'],'recovery_result_binding')
+            require(fingerprint(value['messages'])==value['manifest']['input_snapshot_hash'],'recovery_logical_manifest_changed')
+            wire=value['manifest']['provider_request_contract']
+            require(wire['wire_hash']==r['request_hash'] and wire['version']==STREAM_VERSION and wire['profile']==PROTOCOL and wire['stream'] is True,'recovery_manifest_wire_changed')
+    return len(ids)
+
+
+def verify(root,smoke=False):
+    p=frozen(root);s=report(root);state=s['state'];started=read(root/'run.started.json')
+    require(started['real']==p['real'] and started['batch']==p['batch'] and started['transport']==STREAM_VERSION and started['planned_groups']==len(p['positions']),'recovery_run_binding')
+    if smoke:
+        require(started['max_groups']==1 and state['status']=='stopped' and state.get('reason')=='group_limit_reached' and state['max_groups']==1 and state['completed_new_groups']==1,'recovery_smoke_incomplete')
+        positions=p['positions'][:1]
+    else:
+        require(state['status']=='completed' and state['completed_new_groups']==len(p['positions']),'recovery_incomplete')
+        positions=p['positions']
+    require(state['real']==p['real'] and state['new_groups']==len(p['positions']),'recovery_run_binding')
+    count=verify_records(root,p,positions)
+    require(count==state['physical_calls'],'recovery_physical_count_changed')
     imp=read(root/'imports.json')
-    result=s|{'passed':True,'success_replays':0,'combined_logical_conditions':len(imp['results'])+s['new_logical_conditions'],
+    result=s|{'passed':True,'verification_scope':'single_group_smoke' if smoke else 'complete_batch','success_replays':0,'combined_logical_conditions':len(imp['results'])+s['new_logical_conditions'],
               'combined_auxiliary':len(imp['auxiliary'])+s['new_auxiliary']}
-    require(result['combined_logical_conditions']==76 and result['combined_auxiliary']==24,'recovery_combined_count_changed')
-    atomic_json(root/'verification.json',result);return result
+    if not smoke:require(result['combined_logical_conditions']==76 and result['combined_auxiliary']==24,'recovery_combined_count_changed')
+    atomic_json(root/('smoke-verification.json' if smoke else 'verification.json'),result);return result
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('action',choices=('prepare','simulate','execute','report','verify'))
     parser.add_argument('--root',type=Path,default=OUT/'simulation-v1');parser.add_argument('--real',action='store_true')
     parser.add_argument('--max-groups',type=int,default=None,help='stop cleanly after N groups (smoke run)')
+    parser.add_argument('--smoke',action='store_true',help='verify exactly one deliberately completed smoke group')
     args=parser.parse_args();root=confined(args.root);require(not (OUT/'closure.json').exists(),'recovery_stage_sealed')
+    require(not args.smoke or args.action=='verify','recovery_smoke_verify_only')
     os.environ['TEMP']=os.environ['TMP']=str(HOME/'tmp');os.environ['HF_HUB_OFFLINE']=os.environ['TRANSFORMERS_OFFLINE']='1'
     if args.action=='execute':require(args.real,'recovery_explicit_real_required');result=asyncio.run(run(root,True,args.max_groups))
     else:
         with old.offline() as net,old.secondary() as secondary:
-            try:result=asyncio.run(prepare(root,args.real)) if args.action=='prepare' else asyncio.run(run(root,False,args.max_groups)) if args.action=='simulate' else verify(root) if args.action=='verify' else report(root)
+            try:result=asyncio.run(prepare(root,args.real)) if args.action=='prepare' else asyncio.run(run(root,False,args.max_groups)) if args.action=='simulate' else verify(root,args.smoke) if args.action=='verify' else report(root)
             finally:
                 if root.exists():atomic_json(root/('network-'+args.action+'.json'),{'primary':net,'secondary':secondary,'real_calls':0})
     print(encoded(result))

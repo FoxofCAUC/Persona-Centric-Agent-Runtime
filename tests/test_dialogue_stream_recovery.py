@@ -1,6 +1,7 @@
 """Streaming recovery guards exercised with artificial files and no HTTP."""
 import asyncio
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -208,6 +209,121 @@ class ContractTests(unittest.TestCase):
             value=r.mock_completion(item,'main',[])
         self.assertEqual(value[0],'模拟回复');self.assertEqual(value.diagnostics['response_model'],'mock-messages')
         self.assertTrue(r.stream_public(value.diagnostics)['stream'])
+
+
+class VerificationTests(unittest.TestCase):
+    """Smoke success requires the same receipt/result proof as a complete run."""
+    def setUp(self):
+        self.tmp=scratch('stream-recovery-verify-');self.root=Path(self.tmp.name)
+        self.p={'real':False,'batch':'b','idle_timeout_seconds':90,
+                'positions':[{'id':'G11','conditions':['raw','full']},{'id':'G07','conditions':['raw','full']}],
+                'items':{'G11':{'evidence_hash':'e11'},'G07':{'evidence_hash':'e07'}}}
+        self.write('run.started.json',{'real':False,'batch':'b','transport':r.STREAM_VERSION,'planned_groups':2,'max_groups':1})
+        self.write('state.json',{'real':False,'status':'stopped','reason':'group_limit_reached','max_groups':1,
+                                'completed_new_groups':1,'new_groups':2,'physical_calls':2})
+        self.write('imports.json',{'results':{str(i):{} for i in range(72)},'auxiliary':{str(i):{} for i in range(22)},
+                                   'prior_physical_calls':27,'prior_unknown_calls':1})
+        self.calls=0;self.add_group('G11')
+    def tearDown(self):self.tmp.cleanup()
+    def write(self,name,value):
+        path=self.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(value),encoding='utf-8')
+    def read(self,name):return json.loads((self.root/name).read_text(encoding='utf-8'))
+    def change(self,name,**changes):self.write(name,self.read(name)|changes)
+    def receipt(self,slot,kind,raw):
+        self.calls+=1;ident=f'{self.calls:04d}';messages=[{'role':'user','content':slot}]
+        model={'name':'grok-4.7','base_url':'https://example.invalid/v1'}
+        payload=r.build_messages_request(model,messages,r.stream_transport_contract(90))[0]
+        reserve={'id':ident,'ordinal':self.calls,'slot':slot,'kind':kind,'real':False,'protocol':r.PROTOCOL,
+                 'wire_protocol':r.PROTOCOL,'messages':messages,'input_hash':r.fingerprint(messages),
+                 'wire_request':payload,'request_hash':r.fingerprint(payload),'effective_timeout_seconds':None,
+                 'effective_output_max_tokens':None,'idle_timeout_seconds':90}
+        terminal={'status':'completed','real':False,'reservation_hash':r.fingerprint(reserve),
+                  'runtime_attempt':{'id':'attempt-'+ident,'status':'completed','request_hash':reserve['request_hash'],
+                                     'output_fingerprint':hashlib.sha256(raw.encode('utf-8')).hexdigest()}}
+        transport={'real':False,'status':'returned','raw':raw,'stream_diagnostics':{'stream':True,'stream_events':5}}
+        for ext,value in (('reserve',reserve),('terminal',terminal),('transport',transport)):self.write(f'receipts/{ident}.{ext}.json',value)
+        return ident,reserve
+    def add_group(self,g):
+        aux,_=self.receipt(g+'/joint','joint','auxiliary')
+        self.write(f'auxiliary/{g}.json',{'real':False,'protocol':r.PROTOCOL,'stream':True,'evidence_hash':self.p['items'][g]['evidence_hash'],'calls':[aux],'raw':'auxiliary'})
+        main,reserve=self.receipt(g+'-raw/main','main','reply')
+        value={'id':g+'-raw','group':g,'condition':'raw','status':'completed','real':False,'protocol':r.PROTOCOL,
+               'request_hash':reserve['request_hash'],'messages':reserve['messages'],'reply':'reply','calls':[main],
+               'manifest':{'input_snapshot_hash':reserve['input_hash'],'provider_request_contract':{
+                   'wire_hash':reserve['request_hash'],'profile':r.PROTOCOL,'version':r.STREAM_VERSION,'stream':True}}}
+        self.write('results/'+g+'-raw.json',value)
+        alias={k:v for k,v in value.items() if k not in ('manifest','calls')}
+        alias.update(id=g+'-full',condition='full',status='aliased',canonical_id=g+'-raw',actual_manifest_from=g+'-raw')
+        self.write('results/'+g+'-full.json',alias)
+    def verify(self,smoke=True):
+        with patch.object(r,'frozen',return_value=self.p),patch.object(r,'references',return_value=self.read('imports.json')):
+            return r.verify(self.root,smoke)
+    def test_limited_smoke_passes_without_claiming_full_batch(self):
+        result=self.verify();self.assertTrue(result['passed']);self.assertEqual(result['verification_scope'],'single_group_smoke')
+        self.assertFalse(result['stage_complete']);self.assertTrue((self.root/'smoke-verification.json').exists())
+        self.assertFalse((self.root/'verification.json').exists())
+    def test_full_verify_rejects_successfully_limited_smoke(self):
+        with self.assertRaisesRegex(Exception,'incomplete'):self.verify(False)
+    def test_complete_batch_uses_same_records_and_preserves_combined_totals(self):
+        self.add_group('G07');self.change('state.json',status='completed',completed_new_groups=2,physical_calls=4,max_groups=2)
+        self.change('run.started.json',max_groups=2)
+        result=self.verify(False);self.assertEqual((result['combined_logical_conditions'],result['combined_auxiliary']),(76,24))
+        self.assertEqual(result['verification_scope'],'complete_batch')
+    def test_failure_reason_is_never_smoke_success(self):
+        self.change('state.json',reason='provider_timeout')
+        with self.assertRaisesRegex(Exception,'smoke_incomplete'):self.verify()
+    def test_limit_state_is_not_enough_without_results_or_auxiliary(self):
+        for name,code in (('results/G11-full.json','result_inventory'),('auxiliary/G11.json','auxiliary_inventory')):
+            value=self.read(name);(self.root/name).unlink()
+            with self.subTest(name=name),self.assertRaisesRegex(Exception,code):self.verify()
+            self.write(name,value)
+    def test_unsettled_receipt_is_rejected(self):
+        (self.root/'receipts/0002.terminal.json').unlink()
+        with self.assertRaisesRegex(Exception,'unsettled'):self.verify()
+    def test_failed_terminal_cannot_count_as_completed_slot(self):
+        value=self.read('receipts/0002.terminal.json');value['status']=value['runtime_attempt']['status']='failed';self.write('receipts/0002.terminal.json',value)
+        with self.assertRaisesRegex(Exception,'slot_incomplete'):self.verify()
+    def test_unexpected_results_and_calls_are_rejected(self):
+        self.write('results/extra.json',self.read('results/G11-raw.json'))
+        with self.assertRaisesRegex(Exception,'result_inventory'):self.verify()
+        (self.root/'results/extra.json').unlink();self.receipt('G07/joint','joint','unplanned')
+        with self.assertRaisesRegex(Exception,'slot_inventory'):self.verify()
+    def test_wrong_version_or_manifest_request_is_rejected(self):
+        name='results/G11-raw.json';value=self.read(name);original=deepcopy(value)
+        for field,bad in (('version','old'),('wire_hash','forged')):
+            value=deepcopy(original);value['manifest']['provider_request_contract'][field]=bad;self.write(name,value)
+            with self.subTest(field=field),self.assertRaisesRegex(Exception,'manifest_wire_changed'):self.verify()
+    def test_cross_group_alias_is_rejected(self):
+        self.change('results/G11-full.json',canonical_id='G07-raw',actual_manifest_from='G07-raw')
+        with self.assertRaisesRegex(Exception,'alias_invalid'):self.verify()
+    def test_json_downgrade_does_not_pass_streaming_smoke(self):
+        value=self.read('receipts/0002.transport.json');value['stream_diagnostics']['stream_downgraded']=True;self.write('receipts/0002.transport.json',value)
+        with self.assertRaisesRegex(Exception,'stream_not_observed'):self.verify()
+    def test_missing_stream_evidence_does_not_pass(self):
+        self.change('receipts/0002.transport.json',stream_diagnostics={})
+        with self.assertRaisesRegex(Exception,'stream_not_observed'):self.verify()
+    def test_reply_body_and_physical_count_are_bound(self):
+        self.change('results/G11-raw.json',reply='changed')
+        with self.assertRaisesRegex(Exception,'result_binding|alias_invalid'):self.verify()
+        self.change('results/G11-raw.json',reply='reply');self.change('state.json',physical_calls=1)
+        with self.assertRaisesRegex(Exception,'physical_count_changed'):self.verify()
+    def test_auxiliary_source_binding_is_checked(self):
+        self.change('auxiliary/G11.json',evidence_hash='forged')
+        with self.assertRaisesRegex(Exception,'auxiliary_binding'):self.verify()
+    def test_wrong_receipt_protocol_is_checked(self):
+        name='receipts/0001.reserve.json';value=self.read(name);value['protocol']='old';self.write(name,value)
+        self.change('receipts/0001.terminal.json',reservation_hash=r.fingerprint(value))
+        with self.assertRaisesRegex(Exception,'wrong_protocol'):self.verify()
+    def test_recovered_retry_is_accepted_with_both_attempts_preserved(self):
+        first=self.read('receipts/0002.reserve.json');last=deepcopy(first);last.update(id='0003',ordinal=3)
+        self.write('receipts/0003.reserve.json',last)
+        terminal=self.read('receipts/0002.terminal.json');success=deepcopy(terminal)
+        success['reservation_hash']=r.fingerprint(last);success['runtime_attempt']['id']='attempt-0003'
+        self.write('receipts/0003.terminal.json',success)
+        self.write('receipts/0003.transport.json',self.read('receipts/0002.transport.json'))
+        terminal['status']=terminal['runtime_attempt']['status']='failed';self.write('receipts/0002.terminal.json',terminal)
+        self.change('results/G11-raw.json',calls=['0002','0003']);self.change('state.json',physical_calls=3)
+        self.assertTrue(self.verify()['passed'])
 
 
 if __name__=='__main__':unittest.main()

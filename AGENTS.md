@@ -1,3 +1,11 @@
+<!-- 2026-11-03 Windows pre-smoke readiness -->
+2026-11-03 最新：已按用户要求完成真实冒烟前的Windows离线准备，基线a398410/dev19；本轮新增单组严格验收verify --smoke，未改变生产链路。150项去重局部检查、R0的34零差异、22组86mock及首组4mock演练全部通过。7538保护绑定、2667旧包文件、168原人工模板文件不变；92新模拟库零活动/隐藏辅助、无凭据sidecar。零真实调用、QQ、正式服务、私人副本；未提交推送。
+
+最新入口：[Windows准备](docs/CR3-A.1-Windows冒烟前准备.md)、[冒烟手册](docs/acceptance/CR3-A.1-流式真实冒烟验收手册.md)。D盘stream-4/windows-readiness-handoff.json及preflight-windows-v1/closure.json为新交接；stream-4根目录未封死。当前只完成准备，不自动prepare --real或execute。真实单组的90秒空闲读超时（无总时限）、bearer、不发reasoning_effort和G11首组范围待实际派发前确认；成功后不自动续21组。
+
+两旧临时目录已由用户手工删除，补充记录在post-seal-supplements，旧封存“清理受阻”保留历史；receipt0004未知及原生审计缺口1继续保留。旧27次保守预留与另存流式探测分账，当前新流式恢复真实0次；自然度/人物收益、R4、路由及CR4仍未完成。下方停测和待Windows验证内容按各自历史阅读，旧封存不回写。
+<!-- /2026-11-03 Windows pre-smoke readiness -->
+
 <!-- CR3-A.1 Responses current -->
 2026-11-03 用户已终止测试，要求临时数据清理及提交全部已完成改动。本任务停止派发，不自动恢复或开启下一阶段。施工基线bb68120，候选dev19保持；最终本地提交及工作区状态见D盘handoff.json，本次未授权远端推送。
 

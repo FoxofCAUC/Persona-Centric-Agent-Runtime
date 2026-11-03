@@ -1,3 +1,11 @@
+<!-- 2026-11-03 Windows pre-smoke readiness -->
+2026-11-03 交接：已在本机补齐[真实冒烟前准备](CR3-A.1-Windows冒烟前准备.md)。a398410/dev19上的实验验证器补充尚未提交；150去重局部检查、R0的34零差异、完整22组86mock和首组4mock均通过。仅准备、真实0次，未创建real-v1或凭据sidecar，未启动正式服务/QQ/私人副本，未提交推送。
+
+D盘stream-4/windows-readiness-handoff.json与preflight-windows-v1/closure.json保存冻结源码、测试、网络、保护和下一步；原pre-smoke-handoff保留历史，不在包根写closure.json。下一动作须先读[冒烟手册](acceptance/CR3-A.1-流式真实冒烟验收手册.md)，确认G11首组、90秒空闲读超时（无总时限）、bearer、不发reasoning_effort，再新建真实目录。不得重启任何旧run.started，成功后不自动续21组。
+
+7538保护/2667旧包/168模板未变；92模拟库零活动。两旧临时目录已由用户手工删除，receipt0004仍未知，原27账目与独立探测分账。真实准确性、自然度、路由、R4及CR4继续未完成；下文按历史读。
+<!-- /2026-11-03 Windows pre-smoke readiness -->
+
 <!-- 2026-11-03 stream runner pre-smoke closure -->
 2026-11-03 流式恢复运行器完成、真实冒烟前阶段性收尾：新增scripts/dialogue_stream_recovery.py（cr3-stream-recovery-v1，包CR3-A.1-real-consumption-ablation-stream-4），以responses-3运行器为骨架仅改为anthropic-messages-stream-v1（stream:true、90秒空闲读超时、无总时限/max_tokens/reasoning_effort）；继承4个前序包（保守27预留/16失败/1未知），prepare前跑三份只读审计；--max-groups供冒烟，包内后续真实批次导入先前已结清结果不重放。运行器测试25项通过；以b12b40e为基线全量逐项对比无任何状态变化，新增49项全部通过，约800项为沙箱环境出错（盘符路径/DPAPI/缺D盘证据等）两边一致，须Windows复跑。
 

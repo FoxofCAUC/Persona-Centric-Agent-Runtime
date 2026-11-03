@@ -1,3 +1,7 @@
+<!-- 2026-11-03 Windows pre-smoke readiness -->
+2026-11-03 [CR3-A.1流式真实冒烟手册](CR3-A.1-流式真实冒烟验收手册.md)与[Windows准备记录](../CR3-A.1-Windows冒烟前准备.md)为最新入口。150去重局部/R0的34零差异、22组完整及首组离线演练已通过；真实冒烟、界面、QQ和私人副本均未执行，不据此判自然度收益。最新机器交接在D盘stream-4/windows-readiness-handoff.json；旧历史记录不覆盖。
+<!-- /2026-11-03 Windows pre-smoke readiness -->
+
 <!-- CR3-A.1 Responses current -->
 2026-11-03 用户已终止测试，要求临时数据清理及提交全部已完成改动。本任务停止派发，不自动恢复或开启下一阶段。施工基线bb68120，候选dev19保持；最终本地提交及工作区状态见D盘handoff.json，本次未授权远端推送。
 

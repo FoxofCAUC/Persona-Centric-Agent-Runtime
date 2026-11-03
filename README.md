@@ -1,3 +1,7 @@
+<!-- 2026-11-03 Windows pre-smoke readiness -->
+2026-11-03 已完成[Windows真实冒烟前准备](docs/CR3-A.1-Windows冒烟前准备.md)：150项局部检查、R0的34零差异、22组86次及单组4次模拟通过；新增严格单组验收。当前仅准备，真实调用为0、自然度收益未验证，正式仍Shadow/default v2。下一入口为确认[单组真实冒烟](docs/acceptance/CR3-A.1-流式真实冒烟验收手册.md)，不自动执行或提交推送。
+<!-- /2026-11-03 Windows pre-smoke readiness -->
+
 <!-- 2026-11-03 stream runner pre-smoke closure -->
 2026-11-03 流式恢复运行器完成、真实冒烟前阶段性收尾：新增scripts/dialogue_stream_recovery.py（cr3-stream-recovery-v1，包CR3-A.1-real-consumption-ablation-stream-4），以responses-3运行器为骨架仅改为anthropic-messages-stream-v1（stream:true、90秒空闲读超时、无总时限/max_tokens/reasoning_effort）；继承4个前序包（保守27预留/16失败/1未知），prepare前跑三份只读审计；--max-groups供冒烟，包内后续真实批次导入先前已结清结果不重放。运行器测试25项通过；以b12b40e为基线全量逐项对比无任何状态变化，新增49项全部通过，约800项为沙箱环境出错（盘符路径/DPAPI/缺D盘证据等）两边一致，须Windows复跑。
 
