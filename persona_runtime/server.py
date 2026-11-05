@@ -28,10 +28,11 @@ from .persona_management import PersonaManagement
 def health_status(config, engine, organization, ingress):
     """Read-only payload shared by HTTP and stopped-instance deployment checks."""
     from .disposition_shadow import HEALTH
+    from . import __version__
     return {"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                               "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                               "pending": len(engine.tasks), "background_running": organization.running,
-                              "version": "0.7.6.dev3", "assist_admitted": bool(getattr(engine,"assist_admission",None)), "live_admitted": bool(getattr(engine,"live_admission",None)), "decision_capsule_version":"decision-capsule-v1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["evaluation_review_v1","disposition_live_candidate_v1","situation_observation_v1","author_relationship_mapping_v2","static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
+                              "version": __version__, "assist_admitted": bool(getattr(engine,"assist_admission",None)), "live_admitted": bool(getattr(engine,"live_admission",None)), "decision_capsule_version":"decision-capsule-v1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["companion_workbench_v1","companion_cancel_v1","evaluation_review_v1","disposition_live_candidate_v1","situation_observation_v1","author_relationship_mapping_v2","static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
 
 
 def create_app(paths, client=None, *, assist_admission=None, live_admission=None):
@@ -178,8 +179,17 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         if request["role"] != "admin":
             raise web.HTTPForbidden()
         if not config.load()["interaction"]["cancel_queued"]:
-            raise RuntimeErrorBase("queue_cancellation_disabled")
-        return web.json_response(engine.cancel_queued(request.match_info["id"]))
+            # Unlimited companion generations must remain cancellable even
+            # after the current entry policy changes. Validate the accepted
+            # model/context pair, not a current setting or a public view.
+            from .companion import read as companion_read
+            with store.connection() as conn:
+                row=conn.execute('SELECT * FROM turns WHERE id=?', (request.match_info['id'],)).fetchone()
+                if row is None:raise RuntimeErrorBase('Request not found')
+                accepted=dict(row)
+            if companion_read(accepted) is None:
+                raise RuntimeErrorBase("queue_cancellation_disabled")
+        return web.json_response(await engine.cancel(request.match_info["id"]))
 
     async def retry(request):
         turn = engine.get(request.match_info["id"])

@@ -17,7 +17,12 @@ def new_persona_defaults():
 def values(policy):
     data=json.loads(policy['data_json']).get('context',{})
     from .character_policy import read
-    return {'context_mode':data.get('context_mode','legacy_recent'),
+    companion=json.loads(policy['data_json']).get('companion')
+    extra={}
+    if companion is not None:
+        from .companion import checked
+        extra['companion']=checked(companion)
+    return {**extra,'context_mode':data.get('context_mode','legacy_recent'),
             'cross_session':bool(data.get('cross_session',False)), 'character_retrieval':read(data), 'disposition_mode':data.get('disposition_mode','baseline'), 'situation_observation_mode':data.get('situation_observation_mode','disabled')}
 
 

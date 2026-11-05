@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import ttk,messagebox,scrolledtext
 from .models import identifier
+from .desktop_context import companion_candidate
 
 BATCH_LABELS={'collecting':'收集中','sealed_waiting_capacity':'已封存，等待队列容量','interrupted_buffer':'中断，待继续或取消','cancelled':'已取消','queued':'排队中','running':'正在生成','completed':'生成完成','failed':'生成失败','interrupted':'请求中断'}
 REPLY_LABELS={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复','natural_structured':'自然私聊（可省略余段）'}
@@ -19,8 +20,9 @@ class BatchUI:
         self.button(bar,'切换 QQ 模式',lambda:self.change_batch_mode('qq'),{'batch-write'})
         ttk.Label(parent,textvariable=self.batch_policy_text,wraplength=700).pack(anchor='w',pady=5)
         reply_bar=ttk.Frame(parent);reply_bar.pack(fill='x',pady=(0,5))
-        self.button(reply_bar,'设置窗口回复',lambda:self.change_reply_mode('desktop'),{'batch-write'})
-        self.button(reply_bar,'设置 QQ 回复',lambda:self.change_reply_mode('qq'),{'batch-write'})
+        self.reply_mode_buttons={}
+        self.reply_mode_buttons['desktop']=self.button(reply_bar,'设置窗口回复',lambda:self.change_reply_mode('desktop'),{'batch-write'})
+        self.reply_mode_buttons['qq']=self.button(reply_bar,'设置 QQ 回复',lambda:self.change_reply_mode('qq'),{'batch-write'})
         self.reply_policy_text=tk.StringVar(value='启动服务后读取回复模式。')
         ttk.Label(parent,textvariable=self.reply_policy_text,wraplength=700).pack(anchor='w',pady=(0,5))
         self.batch_tree=ttk.Treeview(parent,columns=('channel','status','members','remaining'),show='headings',height=10)
@@ -41,9 +43,16 @@ class BatchUI:
             return self.client.manage('batch.list',persona_id=pid),{channel:self.client.manage('interaction.current',persona_id=pid,channel=channel) for channel in ('desktop','qq')}
         def done(value):
             if epoch!=self.view_epoch or pid!=self.persona_id:return
-            rows,policies=value;self.batch_policies=policies
+            rows,policies=value
+            for channel,policy in policies.items():
+                known=getattr(self,'companion_policies',{}).get(channel)
+                if (known and known.get('persona_id')==pid
+                        and known.get('revision',0)>policy.get('revision',0)):
+                    return  # A policy write completed after this read started.
+            self.batch_policies=policies
+            for policy in policies.values():self.remember_companion_policy(policy)
             self.batch_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+(('最后一条后五秒，无时间上限' if p.get('buffer_policy',{}).get('schema_version')==2 else '旧策略：五秒静默／十五秒上限') if p['mode']=='natural_batch' else '逐条回复') for c,p in policies.items()))
-            self.reply_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+REPLY_LABELS.get(p.get('reply_mode','legacy_full'),'兼容全文')+(' · 模型分泡，保留合理逗号，通常省略句末句号（最多12条，不凑数）' if (p.get('expression_policy') or {}).get('version')==3 else ' · 旧版表达') for c,p in policies.items()))
+            self.reply_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+REPLY_LABELS.get(p.get('reply_mode','legacy_full'),'兼容全文')+(' · 伴侣候选结构合同，按内容分条；合同本身不规定标点' if companion_candidate(p) else ' · 模型分泡（结构上限12条，不凑数）' if (p.get('expression_policy') or {}).get('version')==3 else ' · 旧版表达') for c,p in policies.items()))
             selected=self.batch_tree.selection()
             self.batch_rows=rows
             self.batch_tree.delete(*self.batch_tree.get_children())
@@ -87,6 +96,8 @@ class BatchUI:
     def change_reply_mode(self,channel):
         p=self.batch_policies.get(channel);pid=self.persona_id;epoch=self.view_epoch
         if not p or p['persona_id']!=pid:return
+        if companion_candidate(p):
+            self.notice.set('伴侣候选使用固定结构合同；如需更换回复模式，请先在上下文页恢复启用前设置。');return
         dialog,body,footer=self.dialog_shell('选择回复模式',(500,330))
         value=tk.StringVar(value=p.get('reply_mode','legacy_full'))
         ttk.Label(body,text=('窗口' if channel=='desktop' else 'QQ')+' 后续受理的请求使用：').pack(anchor='w',pady=(8,4))
@@ -94,7 +105,7 @@ class BatchUI:
             ('legacy_full','兼容全文','保持现有完整文本回复行为。'),
             ('context_full','情境全文','使用本地情境线索和角色样例，仍返回完整文本。'),
             ('context_structured','情境结构回复','一次主调用返回经校验的 1–3 段；窗口显示正文，QQ按入口能力投递。'),
-            ('natural_structured','自然私聊','模型直接分泡，保留合理逗号；通常省略句末句号，不凑满12条。'),
+            ('natural_structured','自然私聊','模型按内容分条，结构上限12条，不要求凑满。'),
         ):
             row=ttk.Frame(body);row.pack(fill='x',anchor='w',pady=3)
             ttk.Radiobutton(row,text=label,value=mode,variable=value).pack(side='left')

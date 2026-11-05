@@ -44,6 +44,35 @@ class LocalClient:
     def manage(self, management_action, **args):
         return self.call("POST", "/v1/manage", {"action": management_action, "args": args})
 
+    def require_capability(self, capability):
+        if capability not in self.call('GET', '/v1/health').get('capabilities', []):
+            raise RuntimeErrorBase('runtime_upgrade_required')
+
+    def update_companion_policy(self, **args):
+        self.require_capability('companion_workbench_v1')
+        return self.manage('interaction.update', **args)
+
+    def cancel_request(self, turn):
+        """Use this request's accepted policy, never the current UI policy."""
+        snapshot = turn.get('context_policy_snapshot') or {}
+        if isinstance(snapshot, str):
+            try:
+                snapshot = json.loads(snapshot)
+            except ValueError:
+                snapshot = {}
+        from .companion import checked
+        try:
+            companion = checked(snapshot.get('companion'))
+        except (RuntimeErrorBase, AttributeError):
+            companion = None
+        if turn.get('status') not in ('queued', 'running'):
+            raise RuntimeErrorBase('only_queued_can_cancel')
+        if companion:
+            self.require_capability('companion_cancel_v1')
+        elif turn.get('status') != 'queued':
+            raise RuntimeErrorBase('only_queued_can_cancel')
+        return self.call('POST', f"/v1/requests/{turn['id']}/cancel", {})
+
     def lookup_v1(self, payload):
         try:
             return self.call("GET", "/v1/submissions/desktop/" + quote(payload["request_id"], safe=""))

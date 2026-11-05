@@ -113,11 +113,13 @@ class CognitiveService:
     def prepare(self,turn_id,character_selection=None,observation=None):
         started=time.perf_counter()
         with self.store.connection() as conn:turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
-        try:character=self.characters.prepare(turn,character_selection)
+        from .companion import minimal
+        is_minimal=minimal(turn)
+        try:character=self.characters.prepare(turn,character_selection,behavior_cues=False) if is_minimal else self.characters.prepare(turn,character_selection)
         except RuntimeErrorBase as exc:
             from .chat import ModelError
             raise ModelError(str(exc)) from None
-        decision=self.shadow.prepare(turn,observation)
+        decision=None if is_minimal else self.shadow.prepare(turn,observation)
         from .dialogue_voice import read as read_voice
         voice=read_voice(turn)
         if decision is not None and voice:decision={**decision,'_voice_version':voice['version']}
@@ -157,11 +159,13 @@ class CognitiveService:
             from .chat import ModelError
             raise ModelError('assist_snapshot_invalid')
         if turn['channel']!='test':prepare(conn,turn)
-        try:character=self.characters.recheck(conn,turn,prepared.get('character_prepared'))
+        from .companion import minimal
+        is_minimal=minimal(turn)
+        try:character=self.characters.recheck(conn,turn,prepared.get('character_prepared'),behavior_cues=False) if is_minimal else self.characters.recheck(conn,turn,prepared.get('character_prepared'))
         except RuntimeErrorBase as exc:
             from .chat import ModelError
             raise ModelError(str(exc)) from None
-        decision=self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
+        decision=None if is_minimal else self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
         from .decision_capsule import capsule
         if decision!=prepared['manifest'].get('_shadow_prepared') or character!=prepared.get('character_prepared') or prepared['guard']!=self._guard(conn,turn,prepared['details']):
             evidence=self.dialogue.basic_evidence(conn,turn)
@@ -174,7 +178,7 @@ class CognitiveService:
             manifest['_shadow_prepared']=decision
             prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character}
         prepared['manifest']['final_verification_ms']=round((time.perf_counter()-started)*1000,3)
-        prepared['manifest']['_shadow_prepared']=self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
+        prepared['manifest']['_shadow_prepared']=None if is_minimal else self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
         from .prompt_assembly import fit_manifest
         prepared['manifest']=fit_manifest(prepared['manifest'])
         return prepared

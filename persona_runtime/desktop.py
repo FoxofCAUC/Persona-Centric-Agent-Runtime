@@ -29,7 +29,7 @@ from .desktop_selector import SelectorUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 DISPLAY_ERRORS = {
-    'provider_connection_timeout': '连接模型接口超时（DNS/TCP/TLS阶段）；未自动重试，请检查连接诊断。',
+    'provider_connection_timeout': '连接模型接口超时（DNS/TCP/TLS阶段）；请在请求详情核对原生重试记录。',
     'chat_display_message_limit': '回复分条超过安全上限，整批未发送；原生成记录保留。',
     'chat_display_empty': '回复无法形成非空展示正文，整批未发送。',
     'expression_policy_invalid': '冻结的表达策略无效，请查看请求诊断。',
@@ -47,6 +47,13 @@ ERRORS.update({"session_sealed":"此会话已封存。草稿保留，请在会�
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
                "request_failed": "本机处理失败，请查看请求详情和诊断记录。"})
 ERRORS.update(DISPLAY_ERRORS)
+ERRORS.update({'companion_restore_missing':'此旧实验没有启用前恢复点，不能自动恢复；当前设置未改变。',
+               'companion_restore_invalid':'恢复点无效，当前设置未改变。',
+               'companion_restore_conflict':'恢复期间不能同时改写其他设置，请重新读取入口政策。',
+               'companion_policy_conflict':'伴侣候选使用本地选材且关闭辅助观察，请先恢复原方案后再修改。',
+               'companion_format_conflict':'伴侣候选使用固定结构合同，请先恢复原方案后再修改回复模式。',
+               'cancelled_by_user':'请求已取消；已发生的供应商调用仍保留记录。',
+               'only_queued_can_cancel':'旧方案仅允许取消排队请求；在途取消只支持已受理的伴侣候选请求。'})
 ERRORS.update({
     'provider_http_402':'模型账户余额不足，请检查供应商账户。',
     'provider_http_422':'模型参数未被供应商接受，请核对模型名称及接口配置。',
@@ -62,6 +69,38 @@ ERRORS.update({
 PHASES = {"character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
+
+
+def compact_usage(usage):
+    """Only totals belong beside the dialogue; the original audit stays intact."""
+    if not isinstance(usage,dict):return '未知'
+    valid=lambda n:type(n) is int and n>=0
+    total=usage.get('total_tokens')
+    if not valid(total):
+        inputs,outputs=usage.get('prompt_tokens'),usage.get('completion_tokens')
+        total=inputs+outputs if valid(inputs) and valid(outputs) else None
+    text='已知 '+str(total)+' token' if total is not None else '未知'
+    retry=usage.get('generation_retry')
+    attempts=retry.get('attempts',[]) if isinstance(retry,dict) else []
+    attempts=[row for row in attempts if isinstance(row,dict)] if isinstance(attempts,list) else []
+    if total is not None and any(row.get('usage_known') is False for row in attempts):
+        text+='（部分调用用量未知）'
+    indices=[row['index'] for row in attempts if valid(row.get('index'))]
+    retries=max(indices,default=0)
+    if retries:text+=' · 自动重试 '+str(retries)+' 次'
+    return text
+
+
+def cancelled_companion_generation(turn):
+    if turn.get('error_code')!='cancelled_by_user' or not (
+            type(turn.get('attempt_count')) is int and turn['attempt_count']>0):return False
+    snapshot=turn.get('context_policy_snapshot') or {}
+    try:
+        if isinstance(snapshot,str):snapshot=json.loads(snapshot)
+        from .companion import checked
+        checked(snapshot.get('companion'))
+        return True
+    except (ValueError,TypeError,AttributeError):return False
 
 
 class ScrollNavigation(ttk.Frame):
@@ -316,7 +355,8 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.build_quotas(parent)
 
     def build_chat(self, parent):
-        self.heading(parent, "聊天", "窗口和 QQ 共享长期记忆，各自保留近期会话。失败不会自动重试。")
+        self.heading(parent, "聊天", "可重试的生成失败最多自动重试3次；手动重试按当前资料与模型重新构建，可能再次计费。")
+        ttk.Label(parent,textvariable=self.chat_mode_text,wraplength=760).pack(anchor='w',pady=(0,5))
         self.chat_persona = ttk.Combobox(parent, textvariable=self.persona_choice, state="readonly")
         self.chat_persona.pack(fill="x")
         self.chat_persona.bind("<<ComboboxSelected>>", lambda _: self.select_persona())
@@ -335,7 +375,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         bar = self.bar(parent)
         bar.pack(fill="x")
         self.button(bar, "发送", self.send_chat, {"send"}, True)
-        self.button(bar, "重试最后失败请求", self.retry_chat, {"send"})
+        self.button(bar, "按当前设定重试失败请求", self.retry_chat, {"send"})
         self.button(bar, "找回未确认消息", self.recover_submissions, {"submission-recovery"})
         self.button(bar, "请求队列与详情", self.request_queue, {"request-list"})
         self.button(bar, "查看本轮记忆使用", self.explain_chat_context, {"org-details"})
@@ -652,6 +692,9 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
 
     def use_persona(self, persona_id):
         if not self.character_can_leave():return
+        self.companion_policies={}
+        self.chat_mode_text.set('聊天方案：待读取当前人格入口政策。')
+        self.update_disposition_companion_controls()
         self.invalidate_context()
         self.invalidate_search()
         self.invalidate_archive()
@@ -844,14 +887,16 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
                     findings=[str(i) for i,m in enumerate(displayed,1) if m.get('diagnostics',{}).get('quality_findings')]
                     if findings:self.transcript.insert('end','表达检查：第'+ '、'.join(findings)+'条有长度或内部换行提示，正文已完整保留；请在详情中核对。\n\n')
                 else:self.transcript.insert("end", "人格：" + (turn.get('display_reply',turn["reply"]) or "") + "\n\n")
-                self.transcript.insert("end", "用量：" + (json.dumps(turn["usage"], ensure_ascii=False) if turn["usage"] else "未知") + "\n\n")
+                self.transcript.insert("end", "用量：" + compact_usage(turn.get('usage')) + "\n\n")
             else:
                 phase = turn.get("phase", turn["status"])
                 label = PHASES.get(phase, phase)
                 if turn.get("queue_position"):
                     label += " · 当前顺位 " + str(turn["queue_position"])
                 self.transcript.insert("end", "[" + label + "] " + ERRORS.get(turn["error_code"], turn["error_code"] or "") + "\n")
-                if turn.get("recovery"):
+                if cancelled_companion_generation(turn):
+                    self.transcript.insert('end','已取消；本地不再发布本次回复。已发生调用记录保留，用量以已收到回执为准。\n')
+                elif turn.get("recovery"):
                     self.transcript.insert("end", turn["recovery"] + "\n")
                 self.transcript.insert("end", "\n")
             timing = turn.get("timings", {})
@@ -980,7 +1025,9 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.run_task("核对 QQ 未确认接收", {"inbox-read"}, lambda _: self.client.manage("inbox.check"), done)
 
     def request_queue(self):
+        epoch=self.view_epoch;pid=self.persona_id
         def done(rows):
+            if epoch!=self.view_epoch or pid!=self.persona_id:return
             dialog, body, footer = self.dialog_shell("请求队列与详情", (820, 470))
             body.rowconfigure(0, weight=1)
             listing = tk.Listbox(body, width=1, height=1)
@@ -996,14 +1043,21 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
                                   lambda value: self.show_json("请求阶段、耗时与恢复建议", value))
             def cancel():
                 row = selected()
+                if epoch!=self.view_epoch or pid!=self.persona_id:
+                    self.notice.set('人格已切换，请在当前人格重新打开请求队列。');return
                 if row:
-                    self.run_task("取消排队消息", {"request-cancel"}, lambda _: self.client.call("POST", f"/v1/requests/{row['id']}/cancel", {}),
-                                  lambda _: self.notice.set("排队消息已取消；正在生成的请求不会被此操作中断。"))
-                    dialog.destroy()
+                    def cancelled(value):
+                        if epoch==self.view_epoch and pid==self.persona_id:
+                            self.notice.set('已取消选中请求，原调用记录保留。' if value.get('cancelled_at') or value.get('error_code')=='cancelled_by_user' else '请求状态已更新，请查看详情。')
+                            self.chat_version=None
+                        if dialog.winfo_exists():dialog.destroy()
+                    self.run_task("取消选中请求", {"request-cancel"}, lambda _: self.client.cancel_request(row),cancelled,
+                                  error_current=lambda:epoch==self.view_epoch and pid==self.persona_id)
             ttk.Button(footer, text="查看详情", command=details).grid(row=0, column=0, padx=5)
-            ttk.Button(footer, text="取消选中排队消息", command=cancel).grid(row=0, column=1, padx=5)
+            ttk.Button(footer, text="取消选中请求", command=cancel).grid(row=0, column=1, padx=5)
             ttk.Button(footer, text="关闭", command=dialog.destroy).grid(row=0, column=2)
-        self.run_task("读取请求队列", {"request-list"}, lambda _: self.client.manage("chat.requests"), done)
+        self.run_task("读取请求队列", {"request-list"}, lambda _: self.client.manage("chat.requests"), done,
+                      error_current=lambda:epoch==self.view_epoch and pid==self.persona_id)
 
     def watch_turn(self, turn, epoch):
         if self.closed or epoch != self.view_epoch:
@@ -1017,7 +1071,8 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         failed = next((t for t in reversed(self.turns) if t["status"] in ("failed", "interrupted")), None)
         if failed:
             epoch = self.view_epoch
-            self.run_task("手动重试", {"send"}, lambda _: self.client.call("POST", f"/v1/requests/{failed['id']}/retry", {}), lambda value: self.watch_turn(value, epoch))
+            self.notice.set('正在按当前资料与模型重新提交；这与原请求内部自动重试不同。')
+            self.run_task("按当前设定手动重试", {"send"}, lambda _: self.client.call("POST", f"/v1/requests/{failed['id']}/retry", {}), lambda value: self.watch_turn(value, epoch))
 
     def pending_requests(self):
         def done(rows):
@@ -1222,7 +1277,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         resources = set().union(*(op.resources for op in active)) if active else set()
         for button, required in self.buttons:
             if button.winfo_exists():
-                state="disabled" if required & resources or "emergency" in resources else "normal"
+                state="disabled" if required & resources or "emergency" in resources or getattr(button,'companion_disabled',False) else "normal"
                 if str(button.cget("state")) != state:button.configure(state=state)
         if any(op.name != "检查状态" for op in active):
             self.progress.start(15)

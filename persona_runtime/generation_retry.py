@@ -30,13 +30,13 @@ class GenerationRetriesExhausted(RuntimeErrorBase):
 def safe_diagnostics(value):
     if not isinstance(value,dict):return {}
     result={}
-    for key in ('phase','transport_profile','response_format','thinking','reasoning_effort','finish_reason'):
+    for key in ('phase','transport_profile','response_format','thinking','reasoning_effort','finish_reason','generation_version','timeout_policy','output_limit'):
         item=value.get(key)
         if isinstance(item,str) and re.fullmatch(r'[a-z0-9_-]{1,64}',item):result[key]=item
-    for key in ('timeout_seconds','elapsed_ms','output_characters','http_status'):
+    for key in ('timeout_seconds','elapsed_ms','output_characters','http_status','stream_events','first_event_ms','first_content_delta_ms'):
         item=value.get(key)
         if type(item) in (int,float) and item>=0:result[key]=item
-    for key in ('request_headers_sent','response_headers_received','reasoning_present'):
+    for key in ('request_headers_sent','response_headers_received','reasoning_present','stream','stream_complete'):
         if type(value.get(key)) is bool:result[key]=value[key]
     from .provider_compat import response_metadata
     result.update(response_metadata({'model':value.get('response_model'),'system_fingerprint':value.get('system_fingerprint')},grok=True))
@@ -76,10 +76,12 @@ def call_count(conn, table, since):
 
 
 async def _one(client, model, messages, timeout_code):
-    deadline=time.monotonic()+model['timeout']
-    task=asyncio.create_task(client.complete(model|{'_request_deadline':deadline},messages))
+    from .provider_compat import request_timeout
+    budget=request_timeout(model)
+    request=model|{'_request_deadline':time.monotonic()+budget} if budget is not None else {k:v for k,v in model.items() if k!='_request_deadline'}
+    task=asyncio.create_task(client.complete(request,messages))
     try:
-        done,_=await asyncio.wait({task},timeout=model['timeout'])
+        done,_=await asyncio.wait({task},timeout=budget)
         if done:return task.result()
         task.cancel('generation_attempt_timeout')
         settled,_=await asyncio.wait({task},timeout=1)
@@ -91,14 +93,21 @@ async def _one(client, model, messages, timeout_code):
         raise RuntimeErrorBase(timeout_code)
     except asyncio.CancelledError:
         task.cancel('generation_cancelled')
-        task.add_done_callback(lambda done:None if done.cancelled() else done.exception())
+        # Transport close runs before the owning turn releases its execution slot.
+        # This is cleanup, not a generation deadline or another dispatch.
+        settled,_=await asyncio.wait({task},timeout=1)
+        if not settled:
+            error=RuntimeErrorBase('provider_cancellation_unsettled');error.pending_task=task
+            task.add_done_callback(lambda done:None if done.cancelled() else done.exception())
+            raise error
+        if not task.cancelled():task.exception()
         raise
 
 
 async def audited_complete(client, model, messages, *, validate, save, before_attempt,
                            prior_failures=0, timeout_code='provider_timeout', sleep=None):
     from .archive import fingerprint
-    from .provider_compat import build_request,usage_fields
+    from .provider_compat import build_request,usage_fields,request_timeout
     from .chat import ModelCompletion
     sleep=sleep or retry_delay
     if type(prior_failures) is not int or not 0<=prior_failures<=MAX_RETRIES:
@@ -108,7 +117,7 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
     for index in range(prior_failures,MAX_RETRIES+1):
         before_attempt(state)
         row={'id':identifier(),'index':index,'status':'running','started_epoch':time.time(),
-             'request_hash':request_hash,'timeout_seconds':model['timeout']}
+             'request_hash':request_hash,'timeout_seconds':request_timeout(model)}
         state['attempts'].append(row);save(aggregate(state))
         value=None
         try:

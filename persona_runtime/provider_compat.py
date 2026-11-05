@@ -12,6 +12,8 @@ from .archive import fingerprint
 from .reply_protocol import response_format
 
 VERSION='provider-wire-v1'
+STREAM_UNLIMITED_VERSION='chat-stream-unlimited-v1'
+NATIVE_TEXT_VERSION='native-text-low-v1'
 CURRENT_DEEPSEEK=frozenset(('deepseek-flash','deepseek-v4-pro','deepseek-v4-flash','deepseek-v4-flash-vision-exp'))
 LEGACY_DEEPSEEK=frozenset(('deepseek-chat','deepseek-reasoner'))
 
@@ -19,6 +21,33 @@ LEGACY_DEEPSEEK=frozenset(('deepseek-chat','deepseek-reasoner'))
 def is_grok47(model):
     # A routed model name selects a wire profile, not a claim of xAI provenance.
     return not is_deepseek(model) and model.get('name','').strip().lower()=='grok-4.7'
+
+
+def generation_profile(model):
+    """Only explicitly frozen new requests opt into the unlimited SSE path."""
+    value=model.get('_generation_profile')
+    if value is None:return None
+    if type(value) is not dict or value!={'version':STREAM_UNLIMITED_VERSION}:
+        raise ValueError('generation_profile_invalid')
+    return value
+
+
+def native_text_profile(model):
+    """Explicit plain-text reference requests retain the existing Grok low setting."""
+    if '_native_text_profile' not in model:return None
+    value=model['_native_text_profile']
+    if type(value) is not dict or value!={'version':NATIVE_TEXT_VERSION}:
+        raise ValueError('native_text_profile_invalid')
+    if not is_grok47(model):raise ValueError('native_text_model_unsupported')
+    if (model.get('_reply_mode') not in (None,'legacy_full') or
+            any(key in model for key in ('_expression_snapshot','_character_selection',
+                '_json_output','_disposition_compile','_dialogue_profile','_companion_profile'))):
+        raise ValueError('native_text_profile_conflict')
+    return value
+
+
+def request_timeout(model):
+    return None if generation_profile(model) else model['timeout']
 
 
 def grok_interactive(model):
@@ -59,6 +88,8 @@ def _format(model):
 
 
 def describe_request(model):
+    native=native_text_profile(model)
+    generation=generation_profile(model)
     fmt=_format(model);deepseek=is_deepseek(model)
     # Legacy aliases may refer to older single-mode APIs at third-party gateways.
     # Do not pretend a thinking-only legacy model was made non-thinking.
@@ -66,7 +97,10 @@ def describe_request(model):
     result={'version':VERSION,'profile':'deepseek-chat-v1' if deepseek else 'openai-compatible-v1',
             'response_format':fmt['type'] if fmt else 'text','thinking':thinking,
             'format_hash':fingerprint(fmt) if fmt else None,'application_validation_required':bool(fmt)}
-    if grok_interactive(model):result.update(version='provider-wire-grok47-v1',profile='grok47-chat-v1',reasoning_effort='low')
+    if grok_interactive(model) or native:result.update(version='provider-wire-grok47-v1',profile='grok47-chat-v1',reasoning_effort='low')
+    if native:result.update(version='provider-wire-native-text-low-v1',native_text_profile=NATIVE_TEXT_VERSION)
+    if generation:result.update(generation_version=STREAM_UNLIMITED_VERSION,stream=True,
+                                output_limit='omitted',timeout_policy='none')
     return result
 
 
@@ -77,10 +111,12 @@ def build_request(model,messages):
         # Do not silently alter a frozen prompt or pay for an invalid JSON-mode
         # request. All normal structured PCAR purposes already supply a contract.
         raise ValueError('provider_json_instruction_missing')
-    payload={'model':model['name'],'messages':messages,'max_tokens':model['max_tokens'],'stream':False}
+    if generation_profile(model):
+        payload={'model':model['name'],'messages':messages,'stream':True,'stream_options':{'include_usage':True}}
+    else:payload={'model':model['name'],'messages':messages,'max_tokens':model['max_tokens'],'stream':False}
     if fmt:payload['response_format']=fmt
     if contract['thinking']=='disabled':payload['thinking']={'type':'disabled'}
-    if grok_interactive(model):payload['reasoning_effort']='low'
+    if contract.get('reasoning_effort')=='low':payload['reasoning_effort']='low'
     if model.get('_dialogue_profile') is not None:
         from .dialogue_voice import read
         profile=read({'model_snapshot':model})

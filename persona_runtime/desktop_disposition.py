@@ -6,6 +6,7 @@ from tkinter import ttk,messagebox,scrolledtext
 from .models import identifier
 from .archive import fingerprint
 from .disposition_core.contracts import ACTIONS,CATEGORIES
+from .desktop_context import companion_candidate
 
 
 class DispositionUI:
@@ -38,11 +39,13 @@ class DispositionUI:
         ttk.Combobox(bar,textvariable=self.dispo_channel,values=('desktop','qq'),state='readonly',width=10).grid(row=0,column=0)
         self.dispo_mode_combo=ttk.Combobox(bar,textvariable=self.dispo_mode,values=('baseline','shadow'),state='readonly',width=10)
         self.dispo_mode_combo.grid(row=0,column=1)
-        self.button(bar,'保存观察模式',self.save_disposition_mode,{'character-write'})
+        self.dispo_mode_save=self.button(bar,'保存观察模式',self.save_disposition_mode,{'character-write'})
         self.button(bar,'查询编译结果',self.disposition_compile_status,{'character-read'})
         bar=self.character_bar(parent)
         ttk.Label(bar,text='Shadow任务理解（按需收费）').grid(row=0,column=0)
-        ttk.Combobox(bar,textvariable=self.dispo_observation,values=('disabled','on_demand'),state='readonly',width=12).grid(row=0,column=1)
+        self.dispo_observation_combo=ttk.Combobox(bar,textvariable=self.dispo_observation,values=('disabled','on_demand'),state='readonly',width=12)
+        self.dispo_observation_combo.grid(row=0,column=1)
+        self.dispo_channel.trace_add('write',lambda *_:self.update_disposition_companion_controls())
         self.button(bar,'配置作者关系映射',self.edit_relationship_mapping,{'character-write'})
         self.dispo_definition_list=tk.Listbox(parent,height=5,width=1,exportselection=False);self.dispo_definition_list.pack(fill='x',pady=5)
         bar=self.character_bar(parent)
@@ -81,6 +84,7 @@ class DispositionUI:
             self.dispo_mode_combo.configure(values=('baseline','shadow')+ (('assist',) if value['policy'].get('assist_admitted') else ()) + (('live',) if value['policy'].get('live_admitted') else ()))
             self.dispo_mode.set(value['policy'].get('disposition_mode','baseline'))
             self.dispo_observation.set(value['policy'].get('situation_observation_mode','disabled'))
+            self.remember_companion_policy(value['policy'])
             self.dispo_preview_button.configure(text='预览胶囊（零模型）' if (value['policy'].get('assist_admitted') or value['policy'].get('live_admitted')) else '预览Shadow（零模型）')
             note={'assist':'隔离Assist，本实例允许受控渲染','live':'Live候选：按已授权策略受控渲染'}.get(self.dispo_mode.get(),'仅观察，不进入Prompt')
             self.dispo_status.set('状态：'+value['state']['status']+'；修订 '+str(value['state']['revision'])+'；'+note)
@@ -88,7 +92,21 @@ class DispositionUI:
             for source in self.dispo_sources:self.dispo_source_list.insert('end',source['kind']+' · '+source['path']+' · '+source['entry_id']+' · '+str(len(source['text']))+'字')
             self._render_disposition_defs();self.dispo_version_list.delete(0,'end')
             for v in self.dispo_history:self.dispo_version_list.insert('end',str(v['revision'])+' · '+v['kind']+' · '+v['id'])
+            self.update_disposition_companion_controls()
         self._dispo_run('读取人格倾向',read,loaded)
+
+    def update_disposition_companion_controls(self):
+        if not hasattr(self,'dispo_observation_combo'):return
+        policy=getattr(self,'companion_policies',{}).get(self.dispo_channel.get())
+        if policy and policy.get('persona_id')!=self.persona_id:policy=None
+        candidate=companion_candidate(policy)
+        self.dispo_mode_combo.configure(state='disabled' if candidate else 'readonly')
+        self.dispo_observation_combo.configure(state='disabled' if candidate else 'readonly')
+        self._companion_button(self.dispo_mode_save,candidate)
+        if candidate:
+            self.dispo_mode.set(policy.get('disposition_mode','baseline'))
+            self.dispo_observation.set(policy.get('situation_observation_mode','disabled'))
+            self.dispo_status.set('伴侣候选：人格观察与辅助理解关闭；人物资料仍参与主回复。恢复原方案后可修改观察设置。')
 
     def _render_disposition_defs(self):
         self.dispo_definition_list.delete(0,'end')
@@ -261,6 +279,9 @@ class DispositionUI:
 
     def save_disposition_mode(self):
         if not self.dispo_state:return
+        policy=getattr(self,'companion_policies',{}).get(self.dispo_channel.get()) or getattr(self,'dispo_policy',None)
+        if companion_candidate(policy):
+            self.notice.set('伴侣候选保持baseline且关闭辅助观察；请先恢复启用前设置。');return
         pid=self.dispo_pid;channel=self.dispo_channel.get();mode=self.dispo_mode.get();observation=self.dispo_observation.get();action=self._dispo_pending()
         if not action:return
         policy=self.dispo_policy

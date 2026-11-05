@@ -192,6 +192,8 @@ class SituationObservationService:
         model=json.loads(turn.get('observation_model_snapshot') or '{}')
         if not model.get('enabled') or not model.get('base_url') or not model.get('name'):return {'status':'model_unavailable'}
         timeout=timeout_for(model,policy)
+        from .provider_compat import generation_profile
+        effective_timeout=None if generation_profile(model) else timeout
         payload=[{'role':'system','content':prompt_for(policy)},{'role':'user','content':encoded({'sources':sources})}]
         if sum(len(m['content']) for m in payload)>model['max_input_chars']:return {'status':'input_budget_unavailable'}
         now=time.time();aid=identifier()
@@ -214,7 +216,7 @@ class SituationObservationService:
             conn.execute('INSERT INTO situation_observation_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (aid,turn_id,turn['execution_revision'],turn['persona_id'],LOCAL_USER_ID,'running',now,None,encoded(model),policy['version'],fingerprint(payload),encoded(turn_scope(conn,turn)),encoded(evidence),None,None,None,timestamp()))
             manifest={'context_id':identifier(),'task_type':'situation_observation','turn_id':turn_id,'observation_attempt_id':aid,
-                'scope':turn_scope(conn,turn),'contract':policy['version'],'timeout_seconds':timeout,'input_snapshot_hash':fingerprint(payload),
+                'scope':turn_scope(conn,turn),'contract':policy['version'],'timeout_seconds':effective_timeout,'input_snapshot_hash':fingerprint(payload),
                 'evidence':evidence,'model_snapshot_hash':fingerprint({k:v for k,v in model.items() if k!='encrypted_key'}),'persisted':True}
             from .provider_compat import describe_request
             manifest['provider_request_contract']=describe_request(model|{'_disposition_compile':True})
@@ -224,8 +226,8 @@ class SituationObservationService:
                 (identifier(),turn_id,turn['execution_revision'],turn['persona_id'],LOCAL_USER_ID,now,now+timeout+60))
         result=None;error=None;usage=None;state='failed'
         try:
-            self.pending=asyncio.create_task(self.client.complete(model|{'timeout':timeout,'_disposition_compile':True,'_situation_observation':True,'_request_deadline':time.monotonic()+timeout},payload))
-            done,_=await asyncio.wait({self.pending},timeout=timeout)
+            self.pending=asyncio.create_task(self.client.complete(model|{'timeout':timeout,'_disposition_compile':True,'_situation_observation':True,'_request_deadline':None if effective_timeout is None else time.monotonic()+timeout},payload))
+            done,_=await asyncio.wait({self.pending},timeout=effective_timeout)
             if not done:raise TimeoutError()
             response=self.pending.result();body,usage=response
             result=parse_output(body,sources);state='completed'

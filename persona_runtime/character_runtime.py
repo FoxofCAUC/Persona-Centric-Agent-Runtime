@@ -232,7 +232,7 @@ class CharacterRuntime:
         if policy['mode']=='hybrid':result.setdefault('model_fingerprint',policy['config']['model_fingerprint'])
         return result
 
-    def prepare(self,turn,selected=None):
+    def prepare(self,turn,selected=None,*,behavior_cues=True):
         from .context_builders import policy_for
         frozen_policy=policy_for(turn);policy=read(frozen_policy)
         if turn['channel']=='test':return None
@@ -242,7 +242,7 @@ class CharacterRuntime:
             members=[m['text'] for m in load_turn_input(conn,turn)];text=input_text(conn,turn)
         from .behavior import resolve_behavior
         contextual=(turn.get('reply_mode_snapshot') or 'legacy_full')!='legacy_full'
-        scenario=[s['act'] for s in resolve_behavior(text)['signals']] if contextual else []
+        scenario=[s['act'] for s in resolve_behavior(text)['signals']] if contextual and behavior_cues else []
         if policy['mode']=='hybrid_llm':
             result=selected or select_context(version,'\n\n'.join(members),members=members,scenario=scenario,example_limit=4 if contextual else 2)
             result.setdefault('requested_mode','hybrid_llm');result.setdefault('effective_mode','lexical');result.setdefault('degrade_reason','selector_not_run')
@@ -254,7 +254,7 @@ class CharacterRuntime:
         result['_selection_hash']=digest(result)
         return result
 
-    def recheck(self,conn,turn,result):
+    def recheck(self,conn,turn,result,*,behavior_cues=True):
         from .context_builders import policy_for
         frozen_policy=policy_for(turn);policy=read(frozen_policy)
         if turn['channel']=='test':return None
@@ -266,7 +266,7 @@ class CharacterRuntime:
         # No index access, waits or embedding are permitted on this path.
         from .behavior import resolve_behavior
         contextual=(turn.get('reply_mode_snapshot') or 'legacy_full')!='legacy_full'
-        scenario=[s['act'] for s in resolve_behavior(input_text(conn,turn))['signals']] if contextual else []
+        scenario=[s['act'] for s in resolve_behavior(input_text(conn,turn))['signals']] if contextual and behavior_cues else []
         fallback=select_context(version,'\n\n'.join(members),members=members,scenario=scenario,example_limit=4 if contextual else 2)
         fallback.update(_guard=guard,requested_mode=policy['mode'],effective_mode='lexical',
                         degrade_reason='character_preparation_invalidated',preparation_ms=0,

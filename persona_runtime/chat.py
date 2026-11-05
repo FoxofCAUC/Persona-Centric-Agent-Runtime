@@ -51,15 +51,16 @@ class ChatCompletionsClient:
         headers = {"Content-Type": "application/json"}
         if model["encrypted_key"]:
             headers["Authorization"] = "Bearer " + unprotect(model["encrypted_key"])
-        from .provider_compat import build_request,endpoint,usage_fields,response_metadata,is_grok47
+        from .provider_compat import build_request,endpoint,usage_fields,response_metadata,is_grok47,request_timeout
         try:
             payload,wire=build_request(model,messages);url=endpoint(model)
         except ValueError as error:
             raise ModelError(str(error)) from None
         # One configured end-to-end budget. A hidden shorter connection cap
         # used to fail 60-second requests after five seconds of DNS/TLS work.
-        budget = model['timeout']
-        timeout = aiohttp.ClientTimeout(total=budget, connect=budget, ceil_threshold=math.inf)
+        budget = request_timeout(model)
+        timeout = aiohttp.ClientTimeout(total=budget, connect=budget, sock_connect=budget,
+                                       sock_read=budget, ceil_threshold=math.inf) if payload['stream'] else aiohttp.ClientTimeout(total=budget, connect=budget, ceil_threshold=math.inf)
         started = time.monotonic()
         transport = {'phase': 'request_setup', 'request_headers_sent': False,
                      'response_headers_received': False}
@@ -73,14 +74,19 @@ class ChatCompletionsClient:
         trace.on_connection_create_end.append(connected)
         trace.on_request_headers_sent.append(sent)
         def diagnostic():
-            return {**transport, 'timeout_seconds': budget,
+            result={**transport, 'timeout_seconds': budget,
                     'elapsed_ms': round((time.monotonic()-started)*1000, 3),
                     'transport_profile':wire['profile'],'response_format':wire['response_format'],
                     'thinking':wire['thinking']}
+            if wire.get('generation_version'):
+                result.update(generation_version=wire['generation_version'],timeout_policy='none',
+                              output_limit='omitted',stream=True,
+                              reasoning_effort=wire.get('reasoning_effort','provider_default'))
+            return result
         # Keep the OS trust store and add the project's pinned public CA bundle
         # for every model purpose. Isolated probes and production use one path.
         connector=aiohttp.TCPConnector(ssl=self.ssl_context or model_tls_context())
-        if model.get('_request_deadline') is not None:
+        if budget is not None and model.get('_request_deadline') is not None:
             budget=min(budget,max(.01,model['_request_deadline']-time.monotonic()-.1))
             timeout=aiohttp.ClientTimeout(total=budget,connect=budget,ceil_threshold=math.inf)
         try:
@@ -90,6 +96,9 @@ class ChatCompletionsClient:
                     transport.update(phase='reading_body', response_headers_received=True)
                     if response.status != 200:
                         raise ModelError(f"provider_http_{response.status}", diagnostics=diagnostic())
+                    if payload['stream']:
+                        from .chat_stream import read_stream
+                        return await read_stream(response,model,diagnostic,started=started)
                     raw = bytearray()
                     async for chunk in response.content.iter_chunked(65536):
                         raw.extend(chunk)
@@ -282,8 +291,18 @@ class ChatEngine:
                 from .character import head as character_head
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,persona_id),ensure_ascii=False),turn_id))
                 from .context_policy import current as context_policy
-                conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=1 WHERE id=?',(json.dumps(context_policy(conn,persona_id,channel)),json.dumps(self.config.load()['character_selector']),turn_id))
-                conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(self.config.load()['character_selector']),turn_id))
+                accepted_context=context_policy(conn,persona_id,channel)
+                from .companion import freeze_auxiliary
+                auxiliary=freeze_auxiliary(self.config.load()['character_selector'],accepted_context)
+                conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=1 WHERE id=?',(json.dumps(accepted_context),json.dumps(auxiliary),turn_id))
+                if 'companion' in accepted_context:
+                    from .companion import freeze_model
+                    accepted_policy=conn.execute('SELECT p.reply_mode,p.data_json,p.id FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(persona_id,channel)).fetchone()
+                    from .reply_batch import expression_snapshot
+                    expression=json.loads(accepted_policy['data_json']).get('expression') or expression_snapshot(accepted_policy['reply_mode'],accepted_policy['id'])
+                    conn.execute('UPDATE turns SET model_snapshot=?,reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',
+                        (json.dumps(freeze_model(model,accepted_context)),accepted_policy['reply_mode'],json.dumps(expression),turn_id))
+                conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(auxiliary),turn_id))
             if channel == "qq":
                 identity = origin or {"sender": self.config.load()["owner_qq"], "bot": self.config.load()["bot_qq"]}
                 conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (json.dumps(identity), turn_id))
@@ -406,11 +425,19 @@ class ChatEngine:
             attempt_id = None
             usage = None
             reference_manifest = None
+            companion = None
             try:
                 latest=self.get(turn_id)
                 if latest['status']!='queued' or latest['execution_revision']!=initial['execution_revision']:return
+                with self.store.connection() as conn:
+                    accepted_turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
+                from .companion import read as companion_read
+                companion=companion_read(accepted_turn)
+                if companion and self.dialogue_pipeline is not None:raise ModelError('companion_pipeline_conflict')
                 if self.dialogue_pipeline is not None:
                     prepared=await self.dialogue_pipeline.prepare(self,turn_id)
+                elif companion and companion['mode']=='minimal':
+                    prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id)
                 else:
                     selection=await self.selector.prepare(turn_id)
                     observation=await self.observer.prepare(turn_id)
@@ -501,6 +528,9 @@ class ChatEngine:
                 # successful batches; never persist a malformed internal envelope.
                 import hashlib
                 with self.store.connection(write=True) as conn:
+                    active=conn.execute('SELECT status,cancelled_at,execution_revision FROM turns WHERE id=?',(turn_id,)).fetchone()
+                    if active['status']!='running' or active['cancelled_at'] or active['execution_revision']!=turn['execution_revision']:
+                        raise ModelError('generation_cancelled')
                     details=dict(turn['_context_details'])
                     details['reply_output_fingerprint']=hashlib.sha256(raw_reply.encode('utf-8')).hexdigest()
                     details['reply_provider']=provider_diagnostics
@@ -549,6 +579,9 @@ class ChatEngine:
                 from .references import ReferenceError,record_check
                 code = str(error) if isinstance(error, (RuntimeErrorBase,ModelError,ReplySchemaError,ReferenceError)) else ("request_interrupted" if interrupted else "request_failed")
                 with self.store.connection(write=True) as conn:
+                    cancelled=conn.execute('SELECT cancelled_at FROM turns WHERE id=?',(turn_id,)).fetchone()
+                    if cancelled and cancelled[0] and companion is not None:
+                        interrupted=True;code='cancelled_by_user'
                     if attempt_id and not conn.execute("SELECT 1 FROM attempts WHERE id=?", (attempt_id,)).fetchone():
                         attempt_id = None
                     if isinstance(error,ReferenceError):record_check(conn,initial,error.manifest,error=str(error))
@@ -605,10 +638,41 @@ class ChatEngine:
                 from .reply_batch import expression_snapshot
                 conn.execute('UPDATE turns SET reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',(reply_mode,json.dumps(json.loads(reply_policy[1]).get('expression') or expression_snapshot(reply_mode,reply_policy[2],version=1) if reply_policy else expression_snapshot(reply_mode,version=1)),turn_id))
                 from .context_policy import current as context_policy
-                conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=execution_revision+1 WHERE id=?',(json.dumps(context_policy(conn,turn['persona_id'],turn['channel'])),json.dumps(self.config.load()['character_selector']),turn_id))
-                conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(self.config.load()['character_selector']),turn_id))
+                accepted_context=context_policy(conn,turn['persona_id'],turn['channel'])
+                from .companion import freeze_auxiliary
+                auxiliary=freeze_auxiliary(self.config.load()['character_selector'],accepted_context)
+                conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=execution_revision+1 WHERE id=?',(json.dumps(accepted_context),json.dumps(auxiliary),turn_id))
+                if 'companion' in accepted_context:
+                    from .companion import freeze_model
+                    conn.execute('UPDATE turns SET model_snapshot=? WHERE id=?',(json.dumps(freeze_model(self.config.load()['model'],accepted_context)),turn_id))
+                conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(auxiliary),turn_id))
             record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
+        return self.get(turn_id)
+
+    async def cancel(self, turn_id):
+        """New companion turns support explicit in-flight cancellation."""
+        with self.store.connection() as conn:
+            raw=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone() or {})
+            if not raw:raise RuntimeErrorBase('Request not found')
+        if raw['status']=='queued':
+            result=self.cancel_queued(turn_id)
+            task=self.tasks.get(turn_id)
+            if task:await asyncio.gather(task,return_exceptions=True)
+            return self.get(turn_id)
+        if raw.get('cancelled_at'):return self.get(turn_id)
+        from .companion import read as companion_read
+        if raw['status']!='running' or companion_read(raw) is None:
+            raise RuntimeErrorBase('only_queued_can_cancel')
+        task=self.tasks.get(turn_id)
+        if task is None:raise RuntimeErrorBase('running_task_not_owned')
+        with self.store.connection(write=True) as conn:
+            changed=conn.execute("UPDATE turns SET cancelled_at=?,error_code='cancelled_by_user',updated_at=? WHERE id=? AND status='running' AND execution_revision=?",
+                (timestamp(),timestamp(),turn_id,raw['execution_revision'])).rowcount
+            if changed:record_progress(conn,turn_id,'cancelled')
+        if changed:
+            task.cancel('cancelled_by_user')
+            await asyncio.gather(task,return_exceptions=True)
         return self.get(turn_id)
 
     def cancel_queued(self, turn_id):

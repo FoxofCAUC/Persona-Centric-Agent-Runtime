@@ -1,5 +1,7 @@
 """Versioned understanding deadlines, compatibility and safe error codes."""
+import asyncio
 import json
+from unittest.mock import patch
 import time
 import unittest
 from persona_runtime.chat import ModelError
@@ -57,6 +59,23 @@ class VersionedTimeout(unittest.IsolatedAsyncioTestCase):
         self.assertIn('先识别用户要求完成的具体目标',self.fake.messages[-1][0]['content'])
         self.assertEqual(prompt_for({'version':CONFIGURED_VERSION}),LEGACY_PROMPT)
         self.assertEqual(prompt_for({'version':LEGACY_VERSION}),LEGACY_PROMPT)
+
+    async def test_explicit_stream_profile_has_no_outer_observation_deadline(self):
+        self.observe_setup();tid=await self.queued('给我建议')
+        with self.store.connection(write=True) as db:
+            model=json.loads(db.execute('SELECT observation_model_snapshot FROM turns WHERE id=?',(tid,)).fetchone()[0])
+            model['_generation_profile']={'version':'chat-stream-unlimited-v1'}
+            db.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(model),tid))
+        original=asyncio.wait
+        with patch('persona_runtime.situation_observation.asyncio.wait',wraps=original) as waiting:
+            result=await self.engine.observer.prepare(tid)
+        self.assertEqual(result['status'],'completed')
+        self.assertIsNone(waiting.call_args.kwargs['timeout'])
+        self.assertIsNone(self.fake.calls[-1]['_request_deadline'])
+        with self.store.connection() as db:
+            manifest=json.loads(db.execute("SELECT manifest_json FROM context_manifests WHERE task_type='situation_observation'").fetchone()[0])
+        self.assertIsNone(manifest['timeout_seconds'])
+        self.assertEqual(manifest['provider_request_contract']['timeout_policy'],'none')
 
     async def test_provider_code_kept_without_raw_exception_or_replay(self):
         self.observe_setup();tid=await self.queued('给我建议')

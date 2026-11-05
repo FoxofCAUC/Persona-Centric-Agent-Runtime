@@ -86,11 +86,15 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     if experimental_context and experimental_blocks:
         raise ModelError('experimental_context_conflict')
     from .references import ReferenceError
+    from .companion import minimal,read as read_companion,MINIMAL_INSTRUCTION,MINIMAL_RENDERER,STRUCTURAL_VERSION
+    is_minimal=minimal(turn)
+    if is_minimal and (capsule or experimental_context or experimental_blocks):raise ModelError('companion_pipeline_conflict')
     from .evaluation_material import variant
     evaluation=variant(engine,conn,turn)
     ablated=bool(evaluation and evaluation['arm']=='A')
     from .dialogue_voice import read as read_voice,render as render_voice,bubble_contract,placement as voice_placement
-    voice=read_voice(turn)
+    source_voice=read_voice(turn)
+    voice=None if is_minimal else source_voice
     if turn['channel'] == 'test':
         blocks=[]
         if turn.get('reply_mode_snapshot') in ('natural_structured','context_structured'):
@@ -116,31 +120,33 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     voice_after_character=voice_placement(voice)=='after_character'
     if voice:
         base='你是'+spec.get('name','这个角色')+'。\n人物资料：'+json.dumps(spec,ensure_ascii=False)+('' if voice_after_character else voice_text)
+    if is_minimal:base=MINIMAL_INSTRUCTION+json.dumps(spec,ensure_ascii=False)
     expression_renderer=(voice['version']+('-hard-only' if ablated else '')) if voice else ('legacy-persona-ablation' if ablated else 'legacy-persona-v1')
-    base_blocks=[PromptBlock('persona_expression',base,'context_m4' if voice_after_character else 'context_m4+dialogue_voice',
+    if is_minimal:expression_renderer=MINIMAL_RENDERER
+    base_blocks=[PromptBlock('persona_expression',base,'companion' if is_minimal else 'context_m4' if voice_after_character else 'context_m4+dialogue_voice',
                             'persona-core-v1' if voice_after_character else expression_renderer),
-                 PromptBlock('relationship','\n关系说明：'+(relation or '尚未填写'),'profile','relationship-v1')]
+                 PromptBlock('relationship','' if is_minimal and (relation_blocked or not relation) else '\n关系说明：'+(relation or '尚未填写'),'profile','relationship-v1')]
     if state_active:
-        base_blocks.append(PromptBlock('temporary_state','\n用户显式临时状态（仅影响当下表达，不改写核心设定或事实）：'+state['data']['text'],'profile','state-v1'))
+        base_blocks.append(PromptBlock('temporary_state',('\n当前状态：' if is_minimal else '\n用户显式临时状态（仅影响当下表达，不改写核心设定或事实）：')+state['data']['text'],'profile','state-v1'))
     limit = json.loads(turn['model_snapshot'])['max_input_chars'] - reserve_chars
     from .character_context import select_context, render_parts, manifest
-    behavior=resolve_behavior(text) if contextual else {'resolver':'disabled','signals':[],'uncertainty':None}
+    behavior=resolve_behavior(text) if contextual and not is_minimal else {'resolver':'disabled','signals':[],'uncertainty':None}
     character = character if character is not None else select_context(json.loads(turn['character_snapshot']), text,
                                 scenario=[item['act'] for item in behavior['signals']],
                                 example_limit=4 if contextual else 2) if turn.get('character_snapshot') else None
-    behavior_instruction=render_behavior(behavior,character) if contextual and not voice else ''
+    behavior_instruction=render_behavior(behavior,character) if contextual and not voice and not is_minimal else ''
     base_blocks.append(PromptBlock('behavior',behavior_instruction,'behavior','lexical-advisory-v1'))
     from .presentation import CONTRACT
-    base_blocks.append(PromptBlock('presentation',CONTRACT,'presentation','presentation-v1'))
+    if not is_minimal:base_blocks.append(PromptBlock('presentation',CONTRACT,'presentation','presentation-v1'))
     protocol=prompt_contract(reply_mode,json.loads(turn['expression_snapshot']) if turn.get('expression_snapshot') else None) if reply_mode in ('context_structured','natural_structured') else ''
-    if voice and reply_mode=='natural_structured':protocol=bubble_contract()
+    if source_voice and reply_mode=='natural_structured':protocol=bubble_contract()
     # Label the branch already used above; never introduce extra validation.
     expression=json.loads(turn['expression_snapshot']) if reply_mode in ('context_structured','natural_structured') and turn.get('expression_snapshot') else None
     format_renderer='plain-text'
     if reply_mode=='context_structured':format_renderer='segments-schema1-v1'
     elif reply_mode=='natural_structured':
         format_renderer='natural-schema2-v1'
-        if voice:format_renderer='voice-bubbles-schema3-v2'
+        if source_voice:format_renderer='voice-bubbles-schema3-v2'
         elif expression and expression.get('version')==3:format_renderer='bubbles-schema3-v1'
     character_parts = list(character['parts']) if character else []
     character_removed = [{'kind':p['kind'],'id':p['id'],'reason':'evaluation_ablation'} for p in character_parts if not p['required']] if ablated else []
@@ -171,13 +177,14 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     while True:
         reference = '\n已确认长期记忆：'+json.dumps([{'id': r[3]['id'], 'text': r[3]['text'], 'revision': r[3]['revision']} for r in memories], ensure_ascii=False)
         reference += '\n本会话有损摘要（仅作参考）：'+json.dumps(summary_items, ensure_ascii=False)
-        if voice:
+        if voice or is_minimal:
             reference=('\n已有记忆：'+json.dumps([r[3]['text'] for r in memories],ensure_ascii=False) if memories else '')
             if summary_items:reference+='\n有损摘要：'+json.dumps(summary_items,ensure_ascii=False)
+        character_body=('\n人物补充资料：\n'+'\n'.join(p['text'] for p in character_parts)) if is_minimal and character_parts else '' if is_minimal else render_parts(character_parts)
         blocks=base_blocks+[
-            PromptBlock('character',render_parts(character_parts),'character_context','character-render-v1')]+(
+            PromptBlock('character',character_body,'character_context','companion-character-v1' if is_minimal else 'character-render-v1')]+(
             [PromptBlock('expression_realization',voice_text,'dialogue_voice',expression_renderer)] if voice_after_character else [])+[
-            PromptBlock('memory_summary',reference,'context_m4','voice-memory-v2' if voice else 'memory-v1'),
+            PromptBlock('memory_summary',reference,'context_m4','companion-memory-v1' if is_minimal else 'voice-memory-v2' if voice else 'memory-v1'),
             PromptBlock('explicit_references',reference_block,'references','reference-render-v1'),
             PromptBlock('reply_protocol',protocol,'reply_batch+dialogue_voice',format_renderer),
             *([PromptBlock('dialogue_context',experimental_context,'dialogue_pipeline','dialogue-context-v1')] if experimental_context else []),
@@ -213,17 +220,30 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         else:
             if reference_block:raise ReferenceError('reference_budget_exceeded',reference_manifest)
             raise ModelError('context_limit_exceeded')
+    if is_minimal and read_companion(turn)['version']==STRUCTURAL_VERSION:
+        from .companion_contract import structural_contract,RENDERER
+        # Selection and trimming above deliberately use the full contract. Saved
+        # space must not silently admit extra material into this one-variable trial.
+        protocol=structural_contract(protocol)
+        format_renderer=RENDERER
+        blocks=[PromptBlock(b.name,protocol,'reply_batch+companion_contract',format_renderer) if b.name=='reply_protocol' else b for b in blocks]
+        result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
+        assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
     from .character_runtime import audit
     character_audit=audit(character,character_parts,character_removed) if character else None
+    character_manifest=manifest(character,character_parts,character_removed) if character else None
+    if is_minimal and character:
+        character_audit['budgets']['total']=len(character_body)
+        character_manifest['input_characters']=len(character_body)
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
-    return result, {'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
+    return result, {**({'companion':read_companion(turn)} if is_minimal else {}),'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
                     'references':reference_manifest,'reply_mode':reply_mode,'dialogue_voice':voice_meta,
                     'behavior':{'resolver':behavior['resolver'],'signals':[item['act'] for item in behavior['signals']],
                                 'uncertainty':behavior['uncertainty'],'character_version_id':character['version_id'] if character else None,
                                 'profile_versions':{kind:{'id':version['id'],'revision':version['revision']} for kind,version in frozen.items()},
                                 'example_ids':character_audit['selected']['example'] if character else [],
-                                'guidance':'advisory_lexical_cues_only' if contextual else 'disabled_for_compatibility'},
-                    'character':(manifest(character,character_parts,character_removed)|{'retrieval':character_audit}) if character else None,
+                                'guidance':'disabled_for_companion_minimal' if is_minimal else 'advisory_lexical_cues_only' if contextual else 'disabled_for_compatibility'},
+                    'character':(character_manifest|{'retrieval':character_audit}) if character else None,
                     'character_snapshot_origin':'accepted' if character else 'legacy_without_character',
                     **({'capsule_budget':{'applied':True,'removed':character_removed}} if capsule_text else {}),
                     'profile_versions':{kind:{'id':v['id'],'revision':v['revision']} for kind,v in frozen.items()},

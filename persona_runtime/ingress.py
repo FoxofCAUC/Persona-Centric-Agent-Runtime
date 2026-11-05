@@ -75,7 +75,13 @@ class IngressService:
     def _remember(self,conn,persona,operation_id,fingerprint,result):
         conn.execute('INSERT INTO batch_operations VALUES (?,?,?,?,?,?)',(operation_id,persona,LOCAL_USER_ID,fingerprint,encoded(result),timestamp()))
 
-    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,disposition_mode=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None,situation_observation_mode=None):
+    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,disposition_mode=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None,situation_observation_mode=None,companion_mode=None):
+        if companion_mode=='disabled':
+            if any(value is not None for value in (disposition_mode,reply_mode,context_mode,cross_session,
+                    character_retrieval_mode,conversation_policy_version,expression_policy_version,situation_observation_mode)):
+                raise RuntimeErrorBase('companion_restore_conflict')
+            return self._disable_companion_policy(persona_id,channel,mode,expected_version,operation_id,
+                pending_action,expected_selected)
         if conversation_policy_version not in (None,2):raise RuntimeErrorBase('conversation_policy_invalid')
         if expression_policy_version not in (None,3):raise RuntimeErrorBase('expression_policy_invalid')
         if mode not in MODES:raise RuntimeErrorBase('invalid_interaction_mode')
@@ -86,6 +92,8 @@ class IngressService:
         if situation_observation_mode is not None and situation_observation_mode not in ('disabled','on_demand'):raise RuntimeErrorBase('invalid_observation_mode')
         requested_observation_mode=situation_observation_mode
         requested_disposition_mode=disposition_mode
+        from .companion import choose as choose_companion
+        selected_companion=choose_companion(companion_mode) if companion_mode is not None else None
         selected_character=choose(character_retrieval_mode) if character_retrieval_mode is not None else None
         with self.store.connection(write=True) as conn:
             if self.store.current(conn)!=(persona_id if expected_selected is None else expected_selected):raise RuntimeErrorBase('persona_selection_conflict')
@@ -95,6 +103,15 @@ class IngressService:
             observation_changed=situation_observation_mode!=current.get('situation_observation_mode','disabled')
             disposition_mode=current.get('disposition_mode','baseline') if disposition_mode is None else disposition_mode
             if disposition_mode not in ('baseline','shadow','assist','live'):raise RuntimeErrorBase('invalid_disposition_mode')
+            effective_companion=selected_companion or current.get('companion')
+            if effective_companion and effective_companion['mode']=='minimal':
+                if requested_disposition_mode not in (None,'baseline') or requested_observation_mode not in (None,'disabled'):
+                    raise RuntimeErrorBase('companion_policy_conflict')
+                if character_retrieval_mode not in (None,'hybrid'):
+                    raise RuntimeErrorBase('companion_policy_conflict')
+                disposition_mode='baseline';situation_observation_mode='disabled'
+                observation_changed=situation_observation_mode!=current.get('situation_observation_mode','disabled')
+                selected_character=choose('hybrid')
             if disposition_mode in ('assist','live'):
                 from .decision_capsule import require_admission
                 require_admission(self.engine,persona_id,disposition_mode)
@@ -105,11 +122,17 @@ class IngressService:
             if expected_selected is not None:value['expected_selected']=expected_selected
             if conversation_policy_version is not None:value['conversation_policy_version']=conversation_policy_version
             if expression_policy_version is not None:value['expression_policy_version']=expression_policy_version
+            if companion_mode is not None:value['companion_mode']=companion_mode
             old_data=json.loads(current['data_json'])
+            companion_changed=selected_companion is not None and selected_companion!=old_data.get('companion')
             from .reply_batch import expression_version
             old_expression=expression_version(old_data.get('expression'))
             target_expression=expression_policy_version or max(old_expression,2 if conversation_policy_version==2 else 1)
-            strategy_changed=(conversation_policy_version==2 and buffer_policy(current)!=ROLLING_PARAMS) or target_expression!=old_expression
+            from .companion import STRUCTURAL_VERSION
+            if (effective_companion and effective_companion['version']==STRUCTURAL_VERSION
+                    and ((reply_mode or current['reply_mode'])!='natural_structured' or target_expression!=3)):
+                raise RuntimeErrorBase('companion_format_conflict')
+            strategy_changed=companion_changed or (conversation_policy_version==2 and buffer_policy(current)!=ROLLING_PARAMS) or target_expression!=old_expression
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
@@ -127,10 +150,61 @@ class IngressService:
             else:
                 vid=identifier()
                 data=json.loads(current['data_json']);data['expression']=expression_snapshot(reply_mode,vid,version=target_expression);data['context']={**data.get('context',{}),'context_mode':context_mode,'cross_session':cross_session,'character_retrieval':character_policy,'disposition_mode':disposition_mode,'situation_observation_mode':situation_observation_mode}
+                if selected_companion is not None:
+                    from .companion import capture_restore, RESTORE_KEY
+                    if 'companion' not in old_data:
+                        data[RESTORE_KEY]=capture_restore(current)
+                    data['companion']=selected_companion
                 if conversation_policy_version==2:data.update(ROLLING_PARAMS)
                 conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',(vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,mode,encoded(data),timestamp(),reply_mode))
                 conn.execute('INSERT INTO interaction_heads VALUES (?,?,?,?) ON CONFLICT(persona_id,channel) DO UPDATE SET version_id=excluded.version_id',(persona_id,LOCAL_USER_ID,channel,vid))
                 result=self.policy(conn,persona_id,channel)
+            self._remember(conn,persona_id,operation_id,fp,result)
+        callback=getattr(self.store,'character_committed',None)
+        if callback:callback(persona_id)
+        self.schedule_committed();return result
+
+    def _disable_companion_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action,expected_selected):
+        from .companion import RESTORE_KEY, checked, restore_settings
+        if mode not in MODES:raise RuntimeErrorBase('invalid_interaction_mode')
+        value={'channel':channel,'mode':mode,'expected_version':expected_version,'pending_action':pending_action,
+               'companion_mode':'disabled'}
+        if expected_selected is not None:value['expected_selected']=expected_selected
+        with self.store.connection(write=True) as conn:
+            if self.store.current(conn)!=(persona_id if expected_selected is None else expected_selected):
+                raise RuntimeErrorBase('persona_selection_conflict')
+            self.engine.service._persona(conn,persona_id)
+            # Replay precedes restore-point checks: the successful new head no
+            # longer has a companion profile or its one-cycle restore point.
+            fp,old=self._operation(conn,persona_id,operation_id,value)
+            if old is not None:return old
+            current=self.policy(conn,persona_id,channel)
+            if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
+            if mode!=current['mode']:raise RuntimeErrorBase('companion_restore_conflict')
+            old_data=json.loads(current['data_json'])
+            if 'companion' not in old_data or RESTORE_KEY not in old_data:
+                raise RuntimeErrorBase('companion_restore_missing')
+            checked(old_data['companion'])
+            saved=restore_settings(old_data[RESTORE_KEY]);data=saved['data']
+            disposition=data.get('context',{}).get('disposition_mode','baseline')
+            if disposition in ('assist','live'):
+                from .decision_capsule import require_admission
+                require_admission(self.engine,persona_id,disposition)
+            pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall()
+            if pending and pending_action not in ('seal','cancel'):
+                raise RuntimeErrorBase('pending_batch_resolution_required')
+            for row in pending:
+                if pending_action=='seal':self._seal(conn,dict(row),'policy_changed')
+                else:conn.execute("UPDATE input_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE id=?",(timestamp(),row['id']))
+            vid=identifier()
+            # Rebind only the new policy identity, never upgrade the saved
+            # expression/buffer version or material-selection contract.
+            if isinstance(data.get('expression'),dict):data['expression']['policy_id']=vid
+            conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',
+                (vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,saved['mode'],encoded(data),timestamp(),saved['reply_mode']))
+            conn.execute('INSERT INTO interaction_heads VALUES (?,?,?,?) ON CONFLICT(persona_id,channel) DO UPDATE SET version_id=excluded.version_id',
+                (persona_id,LOCAL_USER_ID,channel,vid))
+            result=self.policy(conn,persona_id,channel)
             self._remember(conn,persona_id,operation_id,fp,result)
         callback=getattr(self.store,'character_committed',None)
         if callback:callback(persona_id)
@@ -263,7 +337,8 @@ class IngressService:
             seq=conn.execute('SELECT coalesce(max(accepted_seq),0)+1 FROM ingress_receipts').fetchone()[0]
             if not batch:
                 conn.execute('INSERT INTO input_batches (id,persona_id,user_id,session_id,channel,bot,peer,scope_key,state,revision,first_seq,first_epoch,last_epoch,deadline_epoch,max_deadline_epoch,sealed_at,seal_reason,policy_json,profile_snapshot,character_snapshot,model_snapshot,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(bid,pid,LOCAL_USER_ID,sid,channel,bot,peer,scope,'collecting',1,seq,now,now,now+policy['quiet_ms']/1000,now+policy['max_wait_ms']/1000 if policy['max_wait_ms'] is not None else 0,None,None,encoded(policy),encoded(frozen),encoded(character),None,timestamp(),timestamp()))
-                conn.execute('UPDATE input_batches SET observation_model_snapshot=? WHERE id=?',(encoded(cfg['character_selector']),bid))
+                from .companion import freeze_auxiliary
+                conn.execute('UPDATE input_batches SET observation_model_snapshot=? WHERE id=?',(encoded(freeze_auxiliary(cfg['character_selector'],policy['context'])),bid))
             conn.execute("INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES (?,?,?,?,'user',?,?)",(eid,sid,pid,LOCAL_USER_ID,text,timestamp()))
             conn.execute('INSERT INTO raw_events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(rawid,pid,LOCAL_USER_ID,eid,channel,bot,peer,value.get('platform_message_id'),value.get('platform_time'),timestamp(),'normalized_payload',2 if 'reference' in value else 1,encoded(payload),fp))
             conn.execute('INSERT INTO ingress_receipts(id,source_key,request_id,persona_id,user_id,channel,bot,peer,session_id,fingerprint,raw_event_id,event_id,batch_id,received_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(receipt,source,rid,pid,LOCAL_USER_ID,channel,bot,peer,sid,fp,rawid,eid,bid,timestamp()))
@@ -294,8 +369,11 @@ class IngressService:
             clock=self.clocks.get(batch['id'])
             elapsed=max(0,(self.monotonic()-clock[0])*1000) if clock else max(0,(self.epoch()-batch['first_epoch'])*1000)
             conn.execute('UPDATE input_batches SET buffer_ms=? WHERE id=?',(elapsed,batch['id']))
-            conn.execute('UPDATE input_batches SET selector_model_snapshot=? WHERE id=?',(encoded(self.config.load()['character_selector']),batch['id']))
-            conn.execute("UPDATE input_batches SET state='sealed_waiting_capacity',sealed_at=?,seal_reason=?,model_snapshot=?,revision=revision+1,updated_at=? WHERE id=?",(timestamp(),reason,encoded(self.config.load()['model']),timestamp(),batch['id']))
+            from .companion import freeze_model,freeze_auxiliary
+            accepted_context=json.loads(batch['policy_json']).get('context',{})
+            conn.execute('UPDATE input_batches SET selector_model_snapshot=? WHERE id=?',(encoded(freeze_auxiliary(self.config.load()['character_selector'],accepted_context)),batch['id']))
+            model=freeze_model(self.config.load()['model'],accepted_context)
+            conn.execute("UPDATE input_batches SET state='sealed_waiting_capacity',sealed_at=?,seal_reason=?,model_snapshot=?,revision=revision+1,updated_at=? WHERE id=?",(timestamp(),reason,encoded(model),timestamp(),batch['id']))
         self._enqueue(conn,batch['persona_id'])
 
     def _enqueue(self,conn,persona_id):
