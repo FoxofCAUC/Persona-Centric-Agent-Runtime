@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk,messagebox,scrolledtext
 from .models import identifier
 from .desktop_context import companion_candidate
+from .companion import CHAT_VERSION
 
 BATCH_LABELS={'collecting':'收集中','sealed_waiting_capacity':'已封存，等待队列容量','interrupted_buffer':'中断，待继续或取消','cancelled':'已取消','queued':'排队中','running':'正在生成','completed':'生成完成','failed':'生成失败','interrupted':'请求中断'}
 REPLY_LABELS={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复','natural_structured':'自然私聊（可省略余段）'}
@@ -52,7 +53,19 @@ class BatchUI:
             self.batch_policies=policies
             for policy in policies.values():self.remember_companion_policy(policy)
             self.batch_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+(('最后一条后五秒，无时间上限' if p.get('buffer_policy',{}).get('schema_version')==2 else '旧策略：五秒静默／十五秒上限') if p['mode']=='natural_batch' else '逐条回复') for c,p in policies.items()))
-            self.reply_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+REPLY_LABELS.get(p.get('reply_mode','legacy_full'),'兼容全文')+(' · 伴侣候选结构合同，按内容分条；合同本身不规定标点' if companion_candidate(p) else ' · 模型分泡（结构上限12条，不凑数）' if (p.get('expression_policy') or {}).get('version')==3 else ' · 旧版表达') for c,p in policies.items()))
+            descriptions=[]
+            for channel,policy in policies.items():
+                label='窗口' if channel=='desktop' else 'QQ'
+                if companion_candidate(policy):
+                    detail='伴侣候选结构合同，按内容分条；合同本身不规定标点'
+                    if policy['companion']['version']==CHAT_VERSION:
+                        detail='C2聊天合同，按内容分条；聊天可短接话，明确任务保留必要内容'
+                elif (policy.get('expression_policy') or {}).get('version')==3:
+                    detail='模型分泡（结构上限12条，不凑数）'
+                else:
+                    detail='旧版表达'
+                descriptions.append(label+'：'+REPLY_LABELS.get(policy.get('reply_mode','legacy_full'),'兼容全文')+' · '+detail)
+            self.reply_policy_text.set('；'.join(descriptions))
             selected=self.batch_tree.selection()
             self.batch_rows=rows
             self.batch_tree.delete(*self.batch_tree.get_children())

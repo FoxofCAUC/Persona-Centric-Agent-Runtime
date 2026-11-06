@@ -57,6 +57,28 @@ class CompanionPolicyRestore(unittest.IsolatedAsyncioTestCase):
             data['expression'].pop('policy_id', None)
         return policy['mode'], policy['reply_mode'], data
 
+    async def test_c2_upgrade_preserves_first_restore_and_is_idempotent(self):
+        original=self.current()
+        old=self.enable()
+        point=json.loads(old['data_json'])[RESTORE_KEY]
+        upgraded=self.enable(companion_mode='minimal_chat')
+        self.assertEqual(upgraded['companion'],choose('minimal_chat'))
+        self.assertEqual(json.loads(upgraded['data_json'])[RESTORE_KEY],point)
+        repeated=self.enable(companion_mode='minimal_chat')
+        self.assertEqual(repeated['id'],upgraded['id'])
+        restored=self.ingress.update_policy(**self.disable_args())
+        self.assertEqual(self.normalized(restored),self.normalized(original))
+        self.model.complete.assert_not_awaited()
+
+    async def test_c2_refuses_upgrade_without_original_restore(self):
+        old=self.enable()
+        data=json.loads(old['data_json']);data.pop(RESTORE_KEY)
+        before=self.install_data(data)
+        with self.assertRaisesRegex(RuntimeErrorBase,'companion_restore_missing'):
+            self.enable(companion_mode='minimal_chat')
+        self.assertEqual(self.current()['id'],before['id'])
+        self.model.complete.assert_not_awaited()
+
     async def test_exact_old_behavior_restored_without_current_selector_or_version_upgrade(self):
         original = self.current()
         selector = character_choice('hybrid_llm')

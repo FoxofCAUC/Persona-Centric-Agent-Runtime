@@ -74,6 +74,7 @@ class API(unittest.IsolatedAsyncioTestCase):
         async with self.http.get(self.server.make_url('/v1/health'),headers=self.admin) as response:
             value=await response.json()
         self.assertIn('companion_workbench_v1',value['capabilities'])
+        self.assertIn('companion_c2_workbench_v1',value['capabilities'])
         self.assertIn('companion_cancel_v1',value['capabilities'])
         self.assertEqual(self.model.calls,[])
 

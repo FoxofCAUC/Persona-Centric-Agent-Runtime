@@ -128,14 +128,17 @@ class IngressService:
             from .reply_batch import expression_version
             old_expression=expression_version(old_data.get('expression'))
             target_expression=expression_policy_version or max(old_expression,2 if conversation_policy_version==2 else 1)
-            from .companion import STRUCTURAL_VERSION
-            if (effective_companion and effective_companion['version']==STRUCTURAL_VERSION
+            from .companion import CONTRACT_VERSIONS
+            if (effective_companion and effective_companion['version'] in CONTRACT_VERSIONS
                     and ((reply_mode or current['reply_mode'])!='natural_structured' or target_expression!=3)):
                 raise RuntimeErrorBase('companion_format_conflict')
             strategy_changed=companion_changed or (conversation_policy_version==2 and buffer_policy(current)!=ROLLING_PARAMS) or target_expression!=old_expression
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
+            if companion_mode=='minimal_chat' and companion_changed and old_data.get('companion'):
+                from .companion import restore_available
+                if not restore_available(current):raise RuntimeErrorBase('companion_restore_missing')
             reply_mode=reply_mode or current['reply_mode']
             context_mode=context_mode or current['context_mode']
             cross_session=current['cross_session'] if cross_session is None else cross_session

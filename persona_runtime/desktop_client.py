@@ -49,7 +49,8 @@ class LocalClient:
             raise RuntimeErrorBase('runtime_upgrade_required')
 
     def update_companion_policy(self, **args):
-        self.require_capability('companion_workbench_v1')
+        capability = 'companion_c2_workbench_v1' if args.get('companion_mode') == 'minimal_chat' else 'companion_workbench_v1'
+        self.require_capability(capability)
         return self.manage('interaction.update', **args)
 
     def cancel_request(self, turn):

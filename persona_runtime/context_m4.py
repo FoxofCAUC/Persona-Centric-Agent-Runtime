@@ -86,7 +86,7 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     if experimental_context and experimental_blocks:
         raise ModelError('experimental_context_conflict')
     from .references import ReferenceError
-    from .companion import minimal,read as read_companion,MINIMAL_INSTRUCTION,MINIMAL_RENDERER,STRUCTURAL_VERSION
+    from .companion import minimal,read as read_companion,MINIMAL_INSTRUCTION,MINIMAL_RENDERER,CHAT_VERSION,CONTRACT_VERSIONS
     is_minimal=minimal(turn)
     if is_minimal and (capsule or experimental_context or experimental_blocks):raise ModelError('companion_pipeline_conflict')
     from .evaluation_material import variant
@@ -220,12 +220,16 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         else:
             if reference_block:raise ReferenceError('reference_budget_exceeded',reference_manifest)
             raise ModelError('context_limit_exceeded')
-    if is_minimal and read_companion(turn)['version']==STRUCTURAL_VERSION:
+    if is_minimal and read_companion(turn)['version'] in CONTRACT_VERSIONS:
         from .companion_contract import structural_contract,RENDERER
         # Selection and trimming above deliberately use the full contract. Saved
         # space must not silently admit extra material into this one-variable trial.
         protocol=structural_contract(protocol)
         format_renderer=RENDERER
+        if read_companion(turn)['version']==CHAT_VERSION:
+            from .companion_chat_contract import chat_contract,RENDERER as CHAT_RENDERER
+            protocol=chat_contract()
+            format_renderer=CHAT_RENDERER
         blocks=[PromptBlock(b.name,protocol,'reply_batch+companion_contract',format_renderer) if b.name=='reply_protocol' else b for b in blocks]
         result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
         assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)

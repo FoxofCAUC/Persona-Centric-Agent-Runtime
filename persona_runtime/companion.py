@@ -6,6 +6,8 @@ from .models import RuntimeErrorBase
 
 VERSION = 'companion-runtime-v1'
 STRUCTURAL_VERSION = 'companion-runtime-v2'
+CHAT_VERSION = 'companion-runtime-v3'
+CONTRACT_VERSIONS = (STRUCTURAL_VERSION, CHAT_VERSION)
 RESTORE_VERSION = 'companion-restore-v1'
 RESTORE_KEY = 'companion_restore'
 GENERATION_PROFILE = {'version': 'chat-stream-unlimited-v1'}
@@ -25,10 +27,16 @@ def checked(value):
         from .companion_contract import VERSION as contract_version
         if value == {'version': STRUCTURAL_VERSION, 'mode': 'minimal', 'format_contract': contract_version}:
             return dict(value)
+        from .companion_chat_contract import VERSION as chat_contract_version
+        if value == {'version': CHAT_VERSION, 'mode': 'minimal', 'format_contract': chat_contract_version}:
+            return dict(value)
     raise RuntimeErrorBase('companion_profile_invalid')
 
 
 def choose(mode):
+    if mode == 'minimal_chat':
+        from .companion_chat_contract import VERSION as contract_version
+        return checked({'version': CHAT_VERSION, 'mode': 'minimal', 'format_contract': contract_version})
     if mode == 'minimal_structural':
         from .companion_contract import VERSION as contract_version
         return checked({'version': STRUCTURAL_VERSION, 'mode': 'minimal', 'format_contract': contract_version})
@@ -84,7 +92,7 @@ def freeze_model(model, context):
     result = deepcopy(model)
     if 'companion' in context:
         result['_companion_profile'] = checked(context['companion'])
-        if result['_companion_profile']['version'] == STRUCTURAL_VERSION and result.get('_dialogue_profile') is not None:
+        if result['_companion_profile']['version'] in CONTRACT_VERSIONS and result.get('_dialogue_profile') is not None:
             raise RuntimeErrorBase('companion_format_conflict')
         result['_generation_profile'] = dict(GENERATION_PROFILE)
     return result
@@ -116,7 +124,7 @@ def read(turn):
             or context.get('disposition_mode','baseline')!='baseline'
             or context.get('situation_observation_mode','disabled')!='disabled'):
         raise RuntimeErrorBase('companion_policy_conflict')
-    if result['version'] == STRUCTURAL_VERSION:
+    if result['version'] in CONTRACT_VERSIONS:
         from .reply_batch import expression_version
         if (turn.get('reply_mode_snapshot') != 'natural_structured'
                 or expression_version(turn.get('expression_snapshot'), 'natural_structured') != 3

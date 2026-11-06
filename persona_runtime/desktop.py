@@ -47,7 +47,7 @@ ERRORS.update({"session_sealed":"此会话已封存。草稿保留，请在会�
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
                "request_failed": "本机处理失败，请查看请求详情和诊断记录。"})
 ERRORS.update(DISPLAY_ERRORS)
-ERRORS.update({'companion_restore_missing':'此旧实验没有启用前恢复点，不能自动恢复；当前设置未改变。',
+ERRORS.update({'companion_restore_missing':'此旧实验缺少有效的最初恢复点，请先核查原设置，才能升级C2或自动恢复。',
                'companion_restore_invalid':'恢复点无效，当前设置未改变。',
                'companion_restore_conflict':'恢复期间不能同时改写其他设置，请重新读取入口政策。',
                'companion_policy_conflict':'伴侣候选使用本地选材且关闭辅助观察，请先恢复原方案后再修改。',

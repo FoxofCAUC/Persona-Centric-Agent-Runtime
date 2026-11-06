@@ -6,13 +6,31 @@ from .models import identifier
 
 
 def companion_candidate(policy):
-    return (policy or {}).get('companion') == {
-        'version': 'companion-runtime-v2', 'mode': 'minimal', 'format_contract': 'schema3-structural-v1'}
+    from .companion import choose
+    return (policy or {}).get('companion') in (choose('minimal_structural'), choose('minimal_chat'))
+
+
+def companion_activation_allowed(policy):
+    from .companion import checked, choose, restore_available
+    if not policy:
+        return False
+    profile = policy.get('companion')
+    if profile is None:
+        return True
+    from .models import RuntimeErrorBase
+    try:
+        checked(profile)
+    except RuntimeErrorBase:
+        return False
+    return profile != choose('minimal_chat') and restore_available(policy)
 
 
 def companion_description(policy):
     profile = (policy or {}).get('companion')
     if companion_candidate(policy):
+        from .companion import choose
+        if profile == choose('minimal_chat'):
+            return 'C2伴侣候选：本地选材，一次主回复；聊天可短接话，明确任务保留必要内容。'
         return '伴侣候选：本地选材，无云端选择，一次主回复；结构合同不要求固定句数或回应顺序。'
     if profile:
         return '既有实验方案：' + str(profile.get('mode')) + '；版本 ' + str(profile.get('version'))
@@ -30,7 +48,7 @@ def companion_restore_summary(policy):
     replies={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复','natural_structured':'自然私聊'}
     retrieval={'lexical':'词法选材','hybrid':'本地召回','hybrid_llm':'本地召回加云端选择'}
     disposition={'baseline':'不运行人格观察','shadow':'Shadow观察，不影响正文','assist':'隔离Assist','live':'Live候选'}
-    return ('将恢复为启用候选前保存的窗口设置：\n'
+    return ('将恢复为最初启用伴侣候选前保存的窗口设置：\n'
             +'输入：'+ingress+'\n回复：'+replies[saved['reply_mode']]
             +'\n选材：'+retrieval[context['character_retrieval']['mode']]
             +'\n人格模式：'+disposition[context['disposition_mode']]
@@ -73,7 +91,7 @@ class ContextUI:
         self.button(line,'保存开关',self.save_context_policy,{'context-write'})
         ttk.Label(parent,textvariable=self.ctx_companion,wraplength=760).pack(anchor='w',pady=3)
         line=ttk.Frame(parent);line.pack(fill='x',pady=3)
-        self.ctx_companion_enable=self.button(line,'启用伴侣候选',lambda:self.change_companion_mode(True),{'context-write','batch-write','persona'})
+        self.ctx_companion_enable=self.button(line,'启用C2伴侣候选',lambda:self.change_companion_mode(True),{'context-write','batch-write','persona'})
         self.ctx_companion_restore=self.button(line,'恢复启用前设置',lambda:self.change_companion_mode(False),{'context-write','batch-write','persona'})
         self._context_companion_controls(None)
         line=ttk.Frame(parent);line.pack(fill='x',pady=4)
@@ -124,10 +142,17 @@ class ContextUI:
         button.configure(state='disabled' if disabled else 'normal')
 
     def _context_companion_controls(self,policy):
-        from .companion import restore_available
+        from .companion import choose, restore_available
         desktop=self.ctx_channel.get()=='desktop'
         candidate=companion_candidate(policy)
-        self._companion_button(self.ctx_companion_enable,not policy or not desktop or candidate)
+        profile=(policy or {}).get('companion')
+        label='启用C2伴侣候选'
+        if profile == choose('minimal_chat'):
+            label='已启用C2伴侣候选'
+        elif profile:
+            label='升级到C2伴侣候选'
+        self.ctx_companion_enable.configure(text=label)
+        self._companion_button(self.ctx_companion_enable,not desktop or not companion_activation_allowed(policy))
         self._companion_button(self.ctx_companion_restore,not policy or not desktop or not restore_available(policy))
         self.ctx_character_combo.configure(state='disabled' if candidate else 'readonly')
         if candidate and self.ctx_character.get()!='本地召回（伴侣候选）':
@@ -137,7 +162,7 @@ class ContextUI:
         else:
             text=('窗口：' if desktop else 'QQ（本阶段不提供候选切换）：')+companion_description(policy)
             if policy.get('companion') and not restore_available(policy):
-                text+=' 此旧实验未保存启用前设置，不能自动恢复。'
+                text+=' 此旧实验缺少有效的启用前恢复点，不能自动升级或恢复。'
             self.ctx_companion.set(text)
 
     def remember_companion_policy(self,policy):
@@ -160,8 +185,8 @@ class ContextUI:
         if (not p or p.get('persona_id')!=self.persona_id or p.get('channel')!=self.ctx_channel.get()
                 or self.ctx_channel.get()!='desktop'):
             self.notice.set('请先读取当前人格的窗口入口政策；本阶段不切换QQ方案。');return
-        if (enable and companion_candidate(p)) or (not enable and not restore_available(p)):
-            self.notice.set('方案已生效，或此政策没有可恢复的启用前设置。');return
+        if (enable and not companion_activation_allowed(p)) or (not enable and not restore_available(p)):
+            self.notice.set('C2已生效，或此政策缺少有效的启用前恢复点，无法自动升级或恢复。');return
         if not enable and not messagebox.askokcancel('恢复启用前设置',companion_restore_summary(p),parent=self):return
         key=self.context_key();draft=self.ctx_draft_epoch;pending_action=None
         if any(b['persona_id']==self.persona_id and b['channel']=='desktop' and b['state']=='collecting' for b in self.batch_rows):
@@ -170,7 +195,7 @@ class ContextUI:
             pending_action='seal' if answer else 'cancel'
         args={'persona_id':p['persona_id'],'channel':'desktop','mode':p['mode'],
               'expected_version':p['id'],'pending_action':pending_action,
-              'companion_mode':'minimal_structural' if enable else 'disabled'}
+              'companion_mode':'minimal_chat' if enable else 'disabled'}
         if enable:
             args.update(mode='natural_batch',conversation_policy_version=2,expression_policy_version=3,
                         disposition_mode='baseline',situation_observation_mode='disabled',

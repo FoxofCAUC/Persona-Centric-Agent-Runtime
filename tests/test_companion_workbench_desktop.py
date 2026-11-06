@@ -47,7 +47,7 @@ class CompanionDesktopTests(unittest.TestCase):
                 w.change_companion_mode(True)
                 with self.assertRaises(OSError):jobs[-1][0](None)
         self.assertEqual(calls[0],calls[1])
-        expected={'companion_mode':'minimal_structural','mode':'natural_batch',
+        expected={'companion_mode':'minimal_chat','mode':'natural_batch',
                   'conversation_policy_version':2,'expression_policy_version':3,
                   'disposition_mode':'baseline','situation_observation_mode':'disabled',
                   'reply_mode':'natural_structured','character_retrieval_mode':'hybrid',
@@ -83,6 +83,16 @@ class CompanionDesktopTests(unittest.TestCase):
         for phrase in ('逐条回复','兼容全文','词法选材','辅助理解','工作集','跨会话','候选期间修改'):
             self.assertIn(phrase,text)
         self.assertNotIn('data_json',text)
+        self.assertIn('最初',text)
+
+    def test_upgrade_requires_original_restore_point(self):
+        w=self.ready(policy(True))
+        self.assertEqual(w.ctx_companion_enable.cget('text'),'升级到C2伴侣候选')
+        self.assertEqual(str(w.ctx_companion_enable.cget('state')),'normal')
+        w.ctx_policy=policy(True,restore=False);w._context_companion_controls(w.ctx_policy)
+        self.assertEqual(str(w.ctx_companion_enable.cget('state')),'disabled')
+        with patch.object(w,'run_task') as run:
+            w.change_companion_mode(True);run.assert_not_called()
 
     def test_pending_resolution_and_late_results_preserve_current_scope_and_draft(self):
         w=self.ready();w.batch_rows=[{'persona_id':'artificial','channel':'desktop','state':'collecting'}]
@@ -113,6 +123,24 @@ class CompanionDesktopTests(unittest.TestCase):
         self.assertEqual(w.dispo_mode.get(),'baseline');self.assertEqual(w.dispo_observation.get(),'disabled')
         with patch.object(w,'run_task') as run:
             w.change_reply_mode('desktop');w.save_disposition_mode();run.assert_not_called()
+
+    def test_c2_actual_version_and_conflicting_controls(self):
+        from persona_runtime.desktop_context import companion_candidate, companion_description
+        value=policy(True)
+        value['companion']=choose('minimal_chat')
+        data=json.loads(value['data_json']);data['companion']=value['companion']
+        value['data_json']=json.dumps(data)
+        w=self.ready(value);w.remember_companion_policy(value)
+        w.batch_policies={'desktop':value};w.dispo_state={'revision':1}
+        w.tick()
+        self.assertTrue(companion_candidate(value))
+        self.assertIn('C2',companion_description(value))
+        self.assertIn('C2',w.chat_mode_text.get())
+        for widget in (w.ctx_character_combo,w.reply_mode_buttons['desktop'],w.dispo_mode_combo,
+                       w.dispo_observation_combo,w.dispo_mode_save,w.ctx_companion_enable):
+            self.assertEqual(str(widget.cget('state')),'disabled')
+        wrong=deepcopy(value);wrong['companion']['format_contract']='schema3-structural-v1'
+        self.assertFalse(companion_candidate(wrong))
         # An older background read cannot re-enable controls after activation.
         w.remember_companion_policy(policy())
         self.assertEqual(str(w.reply_mode_buttons['desktop'].cget('state')),'disabled')
@@ -178,6 +206,16 @@ class CompanionClientTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeErrorBase,'runtime_upgrade_required'):
                 client.update_companion_policy(companion_mode='minimal_structural')
         call.assert_called_once_with('GET','/v1/health')
+
+    def test_c2_needs_c2_capability_before_write(self):
+        client=self.client()
+        with patch.object(client,'call',return_value={'capabilities':['companion_workbench_v1']}) as call:
+            with self.assertRaisesRegex(RuntimeErrorBase,'runtime_upgrade_required'):
+                client.update_companion_policy(companion_mode='minimal_chat')
+            call.assert_called_once_with('GET','/v1/health')
+        with patch.object(client,'call',side_effect=[{'capabilities':['companion_c2_workbench_v1']},{'id':'c2'}]) as call:
+            self.assertEqual(client.update_companion_policy(companion_mode='minimal_chat'),{'id':'c2'})
+            self.assertEqual(call.call_args.args[0:2],('POST','/v1/manage'))
 
     def test_new_service_policy_write_uses_existing_api(self):
         client=self.client()
