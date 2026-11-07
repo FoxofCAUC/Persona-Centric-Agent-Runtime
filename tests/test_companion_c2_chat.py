@@ -26,6 +26,7 @@ class FixtureClient:
         self.calls = []
         self.failures, self.waiting = failures, waiting
         self.entered = threading.Event()
+        self.native = False
 
     async def complete(self, model, messages):
         self.calls.append((model, messages))
@@ -34,6 +35,8 @@ class FixtureClient:
             raise RuntimeErrorBase('provider_network_error')
         if self.waiting:
             await asyncio.Event().wait()
+        if self.native:
+            return 'Artificial native reply.\n\n```python\nprint(168)\n```', {'total_tokens': 3}
         return json.dumps({'schema_version': 3, 'behavior_intent': 'respond', 'messages': [
             {'content': 'Artificial normal-window response.', 'content_kind': 'chat',
              'cancel_if_new_input': False}]}), {'total_tokens': 3}
@@ -52,14 +55,19 @@ class C2ChatTests(unittest.TestCase):
         fixture.network.stop()
         self.source = fixture.paths.home
         cfg = ConfigStore(fixture.paths)
-        cfg.update({'model': {'base_url': 'https://offline.invalid/v1', 'name': 'grok-4.7', 'hourly_limit': 0}})
+        cfg.update({'model': {'base_url': 'https://offline.invalid/v1', 'name': getattr(self, 'model_name', 'grok-4.7'), 'hourly_limit': 0}})
         self.hybrid = patch.object(CharacterRuntime, '_hybrid', side_effect=SemanticFailure('embedding_unavailable'))
         self.hybrid.start()
         self.addCleanup(self.hybrid.stop)
         self.local = patch.object(workbench, 'configure_local', return_value=None)
         self.local.start()
         self.addCleanup(self.local.stop)
-        self.manifest = trial.prepare(self.binding, self.source, integration=getattr(self, 'integration', False))
+        self.manifest = trial.prepare(self.binding, self.source, integration=getattr(self, 'integration', False), persona_purpose=getattr(self, 'persona_purpose', False), context_rules_off=getattr(self, 'context_rules_off', False), prompt_light=getattr(self, 'prompt_light', False), native_text=getattr(self, 'native_text', False), im_style=getattr(self, 'im_style', False))
+        self.companion_mode = ('minimal_im' if getattr(self, 'im_style', False)
+                               else 'minimal_native' if getattr(self, 'native_text', False)
+                               else 'minimal_experience' if getattr(self, 'prompt_light', False)
+                               else 'minimal_context_rules_off' if getattr(self, 'context_rules_off', False)
+                               else 'minimal_persona' if getattr(self, 'persona_purpose', False) else 'minimal_chat')
         self.owner, self.plan = trial.verify(self.manifest)
         self.paths = RuntimePaths(Path(self.owner['home']))
 
@@ -98,7 +106,7 @@ class C2ChatTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeErrorBase, 'copy_not_prepared'):
             workbench.prepared_copy(self.binding, self.source)
         self.assertFalse(any(owner['initial_counts'].values()))
-        self.assertEqual(self.plan['profile'], trial.choose('minimal_chat'))
+        self.assertEqual(self.plan['profile'], trial.choose(self.companion_mode))
 
     def test_current_provider_authorization_is_explicit_and_copy_scoped(self):
         registry = self.source / 'private/personas/registry.json'
@@ -126,7 +134,7 @@ class C2ChatTests(unittest.TestCase):
                 self.assertEqual(row['status'], 'completed', row['error_code'])
             self.assertEqual(len(model.calls), 2)
             self.assertIn('Artificial first share.', str(model.calls[-1][1]))
-            self.assertEqual(model.calls[0][0]['_companion_profile'], trial.choose('minimal_chat'))
+            self.assertEqual(model.calls[0][0]['_companion_profile'], trial.choose(self.companion_mode))
         summary = trial.audit(self.manifest)
         self.assertEqual(summary['simulated_calls'], 2)
         self.assertTrue(all(r['manifest_matches'] and r['wire_matches'] for r in summary['rows']))

@@ -86,8 +86,9 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     if experimental_context and experimental_blocks:
         raise ModelError('experimental_context_conflict')
     from .references import ReferenceError
-    from .companion import minimal,read as read_companion,MINIMAL_INSTRUCTION,MINIMAL_RENDERER,CHAT_VERSION,CONTRACT_VERSIONS
+    from .companion import minimal,read as read_companion,MINIMAL_INSTRUCTION,MINIMAL_RENDERER,CHAT_VERSION,CONTRACT_VERSIONS,PERSONA_VERSION,RULES_VERSION,EXPERIENCE_VERSION,NATIVE_VERSION,IM_VERSION,NATIVE_VERSIONS
     is_minimal=minimal(turn)
+    is_native=is_minimal and read_companion(turn)['version'] in NATIVE_VERSIONS
     if is_minimal and (capsule or experimental_context or experimental_blocks):raise ModelError('companion_pipeline_conflict')
     from .evaluation_material import variant
     evaluation=variant(engine,conn,turn)
@@ -148,6 +149,11 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         format_renderer='natural-schema2-v1'
         if source_voice:format_renderer='voice-bubbles-schema3-v2'
         elif expression and expression.get('version')==3:format_renderer='bubbles-schema3-v1'
+    if is_native:
+        # Keep the existing v6 budget decisions; the template is removed before dispatch.
+        from .reply_batch import expression_snapshot
+        protocol=prompt_contract('natural_structured',expression_snapshot('natural_structured'))
+        format_renderer='bubbles-schema3-v1'
     character_parts = list(character['parts']) if character else []
     character_removed = [{'kind':p['kind'],'id':p['id'],'reason':'evaluation_ablation'} for p in character_parts if not p['required']] if ablated else []
     if ablated:character_parts=[p for p in character_parts if p['required']]
@@ -220,25 +226,79 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         else:
             if reference_block:raise ReferenceError('reference_budget_exceeded',reference_manifest)
             raise ModelError('context_limit_exceeded')
-    if is_minimal and read_companion(turn)['version'] in CONTRACT_VERSIONS:
+    if is_minimal and read_companion(turn)['version'] in (*CONTRACT_VERSIONS,*NATIVE_VERSIONS):
         from .companion_contract import structural_contract,RENDERER
         # Selection and trimming above deliberately use the full contract. Saved
         # space must not silently admit extra material into this one-variable trial.
         protocol=structural_contract(protocol)
         format_renderer=RENDERER
-        if read_companion(turn)['version']==CHAT_VERSION:
+        if read_companion(turn)['version'] in (CHAT_VERSION,PERSONA_VERSION,RULES_VERSION,EXPERIENCE_VERSION,*NATIVE_VERSIONS):
             from .companion_chat_contract import chat_contract,RENDERER as CHAT_RENDERER
             protocol=chat_contract()
             format_renderer=CHAT_RENDERER
         blocks=[PromptBlock(b.name,protocol,'reply_batch+companion_contract',format_renderer) if b.name=='reply_protocol' else b for b in blocks]
         result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
         assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
+    if is_minimal and read_companion(turn)['version']==PERSONA_VERSION:
+        from .companion_persona import render as render_persona, INSTRUCTION, INSTRUCTION_VERSION, VERSION as PERSONA_RENDERER
+        persona_text,persona_diagnostic,included_parts=render_persona(spec,character_parts)
+        included_keys={(p['kind'],p['id']) for p in included_parts}
+        character_removed.extend({'kind':p['kind'],'id':p['id'],'reason':'unset_omitted'}
+                                 for p in character_parts if (p['kind'],p['id']) not in included_keys)
+        character_parts=included_parts
+        blocks=[PromptBlock(b.name,INSTRUCTION+persona_text,'companion_persona',PERSONA_RENDERER)
+                if b.name=='persona_expression' else
+                PromptBlock(b.name,'','companion_persona',PERSONA_RENDERER) if b.name=='character' else b
+                for b in blocks]
+        result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
+        if sum(len(m['content']) for m in result)>limit:
+            raise ModelError('companion_persona_input_limit_exceeded')
+        assembly.update(expression_renderer=INSTRUCTION_VERSION,format_renderer=format_renderer,
+                        persona_purpose=persona_diagnostic)
+    if is_minimal and read_companion(turn)['version']==RULES_VERSION:
+        from .companion_consumption import consume, VERSION as CONSUMER_VERSION
+        character_parts,consumption=consume(character_parts)
+        character_removed.extend({k:p[k] for k in ('kind','id','reason')} for p in consumption['excluded_parts'])
+        character_body=('\n人物补充资料：\n'+'\n'.join(p['text'] for p in character_parts)) if character_parts else ''
+        blocks=[PromptBlock(b.name,character_body,'companion_consumption',CONSUMER_VERSION)
+                if b.name=='character' else b for b in blocks]
+        result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
+        consumption['final_input_hash']=assembly['input_snapshot_hash']
+        assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer,
+                        character_consumption=consumption)
+    if is_minimal and read_companion(turn)['version'] in (EXPERIENCE_VERSION,*NATIVE_VERSIONS):
+        from .companion_prompt_light import render_blocks, INSTRUCTION_VERSION, FORMAT_RENDERER
+        from .companion_chat_contract import chat_contract
+        blocks=render_blocks(blocks,legacy_instruction=MINIMAL_INSTRUCTION,legacy_contract=chat_contract())
+        if read_companion(turn)['version']==IM_VERSION:
+            from .companion_im import render_blocks as render_im, INSTRUCTION_VERSION
+            blocks=render_im(blocks)
+        result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
+        if sum(len(m['content']) for m in result)>limit:
+            raise ModelError('companion_light_input_limit_exceeded')
+        expression_renderer,format_renderer=INSTRUCTION_VERSION,FORMAT_RENDERER
+        assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
+    if is_native:
+        from .companion_native import consume,render_blocks as render_native,FORMAT_VERSION
+        character_parts,consumption=consume(character_parts)
+        character_removed.extend(consumption['excluded_parts'])
+        blocks,character_body=render_native(blocks,character_parts)
+        result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
+        if sum(len(m['content']) for m in result)>limit:
+            raise ModelError('companion_native_input_limit_exceeded')
+        consumption['final_input_hash']=assembly['input_snapshot_hash']
+        format_renderer=FORMAT_VERSION
+        assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer,
+                        character_consumption=consumption)
     from .character_runtime import audit
     character_audit=audit(character,character_parts,character_removed) if character else None
     character_manifest=manifest(character,character_parts,character_removed) if character else None
     if is_minimal and character:
         character_audit['budgets']['total']=len(character_body)
         character_manifest['input_characters']=len(character_body)
+        if read_companion(turn)['version']==PERSONA_VERSION:
+            character_audit['budgets']=dict(persona_diagnostic['budgets'])
+            character_manifest['input_characters']=persona_diagnostic['budgets']['total']
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
     return result, {**({'companion':read_companion(turn)} if is_minimal else {}),'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
                     'references':reference_manifest,'reply_mode':reply_mode,'dialogue_voice':voice_meta,

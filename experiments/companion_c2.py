@@ -41,6 +41,8 @@ from persona_runtime.storage import Store
 VERSION = 'companion-c2-replay-v1'
 NAMESPACE = 'companion-c2'
 MODES = {'control': 'minimal_structural', 'candidate': 'minimal_chat'}
+REVIEW_NAME = '八组匿名审核.md'
+REVIEW_TITLE = '八组匿名合同对照'
 read = base.read
 sha = base.sha
 
@@ -53,13 +55,43 @@ def require(condition, code):
 def source_hashes():
     result = base.source_hashes()
     for path in (Path(__file__), ROOT / 'experiments/companion_c2_materials.py',
-                 ROOT / 'experiments/companion_expression_adoption.py'):
+                 ROOT / 'experiments/companion_expression_adoption.py',
+                 ROOT / 'experiments/companion_persona_purpose.py',
+                 ROOT / 'experiments/companion_context_rules.py',
+                 ROOT / 'scripts/companion_context_rules.py',
+                 ROOT / 'experiments/companion_prompt_light.py',
+                 ROOT / 'experiments/companion_prompt_light_materials.py',
+                 ROOT / 'scripts/companion_prompt_light.py',
+                 ROOT / 'experiments/companion_author_comparison.py'):
         result[path.relative_to(ROOT).as_posix()] = sha(path)
     return result
 
 
 def data_root(owner):
-    return safe(Path(owner['home']) / 'runtime/c2-replay', owner['home'])
+    directory = getattr(definition(owner['version']), 'BODY_DIRECTORY',
+                        'c2-replay' if owner['version'] == VERSION else 'persona-purpose-replay')
+    return safe(Path(owner['home']) / 'runtime' / directory, owner['home'])
+
+
+def definition(version):
+    if version == VERSION:
+        return sys.modules[__name__]
+    from experiments import companion_prompt_light
+    if version == companion_prompt_light.VERSION:
+        return companion_prompt_light
+    from experiments import companion_context_rules
+    if version == companion_context_rules.VERSION:
+        return companion_context_rules
+    from experiments import companion_author_comparison
+    if version == companion_author_comparison.VERSION:
+        return companion_author_comparison
+    from experiments import companion_persona_purpose
+    require(version == companion_persona_purpose.VERSION, 'unknown_experiment')
+    return companion_persona_purpose
+
+
+def materials(paths, pid):
+    return list(CASES)
 
 
 def create_copy(source_home, binding_path, owner, root):
@@ -75,7 +107,7 @@ def create_copy(source_home, binding_path, owner, root):
     atomic_json(root / 'trial.json', owner)
     home.mkdir(parents=True)
     marker = {'private_id': private_id, 'persona_id': None, 'formal_home': str(paths.home),
-              'purpose': VERSION, 'created_at': timestamp()}
+              'purpose': owner['version'], 'created_at': timestamp()}
     atomic_json(home / 'private-sandbox.json', marker)
     with adoption._maintenance(paths, private_id) if binding_path else nullcontext():
         target = Store(RuntimePaths(home))
@@ -116,12 +148,16 @@ def load_trial(root):
     root = safe(root)
     owner = read(root / 'trial.json')
     source = Path(owner['source_home']).resolve()
-    require(root.parent == source / 'tmp' / NAMESPACE, 'trial_scope')
-    require(owner.get('version') == VERSION and owner.get('status') == 'prepared', 'trial_not_prepared')
-    home = safe(owner['home'], source / 'tmp/private-acceptance')
-    marker = read(home / 'private-sandbox.json')
-    require(marker['persona_id'] == owner['persona_id'] and marker['purpose'] == VERSION
-            and marker['formal_home'] == str(source), 'copy_owner_changed')
+    experiment = definition(owner.get('version'))
+    require(root.parent == source / 'tmp' / experiment.NAMESPACE, 'trial_scope')
+    require(owner.get('status') == 'prepared', 'trial_not_prepared')
+    if hasattr(experiment, 'validate_owner'):
+        experiment.validate_owner(root, owner, source)
+    else:
+        home = safe(owner['home'], source / 'tmp/private-acceptance')
+        marker = read(home / 'private-sandbox.json')
+        require(marker['persona_id'] == owner['persona_id'] and marker['purpose'] == owner['version']
+                and marker['formal_home'] == str(source), 'copy_owner_changed')
     require(datetime.now(timezone.utc) <= datetime.fromisoformat(owner['review_deadline']), 'review_expired')
     return owner
 
@@ -181,6 +217,9 @@ def validate_pairs(data, rows):
 
 def verify(root):
     owner = load_trial(root)
+    experiment = definition(owner['version'])
+    if hasattr(experiment, 'verify_trial'):
+        return experiment.verify_trial(root, owner)
     data = data_root(owner)
     plan = read(data / 'plan.json')
     require(fingerprint(plan) == owner['plan_hash'], 'plan_changed')
@@ -192,16 +231,18 @@ def verify(root):
         adoption._saved(owner['author_binding'], owner['source_home'])
         require(fingerprint(ConfigStore(RuntimePaths(Path(owner['source_home']))).load()) ==
                 owner['source_config_hash'], 'source_config_changed')
-    require(plan['cases'] == list(CASES), 'materials_changed')
+    require(plan['cases'] == experiment.materials(RuntimePaths(Path(owner['home'])), owner['persona_id']), 'materials_changed')
     for row in plan['positions']:
         folder = data / 'preflight' / row['position_id']
         for name, digest in row['frozen_files'].items():
             require(sha(folder / name) == digest, 'frozen_request_changed')
-    validate_pairs(data, plan['positions'])
+    if hasattr(experiment, 'verify_conditions'):
+        experiment.verify_conditions(owner, plan)
+    experiment.validate_pairs(data, plan['positions'])
     return owner, plan
 
 
-def enable(engine, pid, arm):
+def enable(engine, pid, arm, *, version=VERSION):
     ingress = IngressService(engine)
     policy = ingress.current_policy(pid, 'desktop')
     callback = getattr(engine.store, 'character_committed', None)
@@ -210,7 +251,7 @@ def enable(engine, pid, arm):
     engine.store.character_committed = None
     try:
         ingress.update_policy(pid, 'desktop', policy['mode'], policy['id'], identifier(),
-                              companion_mode=MODES[arm], expression_policy_version=3,
+                              companion_mode=definition(version).MODES[arm], expression_policy_version=3,
                               reply_mode='natural_structured')
     finally:
         engine.store.character_committed = callback
@@ -222,7 +263,8 @@ async def history(engine, ingress, pid, case, folder):
     return await base.seed_history(engine, ingress, pid, fixture, 'shared', folder)
 
 
-async def prepare(source_home=DEFAULT_HOME, *, binding_path=None):
+async def prepare(source_home=DEFAULT_HOME, *, binding_path=None, version=VERSION):
+    experiment = definition(version)
     source_home = Path(source_home).resolve()
     private = binding_path is not None
     require(private or source_home != DEFAULT_HOME.resolve(), 'artificial_home_required')
@@ -234,9 +276,9 @@ async def prepare(source_home=DEFAULT_HOME, *, binding_path=None):
     source['organization']['model']['encrypted_key'] = ''
     if not private:
         source['model']['encrypted_key'] = ''
-    root = source_home / 'tmp' / NAMESPACE / identifier()
+    root = source_home / 'tmp' / experiment.NAMESPACE / identifier()
     root.mkdir(parents=True)
-    owner = {'version': VERSION, 'status': 'preparing', 'private': private,
+    owner = {'version': version, 'status': 'preparing', 'private': private,
              'source_home': str(source_home), 'source_config_hash': source_config_hash,
              'created_at': timestamp(), 'review_deadline': (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()}
     atomic_json(root / 'trial.json', owner)
@@ -247,24 +289,27 @@ async def prepare(source_home=DEFAULT_HOME, *, binding_path=None):
             config = configure(paths, source, pid)
             atomic_json(paths.home / 'runtime/private-copy-policy.json',
                         {'persona_id': pid, 'approved_models': {'main': provider_identity(source['model'])},
-                         'approval_scope': 'user_authorized_stage4C_C2_16_positions'})
+                         'approval_scope': version})
             if private:
                 copy_weights(source_paths, paths)
             store = Store(paths)
-            configure_policy(store, config, pid, MODES['control'], background_prepare=False)
+            if not private and version != VERSION:
+                experiment.artificial_persona(store)
+            cases = experiment.materials(paths, pid)
+            configure_policy(store, config, pid, experiment.MODES['control'], background_prepare=False)
             engine = ChatEngine(store, config, client=base.FixtureClient())
             ingress = IngressService(engine)
             require(not ingress.current_policy(pid, 'desktop')['cross_session'], 'cross_session_forbidden')
-            local_retrieval_ready(engine.cognitive.characters, pid, [c['current_input'] for c in CASES],
+            local_retrieval_ready(engine.cognitive.characters, pid, [c['current_input'] for c in cases],
                                   build=True, development_material=not private)
             data = data_root(owner)
-            rows = positions()
+            rows = experiment.positions()
             for row in rows:
-                case = next(c for c in CASES if c['id'] == row['case_id'])
+                case = next(c for c in cases if c['id'] == row['case_id'])
                 folder = data / 'preflight' / row['position_id']
                 folder.mkdir(parents=True)
                 engine.evaluation_session = None
-                enable(engine, pid, row['arm'])
+                enable(engine, pid, row['arm'], version=version)
                 session = await history(engine, ingress, pid, case, folder)
                 hook, captured = capture_hook(folder, development=not private)
                 engine.evaluation_session = hook
@@ -277,13 +322,13 @@ async def prepare(source_home=DEFAULT_HOME, *, binding_path=None):
                 base.seal_session(engine, pid, session)
                 row['frozen_files'] = {name: sha(folder / name) for name in
                                       ('request.json', 'manifest.json', 'reachability.json', 'prompt-sources.json')}
-            checks = validate_pairs(data, rows)
+            checks = experiment.validate_pairs(data, rows)
             rng = random.SystemRandom()
-            mapping = {case['id']: dict(zip(('A', 'B'), rng.sample(list(MODES), 2))) for case in CASES}
-            plan = {'version': VERSION, 'cases': list(CASES), 'positions': rows,
+            mapping = {case['id']: dict(zip(('A', 'B'), rng.sample(list(experiment.MODES), 2))) for case in cases}
+            plan = {'version': version, 'cases': cases, 'positions': rows,
                     'order': [r['position_id'] for r in rows], 'pair_checks': checks,
                     'anonymous_mapping': mapping, 'source_hashes': source_hashes(),
-                    'binding': base.current_binding(paths, pid), 'planned_positions': 16,
+                    'binding': base.current_binding(paths, pid), 'planned_positions': len(rows),
                     'sampling': 'one_per_arm_no_quality_retry', 'numeric_metrics': 'auxiliary_only'}
             atomic_json(data / 'plan.json', plan)
             atomic_json(data / 'state.json', {'status': 'prepared', 'automatic_resume': False})
@@ -303,7 +348,11 @@ async def prepare(source_home=DEFAULT_HOME, *, binding_path=None):
 
 async def run_position(root, position_id, *, simulated=False, client=None):
     owner = load_trial(root)
-    require(simulated != owner['private'], 'simulation_scope_mismatch')
+    experiment = definition(owner['version'])
+    if hasattr(experiment, 'verify_execution'):
+        experiment.verify_execution(owner, simulated)
+    else:
+        require(simulated != owner['private'], 'simulation_scope_mismatch')
     require(simulated or client is None, 'real_client_injection_forbidden')
     lease = InstanceLock(Path(root) / 'execution.lock')
     try:
@@ -342,13 +391,16 @@ async def _run_position(root, position_id, simulated, client):
     dispatches = 0
     started = time.perf_counter()
     try:
-        paths = RuntimePaths(Path(owner['home']))
+        experiment = definition(owner['version'])
+        target_owner = experiment.position_owner(owner, row) if hasattr(experiment, 'position_owner') else owner
+        paths = RuntimePaths(Path(target_owner['home']))
+        pid = target_owner['persona_id']
         engine = ChatEngine(Store(paths), ConfigStore(paths), client=base.FixtureClient())
         ingress = IngressService(engine)
-        enable(engine, owner['persona_id'], row['arm'])
-        local_retrieval_ready(engine.cognitive.characters, owner['persona_id'], [case['current_input']],
+        enable(engine, pid, row['arm'], version=owner['version'])
+        local_retrieval_ready(engine.cognitive.characters, pid, [case['current_input']],
                               build=False, development_material=simulated)
-        session = await history(engine, ingress, owner['persona_id'], case, folder)
+        session = await history(engine, ingress, pid, case, folder)
         expected = read(data / 'preflight' / position_id / 'request.json')
         hook, _ = capture_hook(folder, expected, development=simulated)
         engine.evaluation_session = hook
@@ -374,6 +426,8 @@ async def _run_position(root, position_id, simulated, client):
                 verify(root)
                 if (data / 'cancel.json').exists():
                     raise asyncio.CancelledError()
+                if hasattr(experiment, 'validate_dispatch'):
+                    experiment.validate_dispatch(data, row, folder)
                 wire = build_request(model, messages)[0]
                 require(messages == expected['messages'] and wire == expected['wire'], 'dispatch_changed')
                 attempts = audit.get('generation_retry', {}).get('attempts', [])
@@ -399,14 +453,14 @@ async def _run_position(root, position_id, simulated, client):
                 await asyncio.sleep(.05)
 
         watcher = asyncio.create_task(cancel_watch())
-        turn = await base.admit(engine, ingress, owner['persona_id'], case['current_input'])
+        turn = await base.admit(engine, ingress, pid, case['current_input'])
         result.update(turn_id=turn['id'], session_id=session, status=turn['status'], error_code=turn.get('error_code'),
                       reply=turn.get('reply'), display=turn.get('display_reply'), display_messages=turn.get('display_messages'),
                       context=turn.get('context'))
         require(turn['status'] == 'completed', turn.get('error_code') or 'target_failed')
-        base.assert_runtime(engine, owner['persona_id'], {'manifest': read(folder / 'manifest.json')}, development=simulated)
+        base.assert_runtime(engine, pid, {'manifest': read(folder / 'manifest.json')}, development=simulated)
         result.update(messages_hash=expected['messages_hash'], wire_hash=expected['wire_hash'])
-        base.seal_session(engine, owner['persona_id'], session)
+        base.seal_session(engine, pid, session)
     except BaseException as error:
         cancelled = isinstance(error, asyncio.CancelledError) or (data / 'cancel.json').exists()
         result.update(status='cancelled' if cancelled else 'failed', error_code=base.error_code(error),
@@ -433,6 +487,9 @@ async def _run_position(root, position_id, simulated, client):
 
 async def execute(root, *, simulated=False, client=None):
     owner, plan = verify(root)
+    experiment = definition(owner['version'])
+    if hasattr(experiment, 'execute_trial'):
+        return await experiment.execute_trial(root, simulated=simulated, client=client)
     require(not any((data_root(owner) / 'positions').glob('*/started.json')), 'batch_started_no_auto_resume')
     for position_id in plan['order']:
         result = await run_position(root, position_id, simulated=simulated, client=client)
@@ -445,6 +502,9 @@ async def execute(root, *, simulated=False, client=None):
 
 def report(root):
     owner = load_trial(root)
+    experiment = definition(owner['version'])
+    if hasattr(experiment, 'report_trial'):
+        return experiment.report_trial(root)
     data = data_root(owner)
     plan = read(data / 'plan.json')
     rows = []
@@ -458,14 +518,14 @@ def report(root):
             rows.append({**position, 'status': 'unfinished' if started else 'not_executed', 'kind': kind,
                          'physical_calls': len(list(folder.glob('*.dispatch.json'))) if kind == 'real' else 0,
                          'simulated_calls': len(list(folder.glob('*.dispatch.json'))) if kind == 'simulated' else 0})
-    summary = {'version': VERSION, 'planned_positions': 16, 'completed': sum(r['status'] == 'completed' for r in rows),
+    summary = {'version': owner['version'], 'planned_positions': len(plan['positions']), 'completed': sum(r['status'] == 'completed' for r in rows),
                'physical_calls': sum(r['physical_calls'] for r in rows),
                'simulated_calls': sum(r['simulated_calls'] for r in rows),
                'unfinished_positions': sum(r['status'] == 'unfinished' for r in rows),
                'user_review': 'pending', 'real_effect': 'not_settled'}
     atomic_json(data / 'report.json', {**summary, 'rows': rows})
     by_id = {r['position_id']: r for r in rows}
-    lines = ['# 八组匿名合同对照', '', '每组采用相同人物及人工前文。请选更愿意继续交流的一条，'
+    lines = ['# ' + experiment.REVIEW_TITLE, '', '每组采用相同人物及人工前文。请选更愿意继续交流的一条，'
              '可回复A、B、平或无法判断，并可标出具体出戏处。数字指标作辅助观察。', '',
              '复述、确认和追问是否自然，请结合当下语境判断。认真任务同时看完整性与可用性。', '']
     for index, case in enumerate(plan['cases'], 1):
@@ -481,7 +541,7 @@ def report(root):
             else:
                 lines.extend(['本位置未完成，无法比较。', ''])
         lines.extend(['选择　　出戏处或原因（可选）', ''])
-    (data / '八组匿名审核.md').write_text('\n'.join(lines), encoding='utf-8')
+    (data / experiment.REVIEW_NAME).write_text('\n'.join(lines), encoding='utf-8')
     return summary
 
 

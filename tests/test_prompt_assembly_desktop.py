@@ -21,6 +21,16 @@ class AssemblyDesktop(unittest.TestCase):
     window=fixture.ContextDesktopTests.window
     doCleanups=fixture.ContextDesktopTests.doCleanups
 
+    def test_persona_purpose_history_summary_does_not_invent_old_fields(self):
+        w=self.window();value=manifest()
+        value['prompt_assembly']['persona_purpose']={'version':'companion-persona-v2','characters':180,
+            'sections':[{'id':'identity'}], 'fields':[{'field_id':'identity.gender'}]}
+        w.show_context_result('inspect',{'manifests':[value]})
+        self.assertIn('companion-persona-v2',w.ctx_summary.get('1.0','end'))
+        self.assertIn('S8尚需结合语境审阅',w.ctx_summary.get('1.0','end'))
+        w.show_context_result('inspect',{'manifests':[manifest()]})
+        self.assertIn('未采集人物资料用途信息',w.ctx_summary.get('1.0','end'))
+
     def test_preview_is_labeled_readonly_with_component_versions(self):
         w=self.window();w.show_page('context');w.show_context_result('preview',{'manifest':manifest()});w.update()
         text=w.ctx_summary.get('1.0','end')

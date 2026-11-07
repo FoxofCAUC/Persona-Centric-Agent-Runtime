@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+import tempfile
 from unittest.mock import patch
 
 from experiments import companion_expression_adoption as adoption
@@ -19,11 +20,13 @@ from persona_runtime.storage import Store
 
 class AdoptionTests(unittest.TestCase):
     def setUp(self):
-        fixture = (RuntimePaths.from_environment().home / 'exports/acceptance/PCAR-companion-rebuild'
-                   / 'stage-4B-expression-adoption/artificial-rehearsal/helper-fixtures' / identifier())
-        fixture.mkdir(parents=True)
+        temporary_root = RuntimePaths.from_environment().home/'tmp'
+        temporary_root.mkdir(parents=True, exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(prefix='adoption-unit-', dir=temporary_root)
+        self.addCleanup(temporary.cleanup)
+        fixture = Path(temporary.name)
         atomic_json(fixture / 'fixture-owner.json', {'version': 'stage4B-adoption-unit-fixture-v1',
-                    'artificial_only': True, 'retained_for_evidence': True, 'created_at': timestamp()})
+                    'artificial_only': True, 'retained_for_evidence': False, 'created_at': timestamp()})
         self.temp = SimpleNamespace(name=str(fixture))
         self.paths = RuntimePaths(Path(self.temp.name) / 'home')
         self.store = Store(self.paths); self.store.initialize(); ConfigStore(self.paths).initialize()

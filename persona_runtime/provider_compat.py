@@ -51,6 +51,14 @@ def request_timeout(model):
 
 
 def grok_interactive(model):
+    profile = model.get('_companion_profile')
+    if is_grok47(model) and isinstance(profile, dict):
+        from .companion import NATIVE_VERSIONS, checked
+        if profile.get('version') in NATIVE_VERSIONS:
+            checked(profile)
+            if model.get('_reply_mode') != 'context_full':
+                raise ValueError('companion_native_wire_conflict')
+            return True
     return is_grok47(model) and (model.get('_character_selection') is True or
         model.get('_reply_mode') in ('natural_structured','context_structured'))
 

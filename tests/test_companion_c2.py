@@ -26,7 +26,7 @@ class Replay(unittest.IsolatedAsyncioTestCase):
         self.enterContext(patch('socket.socket.connect', side_effect=AssertionError('network_forbidden')))
 
     async def test_sixteen_runtime_targets_only_contract_diff_and_no_success_replay(self):
-        root = await run.prepare(self.home)
+        root = await run.prepare(self.home, version=getattr(self, "replay_version", run.VERSION))
         owner, plan = run.verify(root)
         self.assertEqual(len(plan['positions']), 16)
         self.assertTrue(all(r['only_contract_changed'] for r in plan['pair_checks']))
@@ -43,7 +43,7 @@ class Replay(unittest.IsolatedAsyncioTestCase):
             await run.execute(root, simulated=True, client=client)
 
     async def test_retry_recovery_and_exhaustion_preserve_input(self):
-        root = await run.prepare(self.home)
+        root = await run.prepare(self.home, version=getattr(self, "replay_version", run.VERSION))
         _, plan = run.verify(root)
         fixture = run.base.FixtureClient()
         calls = []
@@ -78,7 +78,7 @@ class Replay(unittest.IsolatedAsyncioTestCase):
             await run.run_position(root, plan['order'][2], simulated=True)
 
     async def test_terminal_failure_keeps_breakpoint_and_actual_call_count(self):
-        root = await run.prepare(self.home)
+        root = await run.prepare(self.home, version=getattr(self, "replay_version", run.VERSION))
         owner, plan = run.verify(root)
         original = run.atomic_json
 
@@ -99,7 +99,7 @@ class Replay(unittest.IsolatedAsyncioTestCase):
             await run.run_position(root, plan['order'][0], simulated=True)
 
     async def test_cancellation_has_terminal_and_stops_following_positions(self):
-        root = await run.prepare(self.home)
+        root = await run.prepare(self.home, version=getattr(self, "replay_version", run.VERSION))
         owner, plan = run.verify(root)
         entered = asyncio.Event()
 
@@ -116,7 +116,7 @@ class Replay(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['usage']['generation_retry']['attempts'][0]['status'], 'interrupted')
 
     async def test_tamper_and_real_scope_rejected_before_dispatch(self):
-        root = await run.prepare(self.home)
+        root = await run.prepare(self.home, version=getattr(self, "replay_version", run.VERSION))
         owner, plan = run.verify(root)
         with self.assertRaisesRegex(Exception, 'simulation_scope_mismatch'):
             await run.run_position(root, plan['order'][0])
@@ -128,7 +128,7 @@ class Replay(unittest.IsolatedAsyncioTestCase):
             await run.run_position(root, plan['order'][0], simulated=True)
 
     async def test_reservation_write_failure_never_dispatches(self):
-        root = await run.prepare(self.home)
+        root = await run.prepare(self.home, version=getattr(self, "replay_version", run.VERSION))
         _, plan = run.verify(root)
         original = run.atomic_json
 

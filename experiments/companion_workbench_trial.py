@@ -231,6 +231,17 @@ def open_window(binding_path=None, source_home=DEFAULT_HOME, *, trial_manifest=N
             from experiments import companion_c2_lifecycle as lifecycle
             if runtime.trial_owner['version'] == lifecycle.VERSION:
                 title = lifecycle.TITLE
+            from experiments import companion_c2_chat
+            if runtime.trial_owner["version"] == companion_c2_chat.PURPOSE_VERSION:
+                title = companion_c2_chat.PURPOSE_TITLE
+            if runtime.trial_owner["version"] == companion_c2_chat.RULES_VERSION:
+                title = companion_c2_chat.RULES_TITLE
+            if runtime.trial_owner["version"] == companion_c2_chat.LIGHT_VERSION:
+                title = companion_c2_chat.LIGHT_TITLE
+            if runtime.trial_owner["version"] == companion_c2_chat.NATIVE_VERSION:
+                title = companion_c2_chat.NATIVE_TITLE
+            if runtime.trial_owner["version"] == companion_c2_chat.IM_VERSION:
+                title = companion_c2_chat.IM_TITLE
         else:
             title = TITLE
         window.title(title); window.persona_id = runtime.persona_id

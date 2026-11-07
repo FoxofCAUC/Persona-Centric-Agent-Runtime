@@ -7,7 +7,7 @@ from .models import identifier
 
 def companion_candidate(policy):
     from .companion import choose
-    return (policy or {}).get('companion') in (choose('minimal_structural'), choose('minimal_chat'))
+    return (policy or {}).get('companion') in (choose('minimal_structural'), choose('minimal_chat'), choose('minimal_persona'), choose('minimal_context_rules_off'), choose('minimal_experience'), choose('minimal_native'), choose('minimal_im'))
 
 
 def companion_activation_allowed(policy):
@@ -22,13 +22,23 @@ def companion_activation_allowed(policy):
         checked(profile)
     except RuntimeErrorBase:
         return False
-    return profile != choose('minimal_chat') and restore_available(policy)
+    return profile != choose('minimal_im') and restore_available(policy)
 
 
 def companion_description(policy):
     profile = (policy or {}).get('companion')
     if companion_candidate(policy):
         from .companion import choose
+        if profile == choose('minimal_im'):
+            return '即时通讯候选：本地选材，一次主回复，采用原生文本和即时通讯表达指导，不注入表达样例。'
+        if profile == choose('minimal_native'):
+            return '无示范纯文本候选：本地选材，一次主回复，直接生成文本，不注入表达样例。'
+        if profile == choose('minimal_experience'):
+            return '4-E.5交流提示候选：本地选材，一次主回复，采用轻量化交流提示。'
+        if profile == choose('minimal_context_rules_off'):
+            return '4-E.3情境规则候选：本地选材，一次主回复，采用C2聊天合同；情境规则按本次方案消费。'
+        if profile == choose('minimal_persona'):
+            return '4-E人物资料候选：按用途呈现人物资料，本地选材，一次主回复，采用C2聊天合同。'
         if profile == choose('minimal_chat'):
             return 'C2伴侣候选：本地选材，一次主回复；聊天可短接话，明确任务保留必要内容。'
         return '伴侣候选：本地选材，无云端选择，一次主回复；结构合同不要求固定句数或回应顺序。'
@@ -146,11 +156,11 @@ class ContextUI:
         desktop=self.ctx_channel.get()=='desktop'
         candidate=companion_candidate(policy)
         profile=(policy or {}).get('companion')
-        label='启用C2伴侣候选'
-        if profile == choose('minimal_chat'):
-            label='已启用C2伴侣候选'
+        label='启用伴侣聊天'
+        if profile == choose('minimal_im'):
+            label='已启用伴侣聊天'
         elif profile:
-            label='升级到C2伴侣候选'
+            label='升级伴侣聊天'
         self.ctx_companion_enable.configure(text=label)
         self._companion_button(self.ctx_companion_enable,not desktop or not companion_activation_allowed(policy))
         self._companion_button(self.ctx_companion_restore,not policy or not desktop or not restore_available(policy))
@@ -162,7 +172,7 @@ class ContextUI:
         else:
             text=('窗口：' if desktop else 'QQ（本阶段不提供候选切换）：')+companion_description(policy)
             if policy.get('companion') and not restore_available(policy):
-                text+=' 此旧实验缺少有效的启用前恢复点，不能自动升级或恢复。'
+                text+=' 当前方案版本或启用前恢复点无效，无法自动升级或恢复。'
             self.ctx_companion.set(text)
 
     def remember_companion_policy(self,policy):
@@ -186,7 +196,7 @@ class ContextUI:
                 or self.ctx_channel.get()!='desktop'):
             self.notice.set('请先读取当前人格的窗口入口政策；本阶段不切换QQ方案。');return
         if (enable and not companion_activation_allowed(p)) or (not enable and not restore_available(p)):
-            self.notice.set('C2已生效，或此政策缺少有效的启用前恢复点，无法自动升级或恢复。');return
+            self.notice.set('当前已采用伴侣聊天，或方案缺少有效恢复点，无法自动升级或恢复。');return
         if not enable and not messagebox.askokcancel('恢复启用前设置',companion_restore_summary(p),parent=self):return
         key=self.context_key();draft=self.ctx_draft_epoch;pending_action=None
         if any(b['persona_id']==self.persona_id and b['channel']=='desktop' and b['state']=='collecting' for b in self.batch_rows):
@@ -195,11 +205,11 @@ class ContextUI:
             pending_action='seal' if answer else 'cancel'
         args={'persona_id':p['persona_id'],'channel':'desktop','mode':p['mode'],
               'expected_version':p['id'],'pending_action':pending_action,
-              'companion_mode':'minimal_chat' if enable else 'disabled'}
+              'companion_mode':'minimal_im' if enable else 'disabled'}
         if enable:
             args.update(mode='natural_batch',conversation_policy_version=2,expression_policy_version=3,
                         disposition_mode='baseline',situation_observation_mode='disabled',
-                        reply_mode='natural_structured',character_retrieval_mode='hybrid')
+                        reply_mode='context_full',character_retrieval_mode='hybrid')
         intent=('companion',p['persona_id'],p['id'],enable,pending_action)
         args['operation_id']=self.ctx_intents.setdefault(intent,identifier())
         def done(value):
@@ -259,6 +269,15 @@ class ContextUI:
             if selection.get('fallback_reason'):text+='；回退原因 '+selection['fallback_reason']
             text+='；来源 ID 与选择调用见原始 JSON。'
         else:text+='\n材料选择版本及返回明细未采集。'
+        purpose=info.get('persona_purpose')
+        if purpose:
+            text+='\n人物资料呈现 '+purpose['version']+'；实际字符数 '+str(purpose.get('characters'))
+            if purpose.get('details_omitted'):
+                text+='；分节与字段明细因大小限制省略。'
+            else:
+                text+='；分节 '+str(len(purpose.get('sections',[])))+'；来源字段 '+str(len(purpose.get('fields',[])))
+                text+='\n最终字段编号、填写状态及排除原因见原始 JSON。S8尚需结合语境审阅。'
+        else:text+='\n该记录未采集人物资料用途信息。'
         self.set_text(self.ctx_summary,text)
         names={'persona_expression':'人格与表达','relationship':'关系','temporary_state':'临时状态','behavior':'弱行为提示',
                'presentation':'展示合同','character':'角色资料','memory_summary':'记忆与摘要','explicit_references':'明确引用',

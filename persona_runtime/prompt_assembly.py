@@ -68,6 +68,16 @@ def bounded(diagnostic):
         summary['material_selection']={k:v for k,v in summary['material_selection'].items()
                                        if k not in ('returned_example_ids','included_example_ids','fact_paths','lore_ids')}
         summary['material_selection']['ids_omitted']=True
+    if 'persona_purpose' in summary:
+        detail=summary['persona_purpose']
+        summary['persona_purpose']={k:detail[k] for k in
+                                   ('version','instruction_version','budgets','characters','content_hash')}
+        summary['persona_purpose'].update(details_omitted=True,field_count=len(detail.get('fields',[])))
+    if 'character_consumption' in summary:
+        detail=summary['character_consumption']
+        summary['character_consumption']={k:detail[k] for k in ('version','field_id','status','final_input_hash')}
+        summary['character_consumption'].update(details_omitted=True,
+            excluded_count=len(detail.get('excluded_parts',[])))
     return summary if byte_size(summary) <= DIAGNOSTIC_BYTES else None
 
 

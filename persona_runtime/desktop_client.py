@@ -49,7 +49,12 @@ class LocalClient:
             raise RuntimeErrorBase('runtime_upgrade_required')
 
     def update_companion_policy(self, **args):
-        capability = 'companion_c2_workbench_v1' if args.get('companion_mode') == 'minimal_chat' else 'companion_workbench_v1'
+        capability = {'minimal_im': 'companion_im_text_v1',
+                      'minimal_native': 'companion_native_text_v1',
+                      'minimal_experience': 'companion_prompt_light_v1',
+                      'minimal_context_rules_off': 'companion_context_rules_workbench_v1',
+                      'minimal_chat': 'companion_c2_workbench_v1',
+                      'minimal_persona': 'companion_persona_workbench_v1'}.get(args.get('companion_mode'), 'companion_workbench_v1')
         self.require_capability(capability)
         return self.manage('interaction.update', **args)
 

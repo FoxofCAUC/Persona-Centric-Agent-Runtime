@@ -17,6 +17,7 @@ from experiments import companion_c2_lifecycle as lifecycle
 from experiments.companion_trial import configure, configure_policy, copy_weights
 from experiments.companion_comparison import local_retrieval_ready
 from persona_runtime.archive import fingerprint
+from persona_runtime.character_embedding import private_directory
 from persona_runtime.chat import ChatEngine, ChatCompletionsClient
 from persona_runtime.companion import choose
 from persona_runtime.config import ConfigStore, atomic_json
@@ -30,6 +31,21 @@ from persona_runtime.storage import Store
 VERSION = 'companion-c2-workbench-v1'
 NAMESPACE = 'companion-c2-chat'
 TITLE = 'PCAR · C2连续体验'
+PURPOSE_VERSION = 'companion-persona-workbench-v1'
+PURPOSE_NAMESPACE = 'companion-persona-chat'
+PURPOSE_TITLE = 'PCAR · 人物资料用途验证'
+RULES_VERSION = 'companion-context-rules-workbench-v1'
+RULES_NAMESPACE = 'companion-context-rules-chat'
+RULES_TITLE = 'PCAR · 情境规则消费验证'
+LIGHT_VERSION = 'companion-prompt-light-workbench-v1'
+LIGHT_NAMESPACE = 'companion-prompt-light-chat'
+LIGHT_TITLE = 'PCAR · 轻量提示连续体验'
+NATIVE_VERSION = 'companion-native-text-workbench-v1'
+NATIVE_NAMESPACE = 'companion-native-text-chat'
+NATIVE_TITLE = 'PCAR · 无示范纯文本体验'
+IM_VERSION = 'companion-im-workbench-v1'
+IM_NAMESPACE = 'companion-im-chat'
+IM_TITLE = 'PCAR · DeepSeek即时通讯体验'
 read = replay.read
 
 
@@ -66,22 +82,51 @@ def conditions(paths, pid):
             'owner_hash': replay.sha(paths.home / 'private-sandbox.json')}
 
 
-def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=False, integration=False):
+def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=False, integration=False, persona_purpose=False, context_rules_off=False, prompt_light=False, native_text=False, im_style=False, model_configuration_home=None):
+    require(sum((integration, persona_purpose, context_rules_off, prompt_light, native_text, im_style)) <= 1, 'conflicting_trial_modes')
     source_home = Path(source_home).resolve()
     paths, _, record, _, _ = adoption._saved(binding_path, source_home)
     source = deepcopy(ConfigStore(paths).load())
+    formal_config_hash = fingerprint(source)
+    donor = None
+    if model_configuration_home is not None:
+        require(native_text and approve_current_provider, 'model_import_not_authorized')
+        donor_home = safe(model_configuration_home, source_home / 'tmp/private-acceptance')
+        require(donor_home.parent == source_home / 'tmp/private-acceptance', 'model_import_scope')
+        marker = read(donor_home / 'private-sandbox.json')
+        require(marker.get('purpose') == NATIVE_VERSION and marker.get('private_id') == record['id']
+                and Path(marker.get('formal_home', '')).resolve() == source_home, 'model_import_owner')
+        donor_config = ConfigStore(RuntimePaths(donor_home)).load()
+        donor = {'home': str(donor_home), 'config_hash': fingerprint(donor_config),
+                 'model_public': replay.base.public_model(donor_config['model'])}
+        source['model'] = deepcopy(donor_config['model'])
     private = source_home == DEFAULT_HOME.resolve()
     if private and not approve_current_provider:
         guard_cloud_dispatch(Store(paths), record['persona_id'], 'main', source['model'])
     version = lifecycle.VERSION if integration else VERSION
     namespace = lifecycle.NAMESPACE if integration else NAMESPACE
+    mode = 'minimal_chat'
+    if persona_purpose:
+        version, namespace, mode = PURPOSE_VERSION, PURPOSE_NAMESPACE, 'minimal_persona'
+    if context_rules_off:
+        version, namespace, mode = RULES_VERSION, RULES_NAMESPACE, 'minimal_context_rules_off'
+    if prompt_light:
+        version, namespace, mode = LIGHT_VERSION, LIGHT_NAMESPACE, 'minimal_experience'
+    if native_text:
+        version, namespace, mode = NATIVE_VERSION, NATIVE_NAMESPACE, 'minimal_native'
+    if im_style:
+        version, namespace, mode = IM_VERSION, IM_NAMESPACE, 'minimal_im'
     root = safe(source_home / 'tmp' / namespace / identifier(), source_home)
     root.mkdir(parents=True)
+    if (prompt_light or native_text or im_style) and private:
+        private_directory(source_home, root)
     owner = {'version': version, 'status': 'preparing', 'private': private,
-             'source_home': str(source_home), 'source_config_hash': fingerprint(source),
+             'source_home': str(source_home), 'source_config_hash': formal_config_hash,
              'provider_approval': 'explicit_current_stage' if private and approve_current_provider else 'existing_registry_or_artificial',
              'created_at': timestamp(),
              'review_deadline': (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()}
+    if donor:
+        owner['model_configuration'] = donor
     manifest = root / 'trial.json'
     atomic_json(manifest, owner)
     source['character_selector'].update(enabled=False, encrypted_key='')
@@ -96,6 +141,8 @@ def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=
             marker = read(marker_path)
             marker['purpose'] = version
             atomic_json(marker_path, marker)
+            if (prompt_light or native_text or im_style) and private:
+                private_directory(source_home, copy_paths.home)
             config = configure(copy_paths, source, pid)
             atomic_json(copy_paths.home / 'runtime/private-copy-policy.json', {
                 'persona_id': pid, 'approved_models': {'main': provider_identity(source['model'])},
@@ -103,14 +150,17 @@ def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=
             if private:
                 copy_weights(paths, copy_paths)
             store = Store(copy_paths)
-            configure_policy(store, config, pid, 'minimal_chat', background_prepare=False)
+            configure_policy(store, config, pid, mode, background_prepare=False)
             engine = ChatEngine(store, config, client=replay.base.FixtureClient())
             local_retrieval_ready(engine.cognitive.characters, pid, ['你好'], build=True,
                                   development_material=not private)
-            frozen = {'version': version, 'profile': choose('minimal_chat'),
+            frozen = {'version': version, 'profile': choose(mode),
                       'conditions': conditions(copy_paths, pid), 'source_hashes': source_hashes(),
                       'model_public': replay.base.public_model(source['model']),
-                      'experience': 'one_free_conversation_8_to_12_turns_early_end_allowed'}
+                      'experience': ('one_free_conversation_10_to_15_turns_early_end_allowed' if persona_purpose
+                                     else 'one_free_conversation_8_to_12_turns_early_end_allowed')}
+            if prompt_light or native_text or im_style:
+                frozen['approved_versions'] = deepcopy(owner['approved_versions'])
             atomic_json(body(owner) / 'plan.json', frozen)
             atomic_json(body(owner) / 'state.json', {'status': 'prepared', 'real_calls': 0})
             owner.update(status='prepared', plan_hash=fingerprint(frozen))
@@ -133,8 +183,10 @@ def verify(manifest):
     owner = read(manifest)
     source = Path(owner['source_home']).resolve()
     version = owner.get('version')
-    require(version in (VERSION, lifecycle.VERSION), 'version_invalid')
-    namespace = lifecycle.NAMESPACE if version == lifecycle.VERSION else NAMESPACE
+    require(version in (VERSION, lifecycle.VERSION, PURPOSE_VERSION, RULES_VERSION, LIGHT_VERSION, NATIVE_VERSION, IM_VERSION), 'version_invalid')
+    namespace = {VERSION: NAMESPACE, lifecycle.VERSION: lifecycle.NAMESPACE,
+                 PURPOSE_VERSION: PURPOSE_NAMESPACE, RULES_VERSION: RULES_NAMESPACE,
+                 LIGHT_VERSION: LIGHT_NAMESPACE, NATIVE_VERSION: NATIVE_NAMESPACE, IM_VERSION: IM_NAMESPACE}[version]
     require(manifest.name == 'trial.json' and manifest.parent.parent == source / 'tmp' / namespace,
             'manifest_scope')
     require(owner.get('status') == 'prepared', 'not_prepared')
@@ -150,8 +202,17 @@ def verify(manifest):
     require(conditions(RuntimePaths(home), owner['persona_id']) == plan['conditions'], 'conditions_changed')
     require(replay.sha(owner['author_binding']) == owner['author_binding_hash'], 'approval_changed')
     adoption._saved(owner['author_binding'], source)
+    if version in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION):
+        mode = {LIGHT_VERSION: 'minimal_experience', NATIVE_VERSION: 'minimal_native', IM_VERSION: 'minimal_im'}[version]
+        require(plan['profile'] == choose(mode), 'light_profile_changed')
+        require(plan.get('approved_versions') == owner['approved_versions'], 'light_author_binding_changed')
     require(fingerprint(ConfigStore(RuntimePaths(source)).load()) == owner['source_config_hash'],
             'formal_config_changed')
+    if owner.get('model_configuration'):
+        donor = owner['model_configuration']
+        donor_home = safe(donor['home'], source / 'tmp/private-acceptance')
+        require(fingerprint(ConfigStore(RuntimePaths(donor_home)).load()) == donor['config_hash'],
+                'model_configuration_changed')
     return owner, plan
 
 
@@ -169,9 +230,44 @@ def begin(manifest, *, reopen=False):
         require(all(db.execute('SELECT count(*) FROM ' + table).fetchone()[0] == 0
                     for table in ('events', 'turns', 'attempts', 'input_batches', 'quota_reservations')),
                 'initial_history_not_empty')
-    atomic_json(data / 'started.json', {'at': timestamp(), 'version': VERSION, 'startup_generation_calls': 0})
+    atomic_json(data / 'started.json', {'at': timestamp(), 'version': owner['version'], 'startup_generation_calls': 0})
     atomic_json(data / 'state.json', {'status': 'starting', 'automatic_resume': False})
     return owner, plan
+
+
+def light_material_record(turn, prepared):
+    """Current finalized input IDs only; never retain author or message text."""
+    assembly = prepared['details'].get('prompt_assembly') or {}
+    parts = []
+    observed = False
+    for block in assembly.get('blocks', []):
+        if block['name'] != 'character':
+            continue
+        text = prepared['messages'][block['message_index']]['content']
+        text = text[block['start_character']:block['start_character'] + block['characters']]
+        observed = True
+        for line in text.splitlines():
+            if not line.startswith('{'):
+                continue
+            item = json.loads(line)
+            if item.get('kind') == 'lore_group':
+                parts.extend({'kind': 'lore', 'id': row['id']} for row in item['data'])
+            elif item.get('kind') in ('anchor', 'fact', 'example'):
+                row = {'kind': item['kind'], 'id': item['id']}
+                if isinstance(item.get('data'), dict) and 'status' in item['data']:
+                    row['fill_status'] = item['data']['status']
+                parts.append(row)
+    profile = json.loads(turn['profile_snapshot'])
+    return {'status': 'collected' if observed else 'not_collected',
+            'input_snapshot_hash': fingerprint(prepared['messages']),
+            'expression_renderer': assembly.get('expression_renderer'),
+            'format_renderer': assembly.get('format_renderer'),
+            'author_versions': {kind: {'id': row['id'], 'revision': row['revision']}
+                                for kind, row in profile.items() if isinstance(row, dict) and 'id' in row},
+            'core_field_ids': ['core.' + key for key in profile.get('core', {}).get('data', {})],
+            'final_character_parts': parts,
+            'selected_materials': replay.base.selected_materials(prepared),
+            's8': {'status': 'not_reviewed', 'judged_by': None}}
 
 
 class ConversationGuard:
@@ -209,8 +305,14 @@ class ConversationGuard:
                                        (turn['id'],)).fetchone(), 'previous_failure_requires_review')
             self.folder = self.data / 'turns' / turn['id']
             require(not (self.folder / 'request.json').exists(), 'successful_position_not_replayed')
+            if self.owner['version'] in (NATIVE_VERSION, IM_VERSION):
+                require(not (prepared['details'].get('character') or {}).get('example_ids'), 'native_examples_present')
+                require(all(b['characters'] == 0 for b in prepared['details']['prompt_assembly']['blocks']
+                            if b['name'] == 'reply_protocol'), 'native_output_template_present')
             hook, captured = replay.base.capture_hook(self.folder, development=not self.owner['private'])
             hook.before_dispatch(engine, turn, prepared)
+            if self.owner['version'] in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION):
+                atomic_json(self.folder / 'material-usage.json', light_material_record(turn, prepared))
             self.request = captured['request']
             self.audit = None
         except BaseException as error:
@@ -303,6 +405,8 @@ def audit(manifest):
             if (folder / 'request.json').exists():
                 request = read(folder / 'request.json')
                 manifest_data = read(folder / 'manifest.json')
+                purpose = manifest_data.get('prompt_assembly', {}).get('persona_purpose')
+                row['persona_purpose'] = purpose or {'status': 'not_collected'}
                 row['manifest_matches'] = (manifest_data.get('prompt_assembly', {}).get('input_snapshot_hash')
                                            == request['messages_hash'] == fingerprint(request['messages']))
                 with engine.store.connection() as db:
@@ -320,6 +424,9 @@ def audit(manifest):
                     row['retries'] = max(0, len(row['provider_attempts']) - 1)
                 row['wire_hash'] = request['wire_hash']
                 row['wire_matches'] = all(read(p)['wire_hash'] == request['wire_hash'] for p in dispatches)
+                if owner['version'] in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION):
+                    material = folder / 'material-usage.json'
+                    row['material_usage'] = read(material) if material.exists() else {'status': 'not_collected'}
             atomic_json(folder / 'result.json', turn)
             rows.append(row)
         with engine.store.connection() as db:
@@ -344,10 +451,17 @@ def main():
     parser.add_argument('--home', type=Path, default=DEFAULT_HOME)
     parser.add_argument('--approve-current-provider', action='store_true')
     parser.add_argument('--integration', action='store_true')
+    parser.add_argument('--persona-purpose', action='store_true')
+    parser.add_argument('--context-rules-off', action='store_true')
+    parser.add_argument('--prompt-light', action='store_true')
+    parser.add_argument('--native-text', action='store_true')
+    parser.add_argument('--im-style', action='store_true')
     args = parser.parse_args()
     if args.action == 'prepare':
         result = {'trial_manifest': str(prepare(args.path, args.home,
-                      approve_current_provider=args.approve_current_provider, integration=args.integration)), 'real_calls': 0}
+                      approve_current_provider=args.approve_current_provider, integration=args.integration,
+                      persona_purpose=args.persona_purpose, context_rules_off=args.context_rules_off,
+                      prompt_light=args.prompt_light, native_text=args.native_text, im_style=args.im_style)), 'real_calls': 0}
     elif args.action == 'verify':
         verify(args.path)
         result = {'passed': True, 'real_calls_added': 0}

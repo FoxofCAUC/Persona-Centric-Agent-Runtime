@@ -7,7 +7,13 @@ from .models import RuntimeErrorBase
 VERSION = 'companion-runtime-v1'
 STRUCTURAL_VERSION = 'companion-runtime-v2'
 CHAT_VERSION = 'companion-runtime-v3'
-CONTRACT_VERSIONS = (STRUCTURAL_VERSION, CHAT_VERSION)
+PERSONA_VERSION = 'companion-runtime-v4'
+RULES_VERSION = 'companion-runtime-v5'
+EXPERIENCE_VERSION = 'companion-runtime-v6'
+NATIVE_VERSION = 'companion-runtime-v7'
+IM_VERSION = 'companion-runtime-v8'
+NATIVE_VERSIONS = (NATIVE_VERSION, IM_VERSION)
+CONTRACT_VERSIONS = (STRUCTURAL_VERSION, CHAT_VERSION, PERSONA_VERSION, RULES_VERSION, EXPERIENCE_VERSION)
 RESTORE_VERSION = 'companion-restore-v1'
 RESTORE_KEY = 'companion_restore'
 GENERATION_PROFILE = {'version': 'chat-stream-unlimited-v1'}
@@ -30,10 +36,54 @@ def checked(value):
         from .companion_chat_contract import VERSION as chat_contract_version
         if value == {'version': CHAT_VERSION, 'mode': 'minimal', 'format_contract': chat_contract_version}:
             return dict(value)
+        from .companion_persona import VERSION as persona_renderer
+        if value == {'version': PERSONA_VERSION, 'mode': 'minimal', 'format_contract': chat_contract_version,
+                     'persona_renderer': persona_renderer}:
+            return dict(value)
+        from .companion_consumption import VERSION as consumer_version
+        if value == {'version': RULES_VERSION, 'mode': 'minimal', 'format_contract': chat_contract_version,
+                     'character_consumer': consumer_version}:
+            return dict(value)
+        from .companion_prompt_light import FORMAT_VERSION, INSTRUCTION_VERSION
+        if value == {'version': EXPERIENCE_VERSION, 'mode': 'minimal', 'format_contract': FORMAT_VERSION,
+                     'instruction_version': INSTRUCTION_VERSION}:
+            return dict(value)
+        from .companion_native import FORMAT_VERSION as native_format, VERSION as native_consumer
+        if value == {'version': NATIVE_VERSION, 'mode': 'minimal', 'format_contract': native_format,
+                     'instruction_version': INSTRUCTION_VERSION, 'character_consumer': native_consumer}:
+            return dict(value)
+        from .companion_im import INSTRUCTION_VERSION as im_instruction
+        if value == {'version': IM_VERSION, 'mode': 'minimal', 'format_contract': native_format,
+                     'instruction_version': im_instruction, 'character_consumer': native_consumer}:
+            return dict(value)
     raise RuntimeErrorBase('companion_profile_invalid')
 
 
 def choose(mode):
+    if mode == 'minimal_im':
+        from .companion_native import FORMAT_VERSION, VERSION as consumer
+        from .companion_im import INSTRUCTION_VERSION
+        return checked({'version': IM_VERSION, 'mode': 'minimal', 'format_contract': FORMAT_VERSION,
+                        'instruction_version': INSTRUCTION_VERSION, 'character_consumer': consumer})
+    if mode == 'minimal_native':
+        from .companion_native import FORMAT_VERSION, VERSION as consumer
+        from .companion_prompt_light import INSTRUCTION_VERSION
+        return checked({'version': NATIVE_VERSION, 'mode': 'minimal', 'format_contract': FORMAT_VERSION,
+                        'instruction_version': INSTRUCTION_VERSION, 'character_consumer': consumer})
+    if mode == 'minimal_experience':
+        from .companion_prompt_light import FORMAT_VERSION, INSTRUCTION_VERSION
+        return checked({'version': EXPERIENCE_VERSION, 'mode': 'minimal', 'format_contract': FORMAT_VERSION,
+                        'instruction_version': INSTRUCTION_VERSION})
+    if mode == 'minimal_context_rules_off':
+        from .companion_chat_contract import VERSION as contract_version
+        from .companion_consumption import VERSION as consumer_version
+        return checked({'version': RULES_VERSION, 'mode': 'minimal', 'format_contract': contract_version,
+                        'character_consumer': consumer_version})
+    if mode == 'minimal_persona':
+        from .companion_chat_contract import VERSION as contract_version
+        from .companion_persona import VERSION as persona_renderer
+        return checked({'version': PERSONA_VERSION, 'mode': 'minimal', 'format_contract': contract_version,
+                        'persona_renderer': persona_renderer})
     if mode == 'minimal_chat':
         from .companion_chat_contract import VERSION as contract_version
         return checked({'version': CHAT_VERSION, 'mode': 'minimal', 'format_contract': contract_version})
@@ -92,7 +142,7 @@ def freeze_model(model, context):
     result = deepcopy(model)
     if 'companion' in context:
         result['_companion_profile'] = checked(context['companion'])
-        if result['_companion_profile']['version'] in CONTRACT_VERSIONS and result.get('_dialogue_profile') is not None:
+        if result['_companion_profile']['version'] in (*CONTRACT_VERSIONS, *NATIVE_VERSIONS) and result.get('_dialogue_profile') is not None:
             raise RuntimeErrorBase('companion_format_conflict')
         result['_generation_profile'] = dict(GENERATION_PROFILE)
     return result
@@ -128,6 +178,12 @@ def read(turn):
         from .reply_batch import expression_version
         if (turn.get('reply_mode_snapshot') != 'natural_structured'
                 or expression_version(turn.get('expression_snapshot'), 'natural_structured') != 3
+                or model.get('_dialogue_profile') is not None):
+            raise RuntimeErrorBase('companion_format_conflict')
+    if result['version'] in NATIVE_VERSIONS:
+        from .reply_batch import expression_version
+        if (turn.get('reply_mode_snapshot') != 'context_full'
+                or expression_version(turn.get('expression_snapshot'), 'context_full') != 3
                 or model.get('_dialogue_profile') is not None):
             raise RuntimeErrorBase('companion_format_conflict')
     if turn.get('channel') == 'test':

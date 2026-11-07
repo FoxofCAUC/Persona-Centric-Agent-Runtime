@@ -34,6 +34,23 @@ SCOPE = 'formal_author_version_and_workbench_trial'
 REVIEW_NAME = '完整表达资料改稿-待审阅.md'
 KINDS = ('core', 'expression', 'relationship', 'state', 'character')
 PATHS = ('core.core_traits[0]', 'expression.style', 'character.social.public_image')
+BOUNDARY_VERSION = 'companion-persona-boundary-adoption-v1'
+BOUNDARY_REVIEW_VERSION = 'companion-persona-boundary-review-v1'
+BOUNDARY_SCOPE = 'formal_author_boundary_and_stage4E_trial'
+BOUNDARY_REVIEW_NAME = '人物记忆边界改稿-待审阅.md'
+BOUNDARY_PATHS = ('core.values_and_boundaries[0]',)
+
+
+def review_contract(version):
+    if version == REVIEW_VERSION:
+        return {'saved_version': VERSION, 'paths': PATHS, 'scope': SCOPE,
+                'purpose': 'stage4B_expression_review_only', 'name': REVIEW_NAME,
+                'write_kinds': ('core', 'expression', 'character')}
+    if version == BOUNDARY_REVIEW_VERSION:
+        return {'saved_version': BOUNDARY_VERSION, 'paths': BOUNDARY_PATHS,
+                'scope': BOUNDARY_SCOPE, 'purpose': 'stage4E_persona_review_only',
+                'name': BOUNDARY_REVIEW_NAME, 'write_kinds': ('core',)}
+    _error('review_scope_invalid')
 
 
 def sha(data):
@@ -136,18 +153,19 @@ def _review(draft_path, source_home, require_approval):
     marker = _json(safe(review_home / 'private-sandbox.json', review_home))
     raw = draft_path.read_bytes()
     draft = json.loads(raw.decode('utf-8'))
+    contract = review_contract(draft.get('version'))
     binding = draft.get('source_binding') or {}
-    if (draft.get('version') != REVIEW_VERSION or draft.get('status') != 'awaiting_user_review'
+    if (draft.get('status') != 'awaiting_user_review'
             or draft.get('approval') is not None
-            or marker.get('purpose') != 'stage4B_expression_review_only'
+            or marker.get('purpose') != contract['purpose']
             or Path(marker.get('formal_home', '')).resolve() != paths.home
             or marker.get('private_id') != binding.get('private_id')
             or marker.get('persona_id') != binding.get('persona_id')):
         _error('review_scope_invalid')
     rows = draft.get('replacements')
-    if (not isinstance(rows, list) or len(rows) != 3
+    if (not isinstance(rows, list) or len(rows) != len(contract['paths'])
             or any(not isinstance(r, dict) for r in rows)
-            or {r.get('path') for r in rows} != set(PATHS)):
+            or {r.get('path') for r in rows} != set(contract['paths'])):
         _error('replacement_paths_invalid')
     for row in rows:
         if any(not isinstance(row.get(k), str) or not row[k].strip()
@@ -163,7 +181,7 @@ def _review(draft_path, source_home, require_approval):
             _error('source_versions_invalid')
     record = _originals(paths, binding)
     approval = None
-    review_file = safe(draft_path.parent / REVIEW_NAME, review_home)
+    review_file = safe(draft_path.parent / contract['name'], review_home)
     review_hash = sha(review_file.read_bytes())
     if require_approval:
         approval_path = safe(draft_path.parent / 'approval.json', review_home)
@@ -171,7 +189,7 @@ def _review(draft_path, source_home, require_approval):
             _error('approval_missing')
         approval = _json(approval_path)
         if (approval.get('draft_sha256') != sha(raw) or approval.get('review_sha256') != review_hash
-                or approval.get('scope') != SCOPE
+                or approval.get('scope') != contract['scope']
                 or any(not isinstance(approval.get(k), str) or not approval[k].strip()
                        for k in ('approved_at', 'user_answer'))):
             _error('approval_mismatch')
@@ -180,9 +198,13 @@ def _review(draft_path, source_home, require_approval):
 
 def _target_data(versions, draft):
     data = {kind: deepcopy(v['data']) for kind, v in versions.items()}
-    fields = {PATHS[0]: (data['core']['core_traits'], 0),
-              PATHS[1]: (data['expression'], 'style'),
-              PATHS[2]: (data['character']['social'], 'public_image')}
+    contract = review_contract(draft.get('version', REVIEW_VERSION))
+    if contract['saved_version'] == BOUNDARY_VERSION:
+        fields = {BOUNDARY_PATHS[0]: (data['core']['values_and_boundaries'], 0)}
+    else:
+        fields = {PATHS[0]: (data['core']['core_traits'], 0),
+                  PATHS[1]: (data['expression'], 'style'),
+                  PATHS[2]: (data['character']['social'], 'public_image')}
     for row in draft['replacements']:
         target, key = fields[row['path']]
         if target[key] != row['before']:
@@ -208,8 +230,10 @@ def _saved(binding_path, source_home):
     binding_path = safe(binding_path, paths.home / 'private/personas')
     value = _json(binding_path)
     source = value.get('source_binding') or {}
-    if (value.get('version') != VERSION or value.get('status') != 'saved'
-            or value.get('approval_scope') != SCOPE
+    expected_scope = {VERSION: SCOPE, BOUNDARY_VERSION: BOUNDARY_SCOPE}.get(value.get('version'))
+    if (expected_scope is None or value.get('status') != 'saved'
+            or value.get('approval_scope') != expected_scope
+            or (value.get('version') == BOUNDARY_VERSION and value.get('changed_paths') != list(BOUNDARY_PATHS))
             or _binding_path(paths, source.get('private_id', ''), value.get('draft_sha256', '')) != binding_path):
         _error('saved_binding_invalid')
     record = _originals(paths, source)
@@ -233,13 +257,14 @@ def verify(draft_path, source_home=DEFAULT_HOME, *, require_approval=False):
             _error('source_versions_changed')
         _validate_target(Store(paths), source['persona_id'], _target_data(versions, draft))
         state = 'approved_not_saved' if require_approval else 'awaiting_user_review'
-    return {'version': VERSION, 'status': state, 'draft_sha256': digest,
+    return {'version': review_contract(draft['version'])['saved_version'], 'status': state, 'draft_sha256': digest,
             'review_sha256': review_hash, 'binding_path': str(saved_path),
             'original_bytes_unchanged': True, 'generation_calls': 0}
 
 
 def save(draft_path, source_home=DEFAULT_HOME):
     paths, path, draft, _, digest, review_hash, approval = _review(draft_path, source_home, True)
+    contract = review_contract(draft['version'])
     source = draft['source_binding']; pid = source['persona_id']
     journal_path = path.parent / 'save-progress.json'
     binding_path = _binding_path(paths, source['private_id'], digest)
@@ -259,7 +284,7 @@ def save(draft_path, source_home=DEFAULT_HOME):
         target = _target_data(before, draft)
         _validate_target(store, pid, target)
         selected = _selected(store)
-        journal = {'version': VERSION, 'status': 'saving', 'started_at': timestamp(),
+        journal = {'version': contract['saved_version'], 'status': 'saving', 'started_at': timestamp(),
                    'draft_sha256': digest, 'completed_kinds': [], 'previous_selection': selected,
                    'target_persona_id': pid, 'generation_calls': 0, 'binding_path': str(binding_path)}
         atomic_json(journal_path, journal)
@@ -267,7 +292,7 @@ def save(draft_path, source_home=DEFAULT_HOME):
         try:
             if selected != pid:
                 _select(store, selected, pid)
-            for kind in ('core', 'expression', 'character'):
+            for kind in contract['write_kinds']:
                 if _selected(store) != pid:
                     _error('selection_changed')
                 _idle(store, pid)
@@ -303,11 +328,11 @@ def save(draft_path, source_home=DEFAULT_HOME):
             _originals(paths, source)
             journal.update(status='saved', finished_at=timestamp(), selection_restored=True)
             atomic_json(journal_path, journal)
-            metadata = {'version': VERSION, 'status': 'saved', 'saved_at': timestamp(),
+            metadata = {'version': contract['saved_version'], 'status': 'saved', 'saved_at': timestamp(),
                         'draft_sha256': digest, 'review_sha256': review_hash,
-                        'approval_sha256': fingerprint(approval), 'approval_scope': SCOPE,
+                        'approval_sha256': fingerprint(approval), 'approval_scope': contract['scope'],
                         'approved_at': approval['approved_at'], 'source_binding': source,
-                        'after_versions': _descriptors(current), 'changed_paths': list(PATHS),
+                        'after_versions': _descriptors(current), 'changed_paths': list(contract['paths']),
                         'original_bytes_unchanged': True, 'generation_calls': 0}
             atomic_json(binding_path, metadata)
             return journal
@@ -345,7 +370,7 @@ def save(draft_path, source_home=DEFAULT_HOME):
                            error_code=str(error) if isinstance(error, RuntimeErrorBase) else type(error).__name__,
                            compensation=compensation, selection_restored=selection_restored, finished_at=timestamp())
             if binding_path.exists():
-                atomic_json(binding_path, {'version': VERSION, 'status': 'failed_requires_inspection',
+                atomic_json(binding_path, {'version': contract['saved_version'], 'status': 'failed_requires_inspection',
                                            'draft_sha256': digest})
             atomic_json(journal_path, journal)
             raise

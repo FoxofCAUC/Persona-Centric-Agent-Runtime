@@ -157,7 +157,7 @@ class ArtificialClient:
                 response = json.dumps({'schema_version': schema, 'behavior_intent': 'respond',
                                        'messages': contents}, ensure_ascii=False)
             else:
-                response = '这是旧入口的人工模拟回复。'
+                response = fixture if isinstance(fixture, str) else '这是旧入口的人工模拟回复。'
             row.update(status='completed', completed_at=timestamp(), response=response,
                        usage={'total_tokens': 1, 'mock': True})
             atomic_json(path, row)
