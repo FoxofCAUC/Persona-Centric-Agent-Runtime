@@ -228,7 +228,7 @@ class M63Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_delivery_parts'").fetchone());db.close()
         store.initialize();store.initialize()
-        self.assertEqual(store.status()['schema_version'],21)
+        self.assertEqual(store.status()['schema_version'],22)
         self.assertTrue(list((path.home/'backups').glob('before-m63-*.sqlite3')))
 
     async def test_v2_api_bridge_scope_admin_resolution_and_legacy_rejection(self):

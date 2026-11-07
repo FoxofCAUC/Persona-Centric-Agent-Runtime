@@ -141,7 +141,7 @@ class ManagementTests(unittest.TestCase):
         old.initialize();old.initialize()
         with old.connection() as db:
             self.assertEqual([tuple(r) for r in db.execute('SELECT * FROM personas')],original)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],21)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],22)
             self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
 
 

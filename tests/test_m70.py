@@ -287,7 +287,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
         with closing(sqlite3.connect(self.store.path)) as conn:
             self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],10)
             self.assertFalse(conn.execute("SELECT 1 FROM sqlite_master WHERE name='partial_m70'").fetchone())
-        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],21)
+        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],22)
 
     async def test_legacy_standalone_event_audit_reports_unknown_scope_without_fabrication(self):
         session={'id':identifier()};eid=identifier()

@@ -132,6 +132,8 @@ class OrganizationSchedule:
                 persona = self.store.current(conn, required=False)
                 if not persona:
                     return
+                policy=self.engine.managed.policy(conn,persona)['data']
+                if not policy['enabled'] or 'daily' not in policy['triggers']:return
                 sessions = []
                 for session in conn.execute("SELECT id FROM sessions WHERE persona_id=? ORDER BY created_at,id", (persona,)):
                     turns = eligible_turns(conn, session[0])
@@ -203,6 +205,8 @@ class OrganizationSchedule:
             enabled = [dict(r) for r in conn.execute("SELECT * FROM automation WHERE enabled=1")]
         for config in enabled:
             with self.store.connection(write=True) as conn:
+                policy=self.engine.managed.policy(conn,config['persona_id'])['data']
+                if not policy['enabled'] or 'incremental' not in policy['triggers']:continue
                 sessions = list(conn.execute("SELECT id FROM sessions WHERE persona_id=?", (config['persona_id'],)))
                 choices = []
                 for session in sessions:

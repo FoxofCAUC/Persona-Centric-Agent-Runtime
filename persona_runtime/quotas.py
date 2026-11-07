@@ -12,6 +12,29 @@ from .models import RuntimeErrorBase, timestamp
 FIELDS = ('project_hourly', 'background_hourly', 'background_daily', 'selector_hourly', 'selector_daily')
 
 
+def reserve_organization(conn,config,task,now):
+    """Same transaction as the attempt: no second quota authority or fake turn."""
+    from .memory_policy import project_capacity_used
+    from .models import identifier
+    cfg=config.load();limits=cfg['organization']
+    conn.execute("UPDATE organization_reservations SET state='released' WHERE state='active' AND expires_epoch<=?",(now,))
+    reserved=conn.execute("SELECT count(*) FROM organization_reservations WHERE state='active'").fetchone()[0]
+    windows=((3600,limits['hourly_limit']),(86400,limits['daily_limit']))
+    waits=[]
+    for seconds,cap in windows:
+        used=call_count(conn,'organization_attempts',now-seconds)+reserved
+        if cap and used>=cap:
+            row=conn.execute('SELECT min(started_epoch) FROM organization_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()
+            waits.append((row[0]+seconds+.01) if row[0] is not None else now+60)
+    if cfg['model']['hourly_limit'] and project_capacity_used(conn,now-3600)>=cfg['model']['hourly_limit']:
+        # Check again on a bounded poll; the primary ledger is the authority.
+        waits.append(now+1)
+    if waits:return None,max(waits)
+    ident=identifier()
+    conn.execute("INSERT INTO organization_reservations VALUES(?,?,NULL,?,'active',?,?)",(ident,task['id'],task['persona_id'],now,now+60))
+    return ident,0
+
+
 class QuotaService:
     def __init__(self, store, config):
         self.store, self.config = store, config
@@ -43,7 +66,8 @@ class QuotaService:
                         'understanding_daily':call_count(conn,'situation_observation_attempts',now-86400),
                         'compiler_hourly':call_count(conn,'disposition_compile_attempts',now-3600),
                         'compiler_daily':call_count(conn,'disposition_compile_attempts',now-86400),
-                        'reserved':conn.execute("SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0],
+                        'reserved':conn.execute("SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0]+conn.execute("SELECT count(*) FROM organization_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0],
+                        'background_unknown':conn.execute("SELECT count(*) FROM organization_attempts WHERE usage_json IS NULL AND status='interrupted'").fetchone()[0],
                         'primary_hourly':call_count(conn,'attempts',now-3600)}
         except RuntimeErrorBase:
             pass  # Settings remain editable before storage is initialized/upgraded.

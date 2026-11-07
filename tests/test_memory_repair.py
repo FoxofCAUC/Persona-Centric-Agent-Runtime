@@ -172,6 +172,8 @@ class MemoryRepairTests(unittest.IsolatedAsyncioTestCase):
     async def test_upgrade_twenty_preserves_receipts_on_repeat_and_cascades_delete(self):
         import sqlite3
         db=sqlite3.connect(self.store.path)
+        from persona_runtime.schema_m8a import TABLES as managed_tables
+        for name in reversed(managed_tables):db.execute('DROP TABLE '+name)
         db.execute('DROP TABLE organization_receipts');db.execute('PRAGMA user_version=20');db.commit();db.close()
         self.store.initialize();self.store.initialize()
         self.assertTrue(list((self.paths.home/'backups').glob('before-memory-repair-*.sqlite3')))

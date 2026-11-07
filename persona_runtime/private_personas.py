@@ -104,10 +104,14 @@ class PrivatePersonas:
             raise RuntimeErrorBase('private_model_grants_invalid') from None
 
     def authorize_main(self,store,persona_id,expected_provider,operation_id):
+        return self.authorize_model(store,persona_id,'main',expected_provider,operation_id)
+
+    def authorize_model(self,store,persona_id,kind,expected_provider,operation_id):
         """Record explicit per-persona consent, never inherited by copies or roots."""
         from .config import ConfigStore
         from .persona_management import active
         if not operation_id:raise RuntimeErrorBase('operation_id_required')
+        if kind not in ('main','organization'):raise RuntimeErrorBase('private_permission_kind_invalid')
         self.root.mkdir(parents=True,exist_ok=True)
         lock=InstanceLock(self.root/'registry.lock')
         try:
@@ -116,10 +120,12 @@ class PrivatePersonas:
                 active(db,persona_id)
                 policy=self.record_for_persona(persona_id)
                 if policy is None:raise RuntimeErrorBase('private_scope_mismatch')
-                if provider_identity(ConfigStore(self.paths).load()['model'])!=expected_provider:
+                cfg=ConfigStore(self.paths).load()
+                model=cfg['model'] if kind=='main' or cfg['organization']['reuse_chat'] else cfg['organization']['model']
+                if provider_identity(model)!=expected_provider:
                     raise RuntimeErrorBase('private_provider_changed')
                 data=self.model_grants()
-                grant={'persona_id':persona_id,'private_id':policy['id'],'kind':'main',
+                grant={'persona_id':persona_id,'private_id':policy['id'],'kind':kind,
                     'provider':expected_provider,'scope':'necessary_visible_only'}
                 fingerprint=canonical(grant)
                 old=data['operations'].get(operation_id)
@@ -127,18 +133,22 @@ class PrivatePersonas:
                     if old['fingerprint']!=fingerprint:raise RuntimeErrorBase('submission_conflict')
                     return old['grant']
                 grant.update(authorized_at=timestamp(),operation_id=operation_id)
-                data['grants'][persona_id]=grant
+                data['grants'][persona_id if kind=='main' else persona_id+':'+kind]=grant
                 data['operations'][operation_id]={'fingerprint':fingerprint,'grant':grant}
                 atomic_json(self.root/'model-grants.json',data)
                 return grant
         finally:lock.close()
 
     def main_authorized(self,persona_id,policy,model):
-        grant=self.model_grants()['grants'].get(persona_id)
+        return self.model_authorized(persona_id,policy,'main',model)
+
+    def model_authorized(self,persona_id,policy,kind,model):
+        key=persona_id if kind=='main' else persona_id+':'+kind
+        grant=self.model_grants()['grants'].get(key)
         if grant is None:return False
         if not isinstance(grant,dict):raise RuntimeErrorBase('private_model_grants_invalid')
         return all(grant.get(k)==v for k,v in {'persona_id':persona_id,
-            'private_id':policy.get('id'),'kind':'main','scope':'necessary_visible_only',
+            'private_id':policy.get('id'),'kind':kind,'scope':'necessary_visible_only',
             'provider':provider_identity(model)}.items())
 
     def record_for_persona(self,persona_id):
@@ -254,11 +264,15 @@ def guard_acceptance_write(store,persona_id):
 def guard_cloud_dispatch(store,persona_id,kind,model):
     private=PrivatePersonas(store.paths)
     policy=private.record_for_persona(persona_id)
-    if policy is not None and kind=='main' and private.main_authorized(persona_id,policy,model):return
+    if policy is not None and kind in ('main','organization') and private.model_authorized(persona_id,policy,kind,model):return
     copied=store.paths.home/'runtime/private-copy-policy.json'
     if policy is None and copied.exists():
         candidate=json.loads(copied.read_text(encoding='utf-8'))
         if candidate.get('persona_id')==persona_id:policy=candidate
+    if policy is not None and kind=='organization':
+        # Background disclosure always requires a role-specific grant. Neither
+        # ancestor registry approvals nor copied acceptance policies transfer it.
+        raise RuntimeErrorBase('private_cloud_provider_not_authorized')
     if policy is not None and policy.get('approved_models',{}).get(kind)!=provider_identity(model):
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')
 

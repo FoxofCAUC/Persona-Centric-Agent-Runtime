@@ -66,7 +66,8 @@ class MigrationTests(unittest.TestCase):
                 store=storage.Store(paths);store.initialize();service=RuntimeService(store)
                 pid=service.create_persona(generic_persona())['id'];service.use_persona(pid)
                 session=service.create_session();service.append_event(session['id'],'user','人工迁移资料，不含私人内容。')
-            result=verify(store.path,Path(folder)/'evidence')
+            with patch('persona_runtime.storage.SCHEMA_VERSION',21):
+                result=verify(store.path,Path(folder)/'evidence')
             self.assertTrue(result['source_unchanged'])
 
 

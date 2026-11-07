@@ -41,6 +41,9 @@ def project_calls(conn, since):
 
 def project_capacity_used(conn, since, exclude_turn=None):
     import time
-    return project_calls(conn,since)+conn.execute(
+    organization=0
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='organization_reservations'").fetchone():
+        organization=conn.execute("SELECT count(*) FROM organization_reservations WHERE state='active' AND expires_epoch>?",(time.time(),)).fetchone()[0]
+    return organization+project_calls(conn,since)+conn.execute(
         "SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>? AND (? IS NULL OR turn_id!=?)",
         (time.time(),exclude_turn,exclude_turn)).fetchone()[0]

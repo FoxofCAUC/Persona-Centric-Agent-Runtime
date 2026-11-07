@@ -225,7 +225,7 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(c.execute("SELECT name FROM sqlite_master WHERE name='ingress_receipts'").fetchone());c.close()
         store.initialize();store.initialize()
         with store.connection() as c:
-            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],21);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],22);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(c.execute('SELECT count(*) FROM ingress_receipts').fetchone()[0],0)
 
     async def test_server_stop_rejects_unresolved_and_no_bridge_management(self):

@@ -6,10 +6,23 @@ from tkinter import ttk, messagebox
 from .models import identifier
 
 STATES = {'queued': '排队', 'waiting_quota': '等待额度', 'running': '处理中', 'completed': '完成',
+          'blocked_unknown': '调用结果未知，禁止重发', 'blocked_authorization': '授权或模型待核对',
           'failed': '失败', 'interrupted': '中断', 'cancelled': '取消', 'stale': '来源已过期',
           'pending': '待审阅', 'accepted': '已生效', 'rejected': '已拒绝', 'active': '有效',
           'superseded': '已替代', 'disabled': '已停用', 'scheduled': '等待每日计划',
           'awaiting_review': '冲突待授权', 'blocked': '异常待处理', 'paused_model': '模型变更后暂停', 'paused': '已暂停'}
+
+REASONS={'organization_effect_unknown':'请求已派发，结果未知；禁止重发',
+    'organization_legacy_requires_audit':'旧任务缺少派发证据，需要核查',
+    'organization_policy_changed':'整理授权已变更，请核对后恢复原任务',
+    'organization_model_changed':'模型与冻结授权不一致，已暂停',
+    'private_cloud_provider_not_authorized':'此角色尚未授权向该模型发送整理资料',
+    'organization_scope_mismatch':'来源渠道或账号与授权不符',
+    'source_expired':'来源已撤回或版本已变化',
+    'organization_receipt_corrupt':'已保存回执校验失败，禁止重新生成',
+    'organization_lease_lost':'执行归属已变化，迟到结果未发布',
+    'context_manifest_storage_failed':'派发清单未保存，尚未调用模型',
+    'existing_work_reused':'已有整理覆盖本批，无需再次调用'}
 
 
 class OrganizationUI:
@@ -41,6 +54,7 @@ class OrganizationUI:
         bar = self.bar(parent)
         bar.pack(fill='x')
         self.button(bar, '刷新整理状态', self.refresh_organization, {'org-read'})
+        self.button(bar, '暂停／恢复整理授权', self.toggle_organization_policy, {'org-write'})
         self.button(bar, '每日更新详情与屏蔽来源', lambda: self.org_call('organization.status', title='每日计划、进度与屏蔽来源'), {'org-read'})
         self.button(bar, '继续受阻的每日更新', self.resume_daily_update, {'org-write'})
         self.button(bar, '立即执行一次全量更新', self.run_daily_now, {'org-write'})
@@ -79,8 +93,8 @@ class OrganizationUI:
             bar.pack(fill='x')
             self.button(bar, '查看详情与来源', lambda k=kind: self.org_selected_action(k, 'show'), {'org-details'})
             if kind == 'tasks':
-                self.button(bar, '显式重试（可能计费）', lambda: self.org_selected_action('tasks','retry'), {'org-write'})
-                self.button(bar, '取消排队任务', lambda: self.org_selected_action('tasks','cancel'), {'org-write'})
+                self.button(bar, '恢复原任务', lambda: self.org_selected_action('tasks','retry'), {'org-write'})
+                self.button(bar, '取消任务', lambda: self.org_selected_action('tasks','cancel'), {'org-write'})
                 self.button(bar, '跳过受阻增量范围', lambda: self.org_selected_action('tasks','skip'), {'org-write'})
             elif kind == 'candidates':
                 self.button(bar, '编辑后确认新记忆', self.review_candidate, {'org-review'})
@@ -190,7 +204,8 @@ class OrganizationUI:
     def refresh_organization(self):
         epoch = self.view_epoch
         def read(_):
-            return {'status': self.client.manage('organization.status'), 'sessions': self.client.manage('organization.sessions'),
+            return {'policy':self.client.manage('organization.policy.current'),'quota':self.client.manage('quota.current'),
+                    'status': self.client.manage('organization.status'), 'sessions': self.client.manage('organization.sessions'),
                     'tasks': self.client.manage('organization.list'), 'candidates': self.client.manage('candidate.list'), 'summaries': self.client.manage('summary.list')}
         def done(value):
             if epoch != self.view_epoch:
@@ -200,7 +215,9 @@ class OrganizationUI:
             state = STATES.get(status['status'], status['status']) if status['enabled'] else '每日更新已关闭'
             self.org_state_text.set(f"每日更新：{state}；下次本机时间：{status['next_local_time']}\n"
                                     f"已完成批次：{progress.get('completed_batches',0)}；剩余有效轮次：{status['remaining_turns']}/{status['total_turns']}；空闲增量：{'开启' if status['automatic']['enabled'] else '关闭'}"
-                                    + ('；尚未配置整理模型' if not status.get('model_ready') else ''))
+                                    + ('；尚未配置整理模型' if not status.get('model_ready') else '')
+                                    + ('\n整理授权：已开启' if value['policy']['data']['enabled'] else '\n整理授权：已暂停')
+                                    + f"；后台额度：每小时 {value['quota']['limits']['background_hourly'] or '不限'}／每日 {value['quota']['limits']['background_daily'] or '不限'} 次（含重试）")
             old_session = self.org_session.get()
             self.org_session_rows = value['sessions']
             labels = [f"{s['channel'] or '未分配入口'} · {s['id']} · {s['successful_turns']}轮" for s in value['sessions']]
@@ -215,7 +232,12 @@ class OrganizationUI:
                 self.org_records[key] = value[key]
                 listing.delete(0,'end')
                 for index,row in enumerate(value[key]):
-                    content = row.get('text', row.get('error_code') or row.get('mode') or ('摘要第'+str(row.get('revision',''))+'版'))
+                    content = row.get('text', REASONS.get(row.get('error_code'),row.get('error_code')) or row.get('mode') or ('摘要第'+str(row.get('revision',''))+'版'))
+                    if key=='tasks' and row.get('contract'):
+                        contract=row['contract'];content+=f" · 已调用{contract.get('physical_calls',0)}次"
+                        if contract.get('next_epoch'):
+                            from datetime import datetime
+                            content+=' · 下次检查 '+datetime.fromtimestamp(contract['next_epoch']).strftime('%H:%M:%S')
                     if row.get('reason') == 'coverage_gap':content = '覆盖不完整 · '+content
                     listing.insert('end', STATES.get(row['status'], row['status'])+' · '+row['id'][:8]+' · '+content[:65])
                     if row['id'] == selected_id:
@@ -296,7 +318,8 @@ class OrganizationUI:
                 return
             args['operation_id'] = identifier()
         elif operation in ('retry','skip','disable'):
-            if not messagebox.askyesno('确认操作', '重试可能计费；跳过不处理该范围；停用摘要会使依赖摘要停用。继续？'):
+            text=('已保存回执将直接恢复提交，不再调用模型；未派发任务重新核对授权和额度。未知调用禁止重发。继续？' if operation=='retry' else '跳过不处理该范围；停用摘要会使依赖摘要停用。继续？')
+            if not messagebox.askyesno('确认操作', text):
                 return
         self.org_call(prefix+'.'+operation, title='来源与处理详情' if operation == 'show' else None, **args)
 
@@ -335,6 +358,15 @@ class OrganizationUI:
         if enabled and not messagebox.askyesno('开启空闲增量整理', '仅处理开启后的新增成功对话。保留最近10轮，旧轮次累计10轮且空闲120秒后整理；可能产生后台费用，候选仍须审阅。继续？'):
             return
         self.org_call('organization.automatic', enabled=enabled)
+
+    def toggle_organization_policy(self):
+        def loaded(policy):
+            data=dict(policy['data']);data['enabled']=not data['enabled']
+            text='恢复后只执行已授权、来源有效且额度充足的任务；未知调用不重发。' if data['enabled'] else '暂停新的整理派发；已发生调用保留用量，结果发布前重新核对授权。'
+            if not messagebox.askyesno('整理授权',text):return
+            self.org_call('organization.policy.update',persona_id=policy['persona_id'],data=data,
+                          expected_version=policy['id'],expected_selected=policy['persona_id'],operation_id=identifier())
+        self.run_task('读取整理授权',{'org-read'},lambda _:self.client.manage('organization.policy.current'),loaded)
 
     def resume_daily_update(self):
         if messagebox.askyesno('继续每日更新', '将重新预览受阻范围并可能调用模型；不会跳过剩余内容。继续？'):

@@ -40,6 +40,7 @@ class M761(unittest.IsolatedAsyncioTestCase):
         self.fake=Fake();self.engine=ChatEngine(self.store,self.config,self.fake);self.ingress=IngressService(self.engine)
         self.dispositions=DispositionService(self.store,self.ingress);self.compiler=DispositionCompiler(self.dispositions,self.config,self.fake)
         self.policy=self.ingress.current_policy(self.pid,'desktop')
+        self.policy=self.ingress.update_policy(self.pid,'desktop',self.policy['mode'],self.policy['id'],identifier(),companion_mode='disabled')
         self.policy=self.ingress.update_policy(self.pid,'desktop','legacy_per_message',self.policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
 
     async def asyncTearDown(self):

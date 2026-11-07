@@ -30,6 +30,14 @@ def parse(conn, payload, text, audit=None):
         raise OutputError('$', 'JSON object', 'invalid_json') from None
     if not isinstance(data, dict):
         raise OutputError('$', 'object', type(data).__name__)
+    # Some providers repeat the per-candidate field on an entirely empty result.
+    # Removing only this empty redundant field cannot invent facts or conflicts.
+    # Nonempty or other misplaced fields still fail the strict shape validator.
+    if (set(data)=={'format_version','summary','candidates','conflicts'}
+            and type(data['format_version']) is int and data['format_version'] in (1,2)
+            and data['summary']==[] and data['candidates']==[] and data['conflicts']==[]):
+        del data['conflicts']
+        audit['normalizations'].append({'path':'$.conflicts','reason':'empty_result_redundant_conflicts_removed'})
     candidates = data.get('candidates')
     if not isinstance(candidates, list):
         raise OutputError('candidates', 'array', type(candidates).__name__)

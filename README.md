@@ -6,7 +6,7 @@
 
 对话连续性、长期记忆、关系维护和故障恢复，是让这份陪伴更好发生的支持能力。工程正确性与可溯源应服务产品体验，不能用更多通过的检查、完整的架构或精细的记录，代替一个好相处的 AI 伴侣。
 
-![Version](https://img.shields.io/badge/version-0.7.6.dev34-4263eb)
+![Version](https://img.shields.io/badge/version-0.8.0.dev1-4263eb)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 [MIT 开源协议](LICENSE)
@@ -18,6 +18,8 @@
 阶段6后台百轮、记忆修复及阶段7正式交付验收已完成；[当前状态](docs/STATUS.md)与[阶段7交付记录](docs/阶段7-v8正式交付记录.md)区分工程检查、隔离真实验证、正式部署及用户可见确认。覆盖缺口自动修复、语义误报治理及无人值守仍交后续阶段，不宣称自动记忆闭环已完成。
 
 [完整施工指导](docs/AI伴侣底层重构总施工指导.md) · [大肥鱼参考结论](docs/AI伴侣产品方向与大肥鱼参考线.md) · [源码交付清单](source-delivery.json) · [当前M8.A交接](docs/M8.A-v8当前系统职责交接.md)
+
+M8.A受管整理统一了授权、领取、逐次调用额度和原回执恢复；工程、真实验证和正式接入进度见[实施记录](docs/M8.A-受管整理实施记录.md)及[验收手册](docs/acceptance/M8.A-受管整理验收手册.md)。后台仍随工作台启停，未知调用不会因重启自动重发。
 
 ## 已有支持能力
 

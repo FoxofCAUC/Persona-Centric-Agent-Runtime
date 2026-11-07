@@ -173,6 +173,8 @@ class OrganizationEngine:
         from .organization_schedule import OrganizationSchedule
         self.schedule = OrganizationSchedule(self)
         self.schedule.initialize()
+        from .managed_organization import ManagedOrganization
+        self.managed = ManagedOrganization(self)
 
     def model(self):
         cfg = self.config.load()
@@ -273,31 +275,22 @@ class OrganizationEngine:
     def submit(self, preview, request_id, automatic=False, fixed_persona=None):
         from .private_personas import guard_acceptance_write
         if isinstance(preview,dict):guard_acceptance_write(self.store,preview.get('persona_id'))
-        require_text(request_id, "request_id")
-        if len(request_id) > 200 or not isinstance(preview, dict):
-            raise RuntimeErrorBase("invalid_organization_submission")
+        require_text(request_id, 'request_id')
+        if len(request_id)>200 or not isinstance(preview,dict):raise RuntimeErrorBase('invalid_organization_submission')
         with self.store.connection(write=True) as conn:
-            old = conn.execute("SELECT * FROM organization_tasks WHERE request_id=?", (request_id,)).fetchone()
+            pid=fixed_persona or self.store.current(conn)
+            if pid!=preview.get('persona_id'):raise RuntimeErrorBase('submission_conflict')
+            trigger={0:'manual',1:'incremental',2:'daily'}.get(int(automatic))
+            old=self.managed.lookup(conn,preview,request_id,trigger)
+            if old:return self._view(old)
+            old=conn.execute('SELECT * FROM organization_tasks WHERE request_id=?',(request_id,)).fetchone()
             if old:
-                if old["persona_id"] != (fixed_persona or self.store.current(conn)) or old["fingerprint"] != preview.get("fingerprint"):
-                    raise RuntimeErrorBase("submission_conflict")
+                if old['persona_id']!=pid or old['fingerprint']!=preview.get('fingerprint'):raise RuntimeErrorBase('submission_conflict')
                 return self._view(old)
-            if self.draining or self.chat.draining:
-                raise RuntimeErrorBase("service_draining")
-            fresh = self._preview(conn, preview["session_id"], preview["mode"], preview["rows"][0], preview["rows"][-1], preview["persona_id"], preview.get("rebuild", False))
-            if fresh["persona_id"] != (fixed_persona or self.store.current(conn)) or fresh["fingerprint"] != preview["fingerprint"]:
-                raise RuntimeErrorBase("source_expired")
-            if conn.execute("SELECT count(*) FROM organization_tasks WHERE status IN ('queued','waiting_quota')").fetchone()[0] >= 10:
-                raise RuntimeErrorBase("organization_queue_full")
-            old = conn.execute("SELECT * FROM organization_tasks WHERE fingerprint=? AND status IN ('queued','waiting_quota','running','completed')", (fresh["fingerprint"],)).fetchone()
-            if old:
-                return self._view(old)
-            if conn.execute("SELECT 1 FROM organization_tasks WHERE session_id=? AND status IN ('queued','waiting_quota','running')",(fresh['session_id'],)).fetchone():
-                raise RuntimeErrorBase('organization_session_busy')
-            task_id, now = identifier(), timestamp()
-            conn.execute("INSERT INTO organization_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (task_id, request_id, fresh["persona_id"], LOCAL_USER_ID,
-                fresh["session_id"], fresh["channel"], fresh["mode"], int(automatic), fresh["fingerprint"], encoded(fresh), encoded(self.model()), "queued", None, now, now))
-            return self._view(conn.execute("SELECT * FROM organization_tasks WHERE id=?", (task_id,)).fetchone())
+            if self.draining or self.chat.draining:raise RuntimeErrorBase('service_draining')
+            fresh=self._preview(conn,preview['session_id'],preview['mode'],preview['rows'][0],preview['rows'][-1],pid,preview.get('rebuild',False))
+            if fresh['fingerprint']!=preview.get('fingerprint'):raise RuntimeErrorBase('source_expired')
+            return self.managed.register(conn,fresh,request_id,int(automatic),trigger)
 
     @staticmethod
     def _view(row, detail=False):
@@ -311,7 +304,7 @@ class OrganizationEngine:
 
     def list(self):
         with self.store.connection() as conn:
-            return [self._view(r) for r in conn.execute("SELECT * FROM organization_tasks WHERE persona_id=? ORDER BY rowid DESC LIMIT 200", (self.store.current(conn),))]
+            return [self._view(r)|{'contract':self.managed.inspect(conn,r['id'])} for r in conn.execute("SELECT * FROM organization_tasks WHERE persona_id=? ORDER BY rowid DESC LIMIT 200", (self.store.current(conn),))]
 
     def sessions(self):
         with self.store.connection() as conn:
@@ -321,6 +314,7 @@ class OrganizationEngine:
         with self.store.connection() as conn:
             row = RuntimeService._owned(conn, "organization_tasks", task_id, self.store.current(conn))
             result = self._view(row, True)
+            result['contract'] = self.managed.inspect(conn,task_id)
             result["attempts"] = [{k: v for k, v in dict(r).items() if k != "model_snapshot"} for r in conn.execute("SELECT * FROM organization_attempts WHERE task_id=? ORDER BY rowid", (task_id,))]
             for attempt in result['attempts']:
                 receipt = conn.execute('SELECT diagnostic_json FROM organization_receipts WHERE attempt_id=?', (attempt['id'],)).fetchone()
@@ -328,39 +322,13 @@ class OrganizationEngine:
             return result
 
     def cancel(self, task_id):
-        with self.store.connection(write=True) as conn:
-            row = RuntimeService._owned(conn, "organization_tasks", task_id, self.store.current(conn))
-            if row["status"] not in ("queued", "waiting_quota", "cancelled"):
-                raise RuntimeErrorBase("only_queued_can_cancel")
-            conn.execute("UPDATE organization_tasks SET status='cancelled',updated_at=? WHERE id=?", (timestamp(), task_id))
-            if row['automatic'] == 1:
-                conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task_id, row['session_id']))
-        return self.show(task_id)
+        return self.managed.cancel(task_id)
 
     def retry(self, task_id):
-        with self.store.connection(write=True) as conn:
-            row = RuntimeService._owned(conn, "organization_tasks", task_id, self.store.current(conn))
-            if row["status"] == "completed":
-                return self._view(row)
-            if row["status"] not in ("failed", "interrupted", "cancelled"):
-                raise RuntimeErrorBase("task_not_retryable")
-            payload = json.loads(row["payload_json"])
-            from .session_organization import valid
-            if payload["guard"] != self.guard(conn, row["persona_id"], row["session_id"]) or not valid(conn,payload):
-                raise RuntimeErrorBase("source_expired")
-            if conn.execute("SELECT 1 FROM organization_tasks WHERE session_id=? AND id!=? AND status IN ('queued','waiting_quota','running')", (row['session_id'],task_id)).fetchone():
-                raise RuntimeErrorBase('organization_session_busy')
-            if conn.execute("SELECT count(*) FROM organization_tasks WHERE status IN ('queued','waiting_quota')").fetchone()[0] >= 10:
-                raise RuntimeErrorBase("organization_queue_full")
-            conn.execute("UPDATE organization_tasks SET status='queued',error_code=NULL,model_snapshot=?,updated_at=? WHERE id=?", (encoded(self.model()), timestamp(), task_id))
-            conn.execute("UPDATE organization_progress SET blocked_task=NULL WHERE blocked_task=?", (task_id,))
-        return self.show(task_id)
+        return self.managed.retry(task_id)
 
     def recover(self):
-        with self.store.connection(write=True) as conn:
-            conn.execute("UPDATE organization_progress SET blocked_task=(SELECT id FROM organization_tasks t WHERE t.session_id=organization_progress.session_id AND t.automatic=1 AND t.status IN ('queued','waiting_quota','running') ORDER BY t.rowid LIMIT 1) WHERE EXISTS (SELECT 1 FROM organization_tasks t WHERE t.session_id=organization_progress.session_id AND t.automatic=1 AND t.status IN ('queued','waiting_quota','running'))")
-            conn.execute("UPDATE organization_tasks SET status='interrupted',error_code='service_restarted',updated_at=? WHERE status IN ('queued','waiting_quota','running')", (timestamp(),))
-            conn.execute("UPDATE organization_attempts SET status='interrupted',error_code='service_restarted' WHERE status='running'")
+        return self.managed.recover()
 
     def validate_output(self, conn, payload, text, audit=None):
         if payload.get('source_format') == 2:
@@ -460,106 +428,17 @@ class OrganizationEngine:
             conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task['id'], task['session_id']))
 
     async def run_next(self):
-        if self.running or self.draining or self.chat.draining:
-            return False
-        attempt_id = task = None
-        with self.store.connection(write=True) as conn:
-            if conn.execute("SELECT 1 FROM turns WHERE status IN ('queued','running') LIMIT 1").fetchone():
-                self.last_activity = time.time()
-                return False
-            row = conn.execute("SELECT * FROM organization_tasks WHERE status IN ('queued','waiting_quota') ORDER BY rowid LIMIT 1").fetchone()
-            if not row:
-                return False
-            task = dict(row)
-            payload = json.loads(task["payload_json"])
-            from .session_organization import valid
-            if task["mode"] != "test" and (payload["guard"] != self.guard(conn, task["persona_id"], task["session_id"]) or not valid(conn,payload)):
-                conn.execute("UPDATE organization_tasks SET status='stale',error_code='source_expired' WHERE id=?", (task["id"],))
-                conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task["id"], task["session_id"]))
-                return True
-            limits, now = self.config.load()["organization"], time.time()
-            hour = conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (now-3600,)).fetchone()[0]
-            day = conn.execute("SELECT count(*) FROM organization_attempts WHERE started_epoch>?", (now-86400,)).fetchone()[0]
-            project_limit = self.config.load()["model"]["hourly_limit"]
-            if ((limits["hourly_limit"] and hour >= limits["hourly_limit"])
-                    or (limits["daily_limit"] and day >= limits["daily_limit"])
-                    or (project_limit and project_capacity_used(conn, now-3600) >= project_limit)):
-                conn.execute("UPDATE organization_tasks SET status='waiting_quota' WHERE id=?", (task["id"],))
-                return False
-            model = json.loads(task["model_snapshot"])
-            if not model["base_url"] or not model["name"]:
-                conn.execute("UPDATE organization_tasks SET status='failed',error_code='organization_model_not_configured' WHERE id=?", (task["id"],))
-                conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task["id"], task["session_id"]))
-                return True
-            messages = [{"role": "user", "content": "Reply with OK."}] if task["mode"] == "test" else self.messages(payload)
-            attempt_id = identifier()
-            conn.execute('SAVEPOINT cognitive_call')
-            conn.execute("INSERT INTO organization_attempts VALUES (?,?,?,'running',NULL,NULL,?)", (attempt_id, task["id"], now, task["model_snapshot"]))
-            try:
-                self.chat.cognitive.reflection(conn,task,payload,messages,attempt_id)
-            except (RuntimeErrorBase,):
-                conn.execute('ROLLBACK TO cognitive_call');conn.execute('RELEASE cognitive_call')
-                conn.execute("UPDATE organization_tasks SET status='failed',error_code='context_manifest_storage_failed',updated_at=? WHERE id=?",(timestamp(),task['id']))
-                conn.execute('UPDATE organization_progress SET blocked_task=? WHERE session_id=?',(task['id'],task['session_id']))
-                return True
-            conn.execute('RELEASE cognitive_call')
-            conn.execute("UPDATE organization_tasks SET status='running',updated_at=? WHERE id=?", (timestamp(), task["id"]))
-        self.running = True
-        audit = None
-        try:
-            reply, usage = await self.client.complete(model|{'_json_output':task['mode']!='test'}, messages)
-            from .organization_output import receipt
-            audit = receipt(reply)
-            audit['status'] = 'received'
-            # Receipt and billing survive a later semantic-validation rollback.
-            with self.store.connection(write=True) as conn:
-                conn.execute('UPDATE organization_attempts SET usage_json=? WHERE id=?', (encoded(usage), attempt_id))
-                conn.execute('INSERT INTO organization_receipts VALUES (?,?,?)', (attempt_id, reply, encoded(audit)))
-            with self.store.connection(write=True) as conn:
-                if task["mode"] != "test":
-                    if payload["guard"] != self.guard(conn, task["persona_id"], task["session_id"]) or not valid(conn,payload):
-                        raise RuntimeErrorBase("source_expired")
-                    summary, candidates = self.validate_output(conn, payload, reply, audit)
-                    self._publish(conn, task, payload, summary, candidates)
-                audit['status'] = 'published'
-                conn.execute('UPDATE organization_receipts SET diagnostic_json=? WHERE attempt_id=?', (encoded(audit), attempt_id))
-                conn.execute("UPDATE organization_tasks SET status='completed',updated_at=? WHERE id=?", (timestamp(), task["id"]))
-                conn.execute("UPDATE organization_attempts SET status='completed',usage_json=? WHERE id=?", (encoded(usage), attempt_id))
-        except BaseException as error:
-            from .chat import ModelError
-            code = str(error) if isinstance(error, (RuntimeErrorBase, ModelError)) else "organization_failed"
-            state = "interrupted" if isinstance(error, asyncio.CancelledError) else ("stale" if code == "source_expired" else "failed")
-            with self.store.connection(write=True) as conn:
-                if audit is not None:
-                    audit.update(status=state, error_code=code,
-                                 error=getattr(error, 'diagnostic', {'path': '$', 'expected': 'valid organization output', 'actual': code}))
-                    conn.execute('UPDATE organization_receipts SET diagnostic_json=? WHERE attempt_id=?', (encoded(audit), attempt_id))
-                conn.execute("UPDATE organization_tasks SET status=?,error_code=?,updated_at=? WHERE id=?", (state, code, timestamp(), task["id"]))
-                conn.execute("UPDATE organization_attempts SET status=?,error_code=? WHERE id=?", (state, code, attempt_id))
-                conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task["id"], task["session_id"]))
-            if isinstance(error, asyncio.CancelledError):
-                raise
-        finally:
-            self.running = False
-        return True
+        return await self.managed.run_next()
 
     def test_model(self, request_id=None):
         request_id=request_id or identifier()
-        if not isinstance(request_id,str) or not 1<=len(request_id)<=200:
-            raise RuntimeErrorBase('invalid_request_id')
+        require_text(request_id,'request_id')
+        if len(request_id)>200:raise RuntimeErrorBase('invalid_request_id')
+        if self.draining or self.chat.draining:raise RuntimeErrorBase('service_draining')
         with self.store.connection(write=True) as conn:
-            persona_id = self.store.current(conn)
-            old=conn.execute('SELECT * FROM organization_tasks WHERE request_id=?',(request_id,)).fetchone()
-            if old:
-                if old['persona_id']!=persona_id or old['mode']!='test':raise RuntimeErrorBase('submission_conflict')
-                return self._view(old)
-            if self.draining or self.chat.draining:
-                raise RuntimeErrorBase("service_draining")
-            if conn.execute("SELECT count(*) FROM organization_tasks WHERE status IN ('queued','waiting_quota')").fetchone()[0] >= 10:
-                raise RuntimeErrorBase("organization_queue_full")
-            task_id, now = identifier(), timestamp()
-            conn.execute("INSERT INTO organization_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (task_id, request_id, persona_id, LOCAL_USER_ID, None, None, "test", 0, identifier(), "{}", encoded(self.model()), "queued", None, now, now))
-            return self._view(conn.execute("SELECT * FROM organization_tasks WHERE id=?", (task_id,)).fetchone())
+            pid=self.store.current(conn)
+            payload={'persona_id':pid,'user_id':LOCAL_USER_ID,'channel':'desktop','mode':'test','fingerprint':digest(['probe',pid,request_id])}
+            return self.managed.register(conn,payload,request_id,trigger='probe')
 
     def skip(self, task_id):
         with self.store.connection(write=True) as conn:

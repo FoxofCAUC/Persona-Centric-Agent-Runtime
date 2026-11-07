@@ -43,7 +43,7 @@ class MigrationTests(unittest.TestCase):
                 if version:old_database(store.path,version)
                 store.initialize();store.initialize()
                 with store.connection() as db:
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],21)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],22)
                     self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
                     self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
                     self.assertEqual(db.execute('SELECT count(*) FROM context_manifests').fetchone()[0],0)

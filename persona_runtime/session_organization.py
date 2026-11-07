@@ -201,11 +201,5 @@ class SessionOrganization:
             if fresh['status']=='no_action':result={'status':'no_action','reason':'no_uncovered_eligible_turns'}
             else:
                 if self.engine.draining or self.engine.chat.draining:raise RuntimeErrorBase('service_draining')
-                if conn.execute("SELECT 1 FROM organization_tasks WHERE session_id=? AND status IN ('queued','waiting_quota','running')",(row['session_id'],)).fetchone():raise RuntimeErrorBase('organization_session_busy')
-                if conn.execute("SELECT count(*) FROM organization_tasks WHERE status IN ('queued','waiting_quota')").fetchone()[0]>=10:raise RuntimeErrorBase('organization_queue_full')
-                ident=identifier();now=timestamp()
-                conn.execute('INSERT INTO organization_tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                             (ident,'session-'+operation_id,persona_id,LOCAL_USER_ID,row['session_id'],channel,fresh['mode'],0,
-                              fresh['fingerprint'],encoded(fresh),encoded(self.engine.model()),'queued',None,now,now))
-                result=self.engine._view(conn.execute('SELECT * FROM organization_tasks WHERE id=?',(ident,)).fetchone())
+                result=self.engine.managed.register(conn,fresh,'session-'+operation_id,trigger='sealed')
             record_operation(conn,operation_id,'session.organize',selected,digest,result);return result

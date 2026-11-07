@@ -50,6 +50,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.ingress=IngressService(self.engine);self.topics=TopicService(self.store)
         for channel in ('desktop','qq'):
             p=self.ingress.current_policy(self.pid,channel)
+            p=self.ingress.update_policy(self.pid,channel,p['mode'],p['id'],identifier(),companion_mode='disabled')
             self.ingress.update_policy(self.pid,channel,'legacy_per_message',p['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.org=OrganizationEngine(self.store,self.config,self.model,self.engine);self.org.model=lambda:self.config.load()['model']
         self.organize=SessionOrganization(self.org)
@@ -218,14 +219,15 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         with self.store.connection(write=True) as db:exclude_sources(db,self.pid,['seed-e3'],'withdrawn')
         await self.org.run_next();self.assertEqual(self.org.show(t['id'])['status'],'stale');self.assertEqual(self.model.calls,[])
 
-    async def test_restart_interrupts_manual_task_no_replay(self):
+    async def test_restart_resumes_undispatched_manual_task_once(self):
         self.seed();self.seal();p=self.organize.preview(self.sid,self.pid);t=self.organize.submit(p,self.pid,p['lifecycle_revision'],'manual')
         self.org.recover();await self.org.run_next()
-        self.assertEqual(self.org.show(t['id'])['status'],'interrupted');self.assertEqual(self.model.calls,[])
+        self.assertEqual(self.org.show(t['id'])['status'],'completed');self.assertEqual(len(self.model.calls),1)
+        self.org.recover();await self.org.run_next();self.assertEqual(len(self.model.calls),1)
 
     def test_organization_overlap_and_budget(self):
-        self.seed();self.seal();p=self.organize.preview(self.sid,self.pid);self.organize.submit(p,self.pid,p['lifecycle_revision'],'manual')
-        with self.assertRaisesRegex(RuntimeErrorBase,'busy'):self.organize.submit(p,self.pid,p['lifecycle_revision'],'other')
+        self.seed();self.seal();p=self.organize.preview(self.sid,self.pid);first=self.organize.submit(p,self.pid,p['lifecycle_revision'],'manual')
+        self.assertEqual(self.organize.submit(p,self.pid,p['lifecycle_revision'],'other')['id'],first['id'])
         with patch.object(self.org,'model',return_value={'max_input_chars':30}):
             with self.assertRaisesRegex(RuntimeErrorBase,'too_long'):self.organize.preview(self.sid,self.pid)
 

@@ -179,7 +179,7 @@ class CharacterTests(unittest.TestCase):
                 store.initialize();store.initialize()
                 with store.connection() as conn:
                     self.assertEqual([tuple(r) for r in conn.execute('SELECT * FROM personas')],[tuple(r) for r in before])
-                    self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],21)
+                    self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],22)
                     self.assertEqual(conn.execute('PRAGMA integrity_check').fetchone()[0],'ok')
                     self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
                     self.assertEqual(conn.execute('SELECT actor FROM character_versions').fetchone()[0],'migration')

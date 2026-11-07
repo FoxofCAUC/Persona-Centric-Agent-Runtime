@@ -48,5 +48,5 @@ class API(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(code,200);self.assertFalse(preview['persisted'])
         with self.app['store'].connection() as db:self.assertEqual(db.execute('SELECT count(*) FROM events').fetchone()[0],before)
         async with self.http.get(self.server.make_url('/v1/health'),headers=self.admin) as r:health=await r.json()
-        self.assertEqual(health['schema_version'],21);self.assertIn('disposition_shadow_v1',health['capabilities'])
+        self.assertEqual(health['schema_version'],22);self.assertIn('disposition_shadow_v1',health['capabilities'])
         self.assertEqual(len(self.fake.calls),1)

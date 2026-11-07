@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "0.7.6.dev34",
+  "release": "0.8.0.dev1",
   "mode": "source",
   "roots": ["persona_runtime", "integrations/astrbot/astrbot_plugin_persona_runtime"],
   "excluded_modules": [

@@ -208,18 +208,19 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         self.service.use_persona(self.persona['id'])
         self.assertEqual(self.org.show(task['id'])['status'], 'completed')
 
-    async def test_background_quota_counts_test_and_retry_and_no_auto_retry(self):
+    async def test_background_unknown_call_is_not_retryable_and_counts_quota(self):
         self.cfg.update({'organization': {'hourly_limit': 1}})
         turn = (await self.seed())[0]
         self.model.failure = 'provider_timeout'
         task = self.org.submit(self.org.preview(turn['session_id']), 'timeout')
         await self.org.run_next()
-        self.assertEqual(self.org.show(task['id'])['status'], 'failed')
+        self.assertEqual(self.org.show(task['id'])['status'], 'blocked_unknown')
         await self.org.run_next()
         self.assertEqual(len(self.model.calls), 1)
-        self.org.retry(task['id'])
+        with self.assertRaisesRegex(RuntimeErrorBase,'effect_unknown'):self.org.retry(task['id'])
+        probe=self.org.test_model('new-probe')
         await self.org.run_next()
-        self.assertEqual(self.org.show(task['id'])['status'], 'waiting_quota')
+        self.assertEqual(self.org.show(probe['id'])['status'], 'waiting_quota')
         self.assertEqual(len(self.model.calls), 1)
 
     async def test_shared_project_quota_includes_background(self):
@@ -240,7 +241,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.model.calls), 0)
         self.org.retry(task['id'])
         self.org.recover()
-        self.assertEqual(self.org.show(task['id'])['status'], 'interrupted')
+        self.assertEqual(self.org.show(task['id'])['status'], 'queued')
         self.assertNotIn('model_snapshot', self.org.show(task['id']))
         self.assertNotIn('encrypted_key', encoded(self.cfg.public()))
 
@@ -364,7 +365,8 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         self.org.schedule.resume_daily()
         self.org.schedule.daily_tick()
         await self.org.run_next()
-        self.assertEqual(self.model.calls[0][0]['name'], 'changed')
+        self.assertEqual(self.model.calls, [])
+        self.assertEqual(self.org.list()[0]['status'],'blocked_authorization')
 
     async def test_disabling_daily_prevents_queued_call_and_requires_resume(self):
         await self.seed()
@@ -377,12 +379,12 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeErrorBase,'daily_update_disabled'):
             self.org.schedule.resume_daily()
 
-    async def test_daily_recover_blocks_instead_of_reissuing_paid_request(self):
+    async def test_daily_recover_resumes_proven_undispatched_work(self):
         await self.seed()
         self.org.schedule.run_daily_now()
         self.org.recover()
         self.org.schedule.daily_tick()
-        self.assertEqual(self.org.schedule.status()['status'], 'blocked')
+        self.assertEqual(self.org.schedule.status()['status'], 'running')
         self.org.schedule.daily_tick(time.time()+90000)
         self.assertEqual(len(self.org.list()), 1)
         self.assertEqual(len(self.model.calls), 0)
