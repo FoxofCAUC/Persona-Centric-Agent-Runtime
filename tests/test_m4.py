@@ -18,7 +18,7 @@ from persona_runtime.organization import OrganizationEngine, encoded
 from persona_runtime.paths import RuntimePaths
 from persona_runtime.server import create_app
 from persona_runtime.service import RuntimeService
-from persona_runtime.storage import Store, execute_schema, SCHEMA, SCHEMA2, SCHEMA3, SCHEMA4
+from persona_runtime.storage import Store, execute_schema, SCHEMA, SCHEMA2, SCHEMA3, SCHEMA4, SCHEMA_VERSION
 
 
 class ChatModel:
@@ -324,7 +324,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         finally:
             db.close()
         legacy.initialize()
-        self.assertEqual(legacy.status()['schema_version'],20)
+        self.assertEqual(legacy.status()['schema_version'],SCHEMA_VERSION)
         self.assertTrue(list((legacy.paths.home/'backups').glob('before-m4-*.sqlite3')))
 
     async def test_management_is_admin_only_and_public_config_masks_both_keys(self):

@@ -21,14 +21,19 @@ class FeatureDefaultsTests(unittest.TestCase):
         for channel in ('desktop','qq'):
             p=self.ingress.current_policy(pid,channel)
             self.assertEqual(p['mode'],'natural_batch')
-            self.assertEqual(p['reply_mode'],'natural_structured')
+            self.assertEqual(p['reply_mode'],'context_full')
             self.assertEqual((p['context_mode'],p['cross_session']),('working_set',False))
-            self.assertEqual(p['character_retrieval']['mode'],'hybrid_llm')
-            self.assertEqual(p['character_retrieval']['selector_contract']['prompt'],'character-selector-v2')
-            self.assertEqual(json.loads(p['data_json'])['expression']['mode'],'natural_structured')
+            self.assertEqual(p['character_retrieval']['mode'],'hybrid')
+            self.assertEqual(p['companion']['version'],'companion-runtime-v8')
+            self.assertEqual(p['delivery']['source'],'default')
+            from persona_runtime.companion import restore_available
+            self.assertTrue(restore_available(p))
+            self.assertEqual(json.loads(p['data_json'])['expression']['mode'],'context_full')
 
     def legacy(self,pid,channel='desktop',**kw):
         p=self.ingress.current_policy(pid,channel)
+        if p.get('companion'):
+            p=self.ingress.update_policy(pid,channel,p['mode'],p['id'],identifier(),companion_mode='disabled',**kw)
         return self.ingress.update_policy(pid,channel,'legacy_per_message',p['id'],identifier(),
             reply_mode='legacy_full',character_retrieval_mode='lexical',**kw)
 
@@ -129,15 +134,15 @@ class FeatureDefaultsTests(unittest.TestCase):
             receipt=ingress.accept({'channel':'desktop','text':'今晚想聊聊','request_id':identifier(),'persona_id':self.a})
             p=ingress.current_policy(self.a,'desktop')
             with self.assertRaisesRegex(RuntimeErrorBase,'pending_batch_resolution_required'):
-                ingress.update_policy(self.a,'desktop','legacy_per_message',p['id'],identifier())
-            ingress.update_policy(self.a,'desktop','legacy_per_message',p['id'],identifier(),
-                reply_mode='legacy_full',character_retrieval_mode='lexical',pending_action='cancel')
+                ingress.update_policy(self.a,'desktop',p['mode'],p['id'],identifier(),companion_mode='disabled')
+            ingress.update_policy(self.a,'desktop',p['mode'],p['id'],identifier(),
+                companion_mode='disabled',pending_action='cancel')
             with self.store.connection() as db:
                 batch=dict(db.execute('SELECT * FROM input_batches WHERE id=?',(receipt['batch_id'],)).fetchone())
             frozen=json.loads(batch['policy_json'])
             self.assertEqual(batch['state'],'cancelled')
-            self.assertEqual(frozen['reply_mode'],'natural_structured')
-            self.assertEqual(frozen['context']['character_retrieval']['mode'],'hybrid_llm')
+            self.assertEqual(frozen['reply_mode'],'context_full')
+            self.assertEqual(frozen['context']['character_retrieval']['mode'],'hybrid')
 
 
 class FeatureDefaultsAPITests(unittest.IsolatedAsyncioTestCase):
@@ -150,11 +155,11 @@ class FeatureDefaultsAPITests(unittest.IsolatedAsyncioTestCase):
         status,p=await self.call('interaction.current',{'persona_id':self.b,'channel':'desktop'})
         self.assertEqual(status,200)
         args={'persona_id':self.b,'channel':'desktop','mode':'natural_batch','expected_version':p['id'],
-              'operation_id':identifier(),'expected_selected':self.a,'reply_mode':'natural_structured',
-              'character_retrieval_mode':'hybrid_llm'}
+              'operation_id':identifier(),'expected_selected':self.a,'reply_mode':'context_full',
+              'character_retrieval_mode':'hybrid'}
         status,_=await self.call('interaction.update',args,role='bridge');self.assertEqual(status,403)
         status,result=await self.call('interaction.update',args);self.assertEqual(status,200)
-        self.assertEqual(result['reply_mode'],'natural_structured')
+        self.assertEqual(result['reply_mode'],'context_full')
         self.assertEqual(self.service.show_persona()['id'],self.a)
         status,_=await self.call('interaction.update',args|{'expected_selected':self.b,'operation_id':identifier()})
         self.assertNotEqual(status,200)

@@ -41,6 +41,8 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         # Historical protocol fixtures choose compatibility explicitly; product defaults are tested separately.
         for channel in ('desktop','qq'):
             policy=self.ingress.current_policy(self.pid,channel)
+            if policy.get('companion'):
+                policy=self.ingress.update_policy(self.pid,channel,policy['mode'],policy['id'],identifier(),companion_mode='disabled')
             self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.addAsyncCleanup(self.finish)
     async def finish(self):
@@ -223,7 +225,7 @@ class IngressTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(c.execute("SELECT name FROM sqlite_master WHERE name='ingress_receipts'").fetchone());c.close()
         store.initialize();store.initialize()
         with store.connection() as c:
-            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],20);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],21);self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(c.execute('SELECT count(*) FROM ingress_receipts').fetchone()[0],0)
 
     async def test_server_stop_rejects_unresolved_and_no_bridge_management(self):

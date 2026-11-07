@@ -53,6 +53,7 @@ class CompanionPolicyRestore(unittest.IsolatedAsyncioTestCase):
 
     def normalized(self, policy):
         data = json.loads(policy['data_json'])
+        data.pop('delivery',None)
         if isinstance(data.get('expression'), dict):
             data['expression'].pop('policy_id', None)
         return policy['mode'], policy['reply_mode'], data

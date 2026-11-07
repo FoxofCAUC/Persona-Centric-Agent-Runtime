@@ -45,7 +45,14 @@ class IngressService:
         if channel not in ('desktop','qq'):raise RuntimeErrorBase('unsupported_channel')
         row=conn.execute('SELECT p.* FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(persona_id,channel)).fetchone()
         result=dict(row) if row else {'id':None,'persona_id':persona_id,'channel':channel,'revision':0,'mode':'legacy_per_message','reply_mode':'legacy_full','data_json':encoded({**PARAMS,'context':DEFAULT_CONTEXT})}
-        return result|context_values(result)|{'buffer_policy':buffer_policy(result),'expression_policy':json.loads(result['data_json']).get('expression')}
+        data=json.loads(result['data_json'])
+        delivery=data.get('delivery')
+        if delivery is None and not data.get('companion') and conn.execute(
+                "SELECT 1 FROM interaction_policies WHERE persona_id=? AND channel=? AND json_extract(data_json,'$.companion') IS NOT NULL LIMIT 1",
+                (persona_id,channel)).fetchone():
+            delivery={'version':1,'source':'historical','state':'disabled'}
+        return result|context_values(result)|{'buffer_policy':buffer_policy(result),'expression_policy':data.get('expression'),
+            'delivery':delivery}
 
     def current_policy(self,persona_id,channel):
         with self.store.connection() as conn:
@@ -75,7 +82,9 @@ class IngressService:
     def _remember(self,conn,persona,operation_id,fingerprint,result):
         conn.execute('INSERT INTO batch_operations VALUES (?,?,?,?,?,?)',(operation_id,persona,LOCAL_USER_ID,fingerprint,encoded(result),timestamp()))
 
-    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,disposition_mode=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None,situation_observation_mode=None,companion_mode=None):
+    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,disposition_mode=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None,situation_observation_mode=None,companion_mode=None,delivery_source=None):
+        if delivery_source not in (None,'user','release') or delivery_source is not None and companion_mode in (None,'disabled'):
+            raise RuntimeErrorBase('invalid_delivery_source')
         if companion_mode=='disabled':
             if any(value is not None for value in (disposition_mode,reply_mode,context_mode,cross_session,
                     character_retrieval_mode,conversation_policy_version,expression_policy_version,situation_observation_mode)):
@@ -123,6 +132,7 @@ class IngressService:
             if conversation_policy_version is not None:value['conversation_policy_version']=conversation_policy_version
             if expression_policy_version is not None:value['expression_policy_version']=expression_policy_version
             if companion_mode is not None:value['companion_mode']=companion_mode
+            if delivery_source is not None:value['delivery_source']=delivery_source
             old_data=json.loads(current['data_json'])
             companion_changed=selected_companion is not None and selected_companion!=old_data.get('companion')
             from .reply_batch import expression_version
@@ -135,7 +145,9 @@ class IngressService:
             if (effective_companion and effective_companion['version'] in NATIVE_VERSIONS
                     and ((reply_mode or current['reply_mode']) != 'context_full' or target_expression != 3)):
                 raise RuntimeErrorBase('companion_format_conflict')
-            strategy_changed=companion_changed or (conversation_policy_version==2 and buffer_policy(current)!=ROLLING_PARAMS) or target_expression!=old_expression
+            from .context_policy import delivery_metadata
+            delivery=delivery_metadata(delivery_source or 'user','enabled') if selected_companion is not None else old_data.get('delivery')
+            strategy_changed=companion_changed or delivery!=old_data.get('delivery') or (conversation_policy_version==2 and buffer_policy(current)!=ROLLING_PARAMS) or target_expression!=old_expression
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
@@ -161,6 +173,7 @@ class IngressService:
                     if 'companion' not in old_data:
                         data[RESTORE_KEY]=capture_restore(current)
                     data['companion']=selected_companion
+                    data['delivery']=delivery
                 if conversation_policy_version==2:data.update(ROLLING_PARAMS)
                 conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',(vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,mode,encoded(data),timestamp(),reply_mode))
                 conn.execute('INSERT INTO interaction_heads VALUES (?,?,?,?) ON CONFLICT(persona_id,channel) DO UPDATE SET version_id=excluded.version_id',(persona_id,LOCAL_USER_ID,channel,vid))
@@ -192,6 +205,8 @@ class IngressService:
                 raise RuntimeErrorBase('companion_restore_missing')
             checked(old_data['companion'])
             saved=restore_settings(old_data[RESTORE_KEY]);data=saved['data']
+            from .context_policy import delivery_metadata
+            data['delivery']=delivery_metadata('user','disabled')
             disposition=data.get('context',{}).get('disposition_mode','baseline')
             if disposition in ('assist','live'):
                 from .decision_capsule import require_admission

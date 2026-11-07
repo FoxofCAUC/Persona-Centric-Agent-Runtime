@@ -32,7 +32,7 @@ def companion_description(policy):
         if profile == choose('minimal_im_selective'):
             return 'v9接话取舍候选：本地选材，一次主回复，原生文本；仅隔离验证启用，不注入表达样例。'
         if profile == choose('minimal_im'):
-            return '即时通讯候选：本地选材，一次主回复，采用原生文本和即时通讯表达指导，不注入表达样例。'
+            return 'v8 伴侣聊天（已采用）：本地选材，一次主回复，采用原生文本和即时通讯表达指导，不注入表达样例。'
         if profile == choose('minimal_native'):
             return '无示范纯文本候选：本地选材，一次主回复，直接生成文本，不注入表达样例。'
         if profile == choose('minimal_experience'):
@@ -46,7 +46,7 @@ def companion_description(policy):
         return '伴侣候选：本地选材，无云端选择，一次主回复；结构合同不要求固定句数或回应顺序。'
     if profile:
         return '既有实验方案：' + str(profile.get('mode')) + '；版本 ' + str(profile.get('version'))
-    return '原聊天方案；未启用伴侣候选。'
+    return '伴侣聊天已关闭；使用恢复后的设置。' if (policy or {}).get('delivery',{} ) and policy['delivery'].get('state')=='disabled' else '原聊天方案；尚未启用 v8。'
 
 
 def companion_restore_summary(policy):
@@ -60,14 +60,14 @@ def companion_restore_summary(policy):
     replies={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复','natural_structured':'自然私聊'}
     retrieval={'lexical':'词法选材','hybrid':'本地召回','hybrid_llm':'本地召回加云端选择'}
     disposition={'baseline':'不运行人格观察','shadow':'Shadow观察，不影响正文','assist':'隔离Assist','live':'Live候选'}
-    return ('将恢复为最初启用伴侣候选前保存的窗口设置：\n'
+    return ('将恢复为最初启用伴侣聊天前保存的入口设置：\n'
             +'输入：'+ingress+'\n回复：'+replies[saved['reply_mode']]
             +'\n选材：'+retrieval[context['character_retrieval']['mode']]
             +'\n人格模式：'+disposition[context['disposition_mode']]
             +'；辅助理解：'+('按需启用' if context['situation_observation_mode']=='on_demand' else '关闭')
             +'\n工作集：'+('自动召回' if context['context_mode']=='working_set' else '近期上下文')
             +'；跨会话：'+('允许同入口跨会话' if context['cross_session'] else '不跨会话')
-            +'\n\n候选期间修改的这些入口设置也会一并恢复。人物资料和历史消息不回滚，仅影响后续受理输入。继续？')
+            +'\n\n启用期间修改的这些入口设置也会一并恢复。人物资料和历史消息不回滚，仅影响后续受理输入。继续？')
 
 
 class ContextUI:
@@ -103,7 +103,7 @@ class ContextUI:
         self.button(line,'保存开关',self.save_context_policy,{'context-write'})
         ttk.Label(parent,textvariable=self.ctx_companion,wraplength=760).pack(anchor='w',pady=3)
         line=ttk.Frame(parent);line.pack(fill='x',pady=3)
-        self.ctx_companion_enable=self.button(line,'启用C2伴侣候选',lambda:self.change_companion_mode(True),{'context-write','batch-write','persona'})
+        self.ctx_companion_enable=self.button(line,'启用 v8 伴侣聊天',lambda:self.change_companion_mode(True),{'context-write','batch-write','persona'})
         self.ctx_companion_restore=self.button(line,'恢复启用前设置',lambda:self.change_companion_mode(False),{'context-write','batch-write','persona'})
         self._context_companion_controls(None)
         line=ttk.Frame(parent);line.pack(fill='x',pady=4)
@@ -164,15 +164,16 @@ class ContextUI:
         elif profile:
             label='升级伴侣聊天'
         self.ctx_companion_enable.configure(text=label)
-        self._companion_button(self.ctx_companion_enable,not desktop or not companion_activation_allowed(policy))
-        self._companion_button(self.ctx_companion_restore,not policy or not desktop or not restore_available(policy))
+        self._companion_button(self.ctx_companion_enable,not companion_activation_allowed(policy))
+        self._companion_button(self.ctx_companion_restore,not policy or not restore_available(policy))
         self.ctx_character_combo.configure(state='disabled' if candidate else 'readonly')
-        if candidate and self.ctx_character.get()!='本地召回（伴侣候选）':
-            self.ctx_character.set('本地召回（伴侣候选）')
+        if candidate and self.ctx_character.get()!='本地召回（伴侣聊天）':
+            self.ctx_character.set('本地召回（伴侣聊天）')
         if not policy:
-            self.ctx_companion.set('请先读取当前入口政策；QQ入口本阶段只读聊天方案。')
+            self.ctx_companion.set('请先读取当前入口政策。')
         else:
-            text=('窗口：' if desktop else 'QQ（本阶段不提供候选切换）：')+companion_description(policy)
+            text=('窗口：' if desktop else 'QQ：')+companion_description(policy)
+            if restore_available(policy):text+=' 可恢复到启用前设置。'
             if policy.get('companion') and not restore_available(policy):
                 text+=' 当前方案版本或启用前恢复点无效，无法自动升级或恢复。'
             self.ctx_companion.set(text)
@@ -195,17 +196,17 @@ class ContextUI:
         from .companion import restore_available
         p=self.ctx_policy
         if (not p or p.get('persona_id')!=self.persona_id or p.get('channel')!=self.ctx_channel.get()
-                or self.ctx_channel.get()!='desktop'):
-            self.notice.set('请先读取当前人格的窗口入口政策；本阶段不切换QQ方案。');return
+                or self.ctx_channel.get() not in ('desktop','qq')):
+            self.notice.set('请先读取当前人格的目标入口政策。');return
         if (enable and not companion_activation_allowed(p)) or (not enable and not restore_available(p)):
             self.notice.set('当前已采用伴侣聊天，或方案缺少有效恢复点，无法自动升级或恢复。');return
         if not enable and not messagebox.askokcancel('恢复启用前设置',companion_restore_summary(p),parent=self):return
         key=self.context_key();draft=self.ctx_draft_epoch;pending_action=None
-        if any(b['persona_id']==self.persona_id and b['channel']=='desktop' and b['state']=='collecting' for b in self.batch_rows):
+        if any(b['persona_id']==self.persona_id and b['channel']==p['channel'] and b['state']=='collecting' for b in self.batch_rows):
             answer=messagebox.askyesnocancel('处理收集中输入','先封存并按原方案回复，再切换？\n选择“否”取消现有批次后切换；“取消”保留原方案。')
             if answer is None:return
             pending_action='seal' if answer else 'cancel'
-        args={'persona_id':p['persona_id'],'channel':'desktop','mode':p['mode'],
+        args={'persona_id':p['persona_id'],'channel':p['channel'],'mode':p['mode'],
               'expected_version':p['id'],'pending_action':pending_action,
               'companion_mode':'minimal_im' if enable else 'disabled'}
         if enable:
@@ -222,10 +223,10 @@ class ContextUI:
             # Preserve unrelated edits made while the write was in flight.
             if unchanged_draft:
                 self.ctx_enabled.set(value.get('context_mode')=='working_set');self.ctx_cross.set(value.get('cross_session',False))
-                self.ctx_character.set('本地召回（伴侣候选）' if companion_candidate(value) else {'lexical':'词法','hybrid':'本地语义（旧方案）','hybrid_llm':'本地召回＋云端选择'}.get(value.get('character_retrieval',{}).get('mode'),'词法'))
+                self.ctx_character.set('本地召回（伴侣聊天）' if companion_candidate(value) else {'lexical':'词法','hybrid':'本地语义（旧方案）','hybrid_llm':'本地召回＋云端选择'}.get(value.get('character_retrieval',{}).get('mode'),'词法'))
             self.clear_context_summary();self.set_text(self.ctx_output,json.dumps(value,ensure_ascii=False,indent=2))
-            self.notice.set('伴侣候选已启用，仅影响后续受理输入。' if enable else '已恢复启用前设置，仅影响后续受理输入。')
-        self.run_task('切换窗口聊天方案',{'context-write','batch-write','persona'},
+            self.notice.set('v8 伴侣聊天已启用，仅影响后续受理输入。' if enable else '已恢复启用前设置，仅影响后续受理输入。')
+        self.run_task('切换入口聊天方案',{'context-write','batch-write','persona'},
                       lambda _:self.client.update_companion_policy(**args),done,error_current=lambda:key==self.context_key())
 
     def clear_context_summary(self):

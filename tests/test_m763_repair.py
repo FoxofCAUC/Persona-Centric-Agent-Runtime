@@ -179,7 +179,7 @@ class Repair(unittest.IsolatedAsyncioTestCase):
     async def test_schema_export_and_integrity(self):
         self.store.initialize()
         with self.store.connection() as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],20)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],21)
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
 
     async def test_first_member_freezes_model_and_policy(self):

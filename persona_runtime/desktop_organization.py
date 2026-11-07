@@ -216,6 +216,7 @@ class OrganizationUI:
                 listing.delete(0,'end')
                 for index,row in enumerate(value[key]):
                     content = row.get('text', row.get('error_code') or row.get('mode') or ('摘要第'+str(row.get('revision',''))+'版'))
+                    if row.get('reason') == 'coverage_gap':content = '覆盖不完整 · '+content
                     listing.insert('end', STATES.get(row['status'], row['status'])+' · '+row['id'][:8]+' · '+content[:65])
                     if row['id'] == selected_id:
                         listing.selection_set(index)
@@ -253,6 +254,8 @@ class OrganizationUI:
                 return
             self.org_preview = value
             self.org_preview_text.set(f"本批 {len(value['rows'])} 轮，来源序号 {value['rows'][0]}–{value['rows'][-1]}；预计共 {value['estimated_batches']} 批；排除 {value['excluded_events']} 个事件。提交仅运行本批一次。")
+            if value.get('coverage_gaps'):
+                self.org_preview_text.set(self.org_preview_text.get()+f" 覆盖不完整：此前仍有 {len(value['coverage_gaps'])} 轮未进入累计摘要；详情可查，完整修复须重建。")
         self.run_task('预览整理范围', {'org-preview'}, lambda _: self.client.manage('organization.preview', **args), done)
 
     def submit_organization(self):

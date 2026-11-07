@@ -142,7 +142,7 @@ class BubbleIntegrationTests(unittest.IsolatedAsyncioTestCase):
         with self.store.connection() as c:
             manifest=json.loads(c.execute('SELECT manifest_json FROM context_manifests WHERE turn_id=?',(t['id'],)).fetchone()[0])
             self.assertEqual(manifest['reply_output_contract'],descriptor('natural_structured',self.models[0]['_expression_snapshot']))
-            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],20)
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],21)
             self.assertFalse(c.execute('PRAGMA foreign_key_check').fetchall())
         from persona_runtime.reply_service import ReplyService
         preview=ReplyService(self.store).preview(self.pid,batch_id=t['reply_batch']['id'])

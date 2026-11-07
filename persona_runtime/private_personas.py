@@ -93,6 +93,54 @@ class PrivatePersonas:
     def protected(self,persona_id):
         return bool(persona_id and self.record_for_persona(persona_id))
 
+    def model_grants(self):
+        path=safe(self.root/'model-grants.json',self.root)
+        if not path.exists():return {'version':1,'grants':{},'operations':{}}
+        try:
+            data=json.loads(path.read_text(encoding='utf-8'))
+            if data['version']!=1 or not isinstance(data['grants'],dict) or not isinstance(data['operations'],dict):raise ValueError()
+            return data
+        except (ValueError,OSError,KeyError,TypeError):
+            raise RuntimeErrorBase('private_model_grants_invalid') from None
+
+    def authorize_main(self,store,persona_id,expected_provider,operation_id):
+        """Record explicit per-persona consent, never inherited by copies or roots."""
+        from .config import ConfigStore
+        from .persona_management import active
+        if not operation_id:raise RuntimeErrorBase('operation_id_required')
+        self.root.mkdir(parents=True,exist_ok=True)
+        lock=InstanceLock(self.root/'registry.lock')
+        try:
+            with store.connection(write=True) as db:
+                if store.current(db)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
+                active(db,persona_id)
+                policy=self.record_for_persona(persona_id)
+                if policy is None:raise RuntimeErrorBase('private_scope_mismatch')
+                if provider_identity(ConfigStore(self.paths).load()['model'])!=expected_provider:
+                    raise RuntimeErrorBase('private_provider_changed')
+                data=self.model_grants()
+                grant={'persona_id':persona_id,'private_id':policy['id'],'kind':'main',
+                    'provider':expected_provider,'scope':'necessary_visible_only'}
+                fingerprint=canonical(grant)
+                old=data['operations'].get(operation_id)
+                if old:
+                    if old['fingerprint']!=fingerprint:raise RuntimeErrorBase('submission_conflict')
+                    return old['grant']
+                grant.update(authorized_at=timestamp(),operation_id=operation_id)
+                data['grants'][persona_id]=grant
+                data['operations'][operation_id]={'fingerprint':fingerprint,'grant':grant}
+                atomic_json(self.root/'model-grants.json',data)
+                return grant
+        finally:lock.close()
+
+    def main_authorized(self,persona_id,policy,model):
+        grant=self.model_grants()['grants'].get(persona_id)
+        if grant is None:return False
+        if not isinstance(grant,dict):raise RuntimeErrorBase('private_model_grants_invalid')
+        return all(grant.get(k)==v for k,v in {'persona_id':persona_id,
+            'private_id':policy.get('id'),'kind':'main','scope':'necessary_visible_only',
+            'provider':provider_identity(model)}.items())
+
     def record_for_persona(self,persona_id):
         records=self.load()['records']
         direct=next((r for r in records if r.get('persona_id')==persona_id and persona_id),None)
@@ -204,7 +252,9 @@ def guard_acceptance_write(store,persona_id):
 
 
 def guard_cloud_dispatch(store,persona_id,kind,model):
-    policy=PrivatePersonas(store.paths).record_for_persona(persona_id)
+    private=PrivatePersonas(store.paths)
+    policy=private.record_for_persona(persona_id)
+    if policy is not None and kind=='main' and private.main_authorized(persona_id,policy,model):return
     copied=store.paths.home/'runtime/private-copy-policy.json'
     if policy is None and copied.exists():
         candidate=json.loads(copied.read_text(encoding='utf-8'))

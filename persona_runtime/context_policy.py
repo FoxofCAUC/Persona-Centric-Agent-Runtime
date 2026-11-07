@@ -5,13 +5,35 @@ from .models import LOCAL_USER_ID, identifier, timestamp
 DEFAULT_CONTEXT={'context_mode':'working_set','cross_session':False}
 
 
-def new_persona_defaults():
-    """Fresh identities use released features; historical snapshots stay unchanged."""
+def compatibility_defaults():
+    """The pre-v8 released default remains the restore target for new identities."""
     from .ingress import ROLLING_PARAMS
     from .character_policy import choose
     return {'mode':'natural_batch','reply_mode':'natural_structured',
             'data':{**ROLLING_PARAMS,'context':{**DEFAULT_CONTEXT,
                 'character_retrieval':choose('hybrid_llm')}}}
+
+
+def delivery_metadata(source, state):
+    if source not in ('default','user','release') or state not in ('enabled','disabled'):
+        raise ValueError('invalid_delivery_metadata')
+    return {'version':1,'release':'0.7.6.dev34','source':source,'state':state}
+
+
+def new_persona_defaults():
+    """Released v8; retain an independent, validated compatibility restore point."""
+    from .companion import choose, capture_restore, RESTORE_KEY
+    from .character_policy import choose as character_choice
+    from .reply_batch import expression_snapshot
+    old=compatibility_defaults()
+    old['data']['expression']=expression_snapshot(old['reply_mode'],None,version=3)
+    saved=capture_restore({**old,'data_json':json.dumps(old['data'])})
+    data=old['data']
+    data['context'].update(character_retrieval=character_choice('hybrid'),
+        disposition_mode='baseline',situation_observation_mode='disabled')
+    data.update(companion=choose('minimal_im'),delivery=delivery_metadata('default','enabled'))
+    data[RESTORE_KEY]=saved
+    return {'mode':'natural_batch','reply_mode':'context_full','data':data}
 
 
 def values(policy):
@@ -71,7 +93,7 @@ def initialize(conn,persona_id=None,*,new_persona=False,disposition_default='bas
             data['context']=dict(DEFAULT_CONTEXT)
             defaults=new_persona_defaults() if new_persona else None
             if defaults:data=defaults['data']
-            if defaults:data['context']['disposition_mode']=disposition_default
+            # New identities always use the released baseline; Live remains explicit.
             vid=identifier()
             mode=old['mode'] if old else (defaults['mode'] if defaults else 'legacy_per_message')
             reply_mode=old['reply_mode'] if old else (defaults['reply_mode'] if defaults else 'legacy_full')

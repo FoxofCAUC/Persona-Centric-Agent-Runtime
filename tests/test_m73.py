@@ -338,7 +338,7 @@ class MigrationTests(unittest.TestCase):
                         db.execute('INSERT INTO users VALUES(?,?,?)',(LOCAL_USER_ID,'人工',timestamp()));db.execute(f'PRAGMA user_version={v}')
                 store.initialize();store.initialize()
                 with store.connection() as db:
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],20)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],storage.SCHEMA_VERSION)
                     self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok');self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
 
     def test_schema12_failure_rolls_back(self):

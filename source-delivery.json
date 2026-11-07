@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "release": "0.7.6.dev34",
+  "mode": "source",
+  "roots": ["persona_runtime", "integrations/astrbot/astrbot_plugin_persona_runtime"],
+  "excluded_modules": [
+    "persona_runtime/dialogue_frame.py",
+    "persona_runtime/communication_spec.py",
+    "persona_runtime/communication_consumption.py",
+    "persona_runtime/dialogue_pipeline.py",
+    "persona_runtime/dialogue_communication_pipeline.py"
+  ],
+  "development_only": ["experiments", "plugins", "tests", "scripts/dialogue_*.py"],
+  "configuration": ["pyproject.toml", "requirements-astrbot.lock"],
+  "note": "Source inventory only. Historical decoders and policy restore modules remain included; no installer or automatic scheduler."
+}

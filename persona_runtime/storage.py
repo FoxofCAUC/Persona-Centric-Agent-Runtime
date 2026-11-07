@@ -20,7 +20,7 @@ from .schema_m73 import SCHEMA13, TABLES13
 from .schema_disposition import TABLES19
 from .schema_observation import TABLES20
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
 M2_TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
 M3_TABLES = M2_TABLES + ("request_activity", "service_notices")
@@ -168,7 +168,7 @@ class Store:
         if version != SCHEMA_VERSION:
             raise RuntimeErrorBase(f"Incompatible database schema version {version}; expected {SCHEMA_VERSION}")
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if not set(TABLES + (('character_selection_attempts','quota_reservations') if SCHEMA_VERSION>=15 else ()) + (('persona_lifecycle','persona_operations') if SCHEMA_VERSION>=16 else ()) + (('reply_display_messages',) if SCHEMA_VERSION>=17 else ()) + (TABLES19 if SCHEMA_VERSION>=19 else ()) + (TABLES20 if SCHEMA_VERSION>=20 else ())).issubset(tables):
+        if not set(TABLES + (('character_selection_attempts','quota_reservations') if SCHEMA_VERSION>=15 else ()) + (('persona_lifecycle','persona_operations') if SCHEMA_VERSION>=16 else ()) + (('reply_display_messages',) if SCHEMA_VERSION>=17 else ()) + (TABLES19 if SCHEMA_VERSION>=19 else ()) + (TABLES20 if SCHEMA_VERSION>=20 else ()) + (('organization_receipts',) if SCHEMA_VERSION>=21 else ())).issubset(tables):
             raise RuntimeErrorBase("Database schema is incomplete; restore a verified backup")
 
     @contextmanager
@@ -190,7 +190,7 @@ class Store:
         conn = self._connect(create=True)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
+            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not set(M1_TABLES).issubset(tables):
                     raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
@@ -201,6 +201,7 @@ class Store:
                 prefix = 'before-persona-management' if version == 15 else prefix
                 prefix = 'before-rolling-chat' if version == 16 else prefix
                 prefix = 'before-observation' if version == 19 else prefix
+                prefix = 'before-memory-repair' if version == 20 else prefix
                 prefix = 'before-disposition' if version in (17,18) else prefix
                 backup = self.paths.home / "backups" / f"{prefix}-{uuid4()}.sqlite3"
                 target = sqlite3.connect(backup)
@@ -256,7 +257,7 @@ class Store:
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif version == 12 and set(TABLES[:-len(TABLES13)]).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            elif version in (13,14,15,16,17,18,19) and set(TABLES).issubset(tables):
+            elif version in (13,14,15,16,17,18,19,20) and set(TABLES).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
@@ -306,6 +307,9 @@ class Store:
                 from .schema_observation import migrate as migrate_observation
                 migrate_observation(conn)
             refresh_development_scope_trigger(conn)
+            if version < 21 and SCHEMA_VERSION >= 21:
+                from .organization_output import migrate as migrate_organization_receipts
+                migrate_organization_receipts(conn)
             if conn.execute("PRAGMA foreign_key_check").fetchone():
                 raise RuntimeErrorBase("Migration foreign key verification failed")
             self._check(conn)

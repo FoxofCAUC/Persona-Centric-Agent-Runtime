@@ -37,6 +37,8 @@ class CognitiveService:
         summary=conn.execute('SELECT * FROM summaries WHERE id=?',(details.get('summary_id'),)).fetchone()
         from .context_builders import summary_usable
         summary_valid=summary_usable(conn,current,summary) if summary else False
+        from .organization_output import pending_conflicts
+        pending = pending_conflicts(conn,current,{m['id'] for m in details.get('memories',[])})
         state=head(conn,current['persona_id'],'state')
         frozen=json.loads(current['profile_snapshot']) if current.get('profile_snapshot') else snapshot(conn,current['persona_id'])
         from .references import prepare
@@ -49,7 +51,7 @@ class CognitiveService:
         # persisted manifest or ordinary logs.
         settings=turn if expected else current
         return fingerprint({'turn_settings':{k:settings.get(k) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','observation_model_snapshot','model_snapshot','reply_mode_snapshot','expression_snapshot','origin_json')},
-            'inputs':load_turn_input(conn,current),'history':history,'memories':memories,
+            'inputs':load_turn_input(conn,current),'history':history,'memories':memories,'pending_conflicts':pending,
             'summary':dict(summary) if summary else None,'summary_valid':summary_valid,
             'state':details.get('state_version') if expected else state['id'] if active_state(state) else None,
             'relation_blocked':source_blocked(conn,frozen['relationship']['source_ids']),
@@ -66,8 +68,11 @@ class CognitiveService:
         if details.get('state_version'):states.append({'kind':'manual_state','id':details['state_version']})
         if details.get('summary_id'):states.append({'kind':'lossy_summary','id':details['summary_id'],'revision':details['summary_revision']})
         states.extend({'kind':'memory','id':m['id'],'revision':m['revision']} for m in details.get('memories',[]))
+        states.extend({'kind':'pending_memory_conflict','id':p['id'],'conflicts':p['conflicts']} for p in details.get('pending_conflicts',[]))
         evidence=[{'kind':'current_input','id':m['id'],'hash':fingerprint(m['text'])} for m in load_turn_input(conn,turn)] if turn['channel']!='test' else []
         selected=turn_scope(conn,turn) if turn['channel']!='test' else None
+        for p in details.get('pending_conflicts',[]):
+            evidence.extend({'kind':'pending_conflict_source','id':s['event_id'],'hash':fingerprint(s['quote'])} for s in p['sources'])
         for group in details.get('history_groups',[]):
             item=read_exact(conn,selected,{'kind':'turn','id':group['turn_id']});bound=binding(item)
             evidence.append({'kind':group['kind'],'turn_id':group['turn_id'],'hash':bound.get('hash'),

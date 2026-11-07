@@ -344,8 +344,7 @@ class CharacterService:
             initialize_profiles(conn,new_id,actor='create')
             version=append(conn,new_id,data,'import')
             from .context_policy import initialize as initialize_context_policies
-            from .decision_capsule import new_identity_mode
-            initialize_context_policies(conn,new_id,new_persona=True,disposition_default=new_identity_mode(self.store,new_id))
+            initialize_context_policies(conn,new_id,new_persona=True,disposition_default='baseline')
             conn.execute('INSERT INTO character_operations VALUES (?,?,?,?,?)',(operation_id,new_id,LOCAL_USER_ID,fingerprint,version['id']))
             result=RuntimeService._persona(conn,new_id)
         callback=getattr(self.store,'character_committed',None)

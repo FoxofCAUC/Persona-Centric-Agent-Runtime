@@ -47,8 +47,7 @@ class RuntimeService:
             from .character import initialize_characters
             initialize_characters(conn,persona_id,actor='create')
             from .context_policy import initialize as initialize_context_policies
-            from .decision_capsule import new_identity_mode
-            initialize_context_policies(conn,persona_id,new_persona=True,disposition_default=new_identity_mode(self.store,persona_id))
+            initialize_context_policies(conn,persona_id,new_persona=True,disposition_default='baseline')
             result=self._persona(conn, persona_id)
         callback=getattr(self.store,'character_committed',None)
         if callback:callback(persona_id)

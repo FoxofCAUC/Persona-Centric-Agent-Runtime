@@ -9,6 +9,7 @@ from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, require_text, t
 from .service import RuntimeService
 from .turn_input import load_turn_sources
 from .memory_policy import exclude_sources, exclude_memory, project_capacity_used
+from .organization_output import OutputError
 
 
 def encoded(value):
@@ -50,6 +51,9 @@ class SummaryService:
             for key in ("items", "sources", "covered"):
                 row[key] = json.loads(row.pop(key+"_json"))
             row['evidence'] = [RuntimeService._owned(conn, "events", event_id, row['persona_id']) for event_id in row['sources']]
+            from .organization_output import coverage_gaps
+            row['coverage_gaps'] = coverage_gaps(conn, row['session_id'], row['covered'])
+            row['coverage_status'] = 'degraded' if row['coverage_gaps'] else 'complete'
             return row
 
     def disable(self, summary_id):
@@ -102,9 +106,16 @@ class CandidateService:
             review = conn.execute("SELECT * FROM candidate_reviews WHERE candidate_id=?", (candidate["id"],)).fetchone()
             if review["text"] != text:
                 raise RuntimeErrorBase("review_conflict")
+            if target_memory_id:
+                memory = conn.execute('SELECT previous_id,revision FROM memories WHERE id=?', (candidate['memory_id'],)).fetchone()
+                if not memory or memory['previous_id'] != target_memory_id or type(expected_revision) is not int or memory['revision'] != expected_revision + 1:
+                    raise RuntimeErrorBase('review_conflict')
             return {"memory_id": candidate["memory_id"], "already_accepted": True}
         if candidate["status"] != "pending":
             raise RuntimeErrorBase("candidate_not_pending")
+        conflicts = json.loads(candidate['conflicts_json'])
+        if conflicts and (len(conflicts) != 1 or target_memory_id != conflicts[0]):
+            raise RuntimeErrorBase('conflict_revision_required')
         sources = json.loads(candidate["sources_json"])
         for source in sources:
             event = RuntimeService._owned(conn, "events", source["event_id"], candidate["persona_id"])
@@ -192,6 +203,9 @@ class OrganizationEngine:
         if previous and previous.get('source_refs_json'):
             previous = None  # Typed sealed sources are not legacy generated semantics.
         if start_row is None:
+            from .organization_output import coverage_gaps
+            if previous and coverage_gaps(conn, session_id, json.loads(previous['covered_json'])):
+                raise RuntimeErrorBase('organization_coverage_gap_requires_rebuild')
             start_row = previous["end_row"]+1 if previous else 0
         if previous and start_row <= previous["end_row"]:
             raise RuntimeErrorBase("disable_summary_before_rebuild")
@@ -212,6 +226,11 @@ class OrganizationEngine:
                        "channel": channel, "mode": mode, "events": events,
                        "rows": [t["ordinal"] for t in batch], "previous": previous,
                        "rebuild": rebuild, "guard": self.guard(conn, persona_id, session_id)}
+            from .organization_output import coverage_gaps, VERSION
+            covered = set(payload['rows']) | set(json.loads(previous['covered_json']) if previous else [])
+            payload['coverage_gaps'] = coverage_gaps(conn, session_id, covered)
+            payload['coverage_status'] = 'degraded' if payload['coverage_gaps'] else 'complete'
+            payload['output_contract'] = VERSION
             from .chat import terms
             query = terms(" ".join(e["text"] for e in events if e["role"] == "user"))
             payload["existing_memories"] = [dict(m) for m in conn.execute("SELECT id,text,category,revision FROM memories WHERE persona_id=? AND status='active' ORDER BY updated_at DESC", (persona_id,))
@@ -245,6 +264,8 @@ class OrganizationEngine:
             '检查已有记忆：仅明确直接矛盾时在conflicts填写已有记忆ID，普通相关或补充不是冲突。'
             'summary模式candidates为空；candidates模式summary为空。')
         previous = payload.get("previous")
+        from .organization_output import INSTRUCTION
+        instruction += INSTRUCTION
         return [{"role": "system", "content": instruction}, {"role": "user", "content": encoded({
             "mode": payload["mode"], "existing_memories": payload.get("existing_memories", []),
             "previous_summary": json.loads(previous["items_json"]) if previous else [], "events": payload["events"]})}]
@@ -301,6 +322,9 @@ class OrganizationEngine:
             row = RuntimeService._owned(conn, "organization_tasks", task_id, self.store.current(conn))
             result = self._view(row, True)
             result["attempts"] = [{k: v for k, v in dict(r).items() if k != "model_snapshot"} for r in conn.execute("SELECT * FROM organization_attempts WHERE task_id=? ORDER BY rowid", (task_id,))]
+            for attempt in result['attempts']:
+                receipt = conn.execute('SELECT diagnostic_json FROM organization_receipts WHERE attempt_id=?', (attempt['id'],)).fetchone()
+                if receipt: attempt['output_diagnostic'] = json.loads(receipt[0])
             return result
 
     def cancel(self, task_id):
@@ -338,12 +362,13 @@ class OrganizationEngine:
             conn.execute("UPDATE organization_tasks SET status='interrupted',error_code='service_restarted',updated_at=? WHERE status IN ('queued','waiting_quota','running')", (timestamp(),))
             conn.execute("UPDATE organization_attempts SET status='interrupted',error_code='service_restarted' WHERE status='running'")
 
-    def validate_output(self, conn, payload, text):
+    def validate_output(self, conn, payload, text, audit=None):
         if payload.get('source_format') == 2:
             from .session_organization import validate
-            return validate(conn,payload,text)
+            return validate(conn,payload,text,audit)
         try:
-            data = json.loads(text)
+            from .organization_output import parse
+            data = parse(conn, payload, text, audit)
             if not isinstance(data, dict) or set(data) != {"format_version", "summary", "candidates"} or type(data["format_version"]) is not int or data["format_version"] != 1:
                 raise ValueError()
             summary, candidates = data["summary"], data["candidates"]
@@ -387,6 +412,8 @@ class OrganizationEngine:
             if sum(len(i["text"]) for i in summary) > 3000:
                 raise ValueError()
             return summary, candidates
+        except OutputError:
+            raise
         except (ValueError, KeyError, TypeError):
             raise RuntimeErrorBase("organization_invalid_output") from None
 
@@ -409,7 +436,7 @@ class OrganizationEngine:
             else:
                 conn.execute("UPDATE summaries SET status='superseded' WHERE session_id=? AND status='active'", (task["session_id"],))
             conn.execute("INSERT INTO summaries(id,persona_id,user_id,session_id,channel,task_id,previous_id,revision,start_row,end_row,items_json,sources_json,covered_json,status,reason,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (identifier(), task["persona_id"], LOCAL_USER_ID, task["session_id"], task["channel"], task["id"], previous["id"] if previous else None,
-                previous["revision"]+1 if previous else 1, covered[0], covered[-1], encoded(summary), encoded(sources), encoded(covered), "active", None, now))
+                previous["revision"]+1 if previous else 1, covered[0], covered[-1], encoded(summary), encoded(sources), encoded(covered), "active", 'coverage_gap' if payload.get('coverage_gaps') else None, now))
         for item in candidates:
             fingerprint = digest({"category": item["category"], "text": normalized(item["text"]), "sources": sorted(s["event_id"] for s in item["sources"])})
             existing = conn.execute("SELECT * FROM candidates WHERE persona_id=? AND fingerprint=?", (task["persona_id"], fingerprint)).fetchone()
@@ -427,7 +454,10 @@ class OrganizationEngine:
                 candidate = dict(conn.execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone())
                 if not item["conflicts"]:
                     self.candidates._accept(conn, candidate, "daily-"+candidate_id)
-        conn.execute("UPDATE organization_progress SET cursor=max(cursor,?),blocked_task=NULL WHERE session_id=?", (payload["rows"][-1], task["session_id"]))
+        if not payload.get('coverage_gaps'):
+            conn.execute("UPDATE organization_progress SET cursor=max(cursor,?),blocked_task=NULL WHERE session_id=?", (payload["rows"][-1], task["session_id"]))
+        else:
+            conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task['id'], task['session_id']))
 
     async def run_next(self):
         if self.running or self.draining or self.chat.draining:
@@ -475,14 +505,24 @@ class OrganizationEngine:
             conn.execute('RELEASE cognitive_call')
             conn.execute("UPDATE organization_tasks SET status='running',updated_at=? WHERE id=?", (timestamp(), task["id"]))
         self.running = True
+        audit = None
         try:
             reply, usage = await self.client.complete(model|{'_json_output':task['mode']!='test'}, messages)
+            from .organization_output import receipt
+            audit = receipt(reply)
+            audit['status'] = 'received'
+            # Receipt and billing survive a later semantic-validation rollback.
+            with self.store.connection(write=True) as conn:
+                conn.execute('UPDATE organization_attempts SET usage_json=? WHERE id=?', (encoded(usage), attempt_id))
+                conn.execute('INSERT INTO organization_receipts VALUES (?,?,?)', (attempt_id, reply, encoded(audit)))
             with self.store.connection(write=True) as conn:
                 if task["mode"] != "test":
                     if payload["guard"] != self.guard(conn, task["persona_id"], task["session_id"]) or not valid(conn,payload):
                         raise RuntimeErrorBase("source_expired")
-                    summary, candidates = self.validate_output(conn, payload, reply)
+                    summary, candidates = self.validate_output(conn, payload, reply, audit)
                     self._publish(conn, task, payload, summary, candidates)
+                audit['status'] = 'published'
+                conn.execute('UPDATE organization_receipts SET diagnostic_json=? WHERE attempt_id=?', (encoded(audit), attempt_id))
                 conn.execute("UPDATE organization_tasks SET status='completed',updated_at=? WHERE id=?", (timestamp(), task["id"]))
                 conn.execute("UPDATE organization_attempts SET status='completed',usage_json=? WHERE id=?", (encoded(usage), attempt_id))
         except BaseException as error:
@@ -490,6 +530,10 @@ class OrganizationEngine:
             code = str(error) if isinstance(error, (RuntimeErrorBase, ModelError)) else "organization_failed"
             state = "interrupted" if isinstance(error, asyncio.CancelledError) else ("stale" if code == "source_expired" else "failed")
             with self.store.connection(write=True) as conn:
+                if audit is not None:
+                    audit.update(status=state, error_code=code,
+                                 error=getattr(error, 'diagnostic', {'path': '$', 'expected': 'valid organization output', 'actual': code}))
+                    conn.execute('UPDATE organization_receipts SET diagnostic_json=? WHERE attempt_id=?', (encoded(audit), attempt_id))
                 conn.execute("UPDATE organization_tasks SET status=?,error_code=?,updated_at=? WHERE id=?", (state, code, timestamp(), task["id"]))
                 conn.execute("UPDATE organization_attempts SET status=?,error_code=? WHERE id=?", (state, code, attempt_id))
                 conn.execute("UPDATE organization_progress SET blocked_task=? WHERE session_id=?", (task["id"], task["session_id"]))

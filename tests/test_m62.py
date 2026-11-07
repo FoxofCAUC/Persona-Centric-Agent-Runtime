@@ -154,7 +154,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_batches'").fetchone());db.close()
         store.initialize();store.initialize()
         with store.connection() as conn:
-            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],20)
+            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],21)
             self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(conn.execute("SELECT dflt_value FROM pragma_table_info('interaction_policies') WHERE name='reply_mode'").fetchone()[0],"'legacy_full'")
         self.assertTrue(list((path.home/'backups').glob('before-m62-*.sqlite3')))

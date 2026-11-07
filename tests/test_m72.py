@@ -43,7 +43,7 @@ class MigrationTests(unittest.TestCase):
                 if version:old_database(store.path,version)
                 store.initialize();store.initialize()
                 with store.connection() as db:
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],20)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],21)
                     self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
                     self.assertFalse(db.execute('PRAGMA foreign_key_check').fetchall())
                     self.assertEqual(db.execute('SELECT count(*) FROM context_manifests').fetchone()[0],0)
@@ -86,6 +86,8 @@ class ContextTests(unittest.IsolatedAsyncioTestCase):
         # This reusable historical fixture exercises old snapshots, not fresh-identity defaults.
         for channel in ('desktop','qq'):
             policy=self.ingress.current_policy(self.pid,channel)
+            if policy.get('companion'):
+                policy=self.ingress.update_policy(self.pid,channel,policy['mode'],policy['id'],identifier(),companion_mode='disabled')
             self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.addCleanup(self.engine.cognitive.characters.close)
 

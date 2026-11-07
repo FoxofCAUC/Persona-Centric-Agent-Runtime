@@ -170,6 +170,38 @@ class PrivateTests(unittest.TestCase):
         self.assertNotIn(self.package['character']['lorebook'][0]['text'],json.dumps(result,ensure_ascii=False))
         with self.assertRaisesRegex(RuntimeErrorBase,'private_registry_unavailable'):publication_scan(RuntimePaths(Path(self.temp.name)/'missing'),repo)
 
+    def test_scoped_main_grant_does_not_spread_to_root_sibling_or_auxiliary(self):
+        from persona_runtime.persona_management import PersonaManagement
+        from persona_runtime.private_personas import guard_cloud_dispatch,provider_identity
+        from persona_runtime.models import identifier
+        root=self.private.import_original(self.store,self.rec['id'])['persona_id']
+        manager=PersonaManagement(self.store)
+        clone=lambda pid:manager.clone(pid,manager.inspect(pid)['versions'],self.service.show_persona()['id'],identifier())['id']
+        target=clone(root);sibling=clone(root)
+        registry_before=self.private.file.read_bytes()
+        self.cfg.update({'model':{'base_url':'https://official.fixture.invalid/v1'}})
+        model=self.cfg.load()['model'];fingerprint=provider_identity(model)
+        with self.assertRaisesRegex(RuntimeErrorBase,'persona_selection_conflict'):
+            self.private.authorize_main(self.store,target,fingerprint,identifier())
+        self.service.use_persona(target)
+        with self.assertRaisesRegex(RuntimeErrorBase,'private_provider_changed'):
+            self.private.authorize_main(self.store,target,'stale',identifier())
+        op=identifier();grant=self.private.authorize_main(self.store,target,fingerprint,op)
+        self.assertEqual(self.private.authorize_main(self.store,target,fingerprint,op),grant)
+        guard_cloud_dispatch(self.store,target,'main',model)
+        for pid,kind in ((root,'main'),(sibling,'main'),(clone(target),'main'),(target,'selector'),(target,'organization')):
+            with self.assertRaisesRegex(RuntimeErrorBase,'private_cloud_provider_not_authorized'):
+                guard_cloud_dispatch(self.store,pid,kind,model)
+        self.assertEqual(registry_before,self.private.file.read_bytes())
+        self.cfg.update({'model':{'base_url':'https://different.fixture.invalid/v1'}})
+        with self.assertRaisesRegex(RuntimeErrorBase,'submission_conflict'):
+            self.private.authorize_main(self.store,target,provider_identity(self.cfg.load()['model']),op)
+        with self.assertRaisesRegex(RuntimeErrorBase,'private_cloud_provider_not_authorized'):
+            guard_cloud_dispatch(self.store,target,'main',self.cfg.load()['model'])
+        (self.private.root/'model-grants.json').write_text('{broken',encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeErrorBase,'private_model_grants_invalid'):
+            guard_cloud_dispatch(self.store,target,'main',model)
+
     def test_hook_preserves_predecessor_on_reinstall(self):
         repo=Path(self.temp.name)/'hooks-repo';repo.mkdir();subprocess.run(['git','init','-q',str(repo)],check=True)
         hook=repo/'.git/hooks/pre-push';hook.write_text('#!/bin/sh\nexit 0\n',encoding='utf-8')

@@ -74,7 +74,7 @@ class CompanionDesktopTests(unittest.TestCase):
         self.assertEqual({k:v for k,v in calls[0].items() if k!='operation_id'},expected)
         jobs[-1][1](policy(True))
         self.assertIn('伴侣候选',w.chat_mode_text.get())
-        self.assertEqual(w.ctx_character.get(),'本地召回（伴侣候选）')
+        self.assertEqual(w.ctx_character.get(),'本地召回（伴侣聊天）')
 
     def test_restore_sends_only_restore_intent_qq_and_legacy_have_no_automatic_restore(self):
         w=self.ready(policy(True));jobs=[]
@@ -90,8 +90,8 @@ class CompanionDesktopTests(unittest.TestCase):
         self.assertEqual(str(w.ctx_companion_restore.cget('state')),'disabled')
         with patch.object(w,'run_task') as run:w.change_companion_mode(False);run.assert_not_called()
         w.ctx_channel.set('qq');w.ctx_policy=policy(channel='qq');w._context_companion_controls(w.ctx_policy)
-        self.assertEqual(str(w.ctx_companion_enable.cget('state')),'disabled')
-        with patch.object(w,'run_task') as run:w.change_companion_mode(True);run.assert_not_called()
+        self.assertEqual(str(w.ctx_companion_enable.cget('state')),'normal')
+        with patch.object(w,'run_task') as run:w.change_companion_mode(True);run.assert_called_once()
 
     def test_restore_scope_is_shown_and_cancel_writes_nothing(self):
         w=self.ready(policy(True))
@@ -99,7 +99,7 @@ class CompanionDesktopTests(unittest.TestCase):
                 patch.object(w,'run_task') as run:
             w.change_companion_mode(False);run.assert_not_called()
         text=ask.call_args.args[1]
-        for phrase in ('逐条回复','兼容全文','词法选材','辅助理解','工作集','跨会话','候选期间修改'):
+        for phrase in ('逐条回复','兼容全文','词法选材','辅助理解','工作集','跨会话','启用期间修改'):
             self.assertIn(phrase,text)
         self.assertNotIn('data_json',text)
         self.assertIn('最初',text)

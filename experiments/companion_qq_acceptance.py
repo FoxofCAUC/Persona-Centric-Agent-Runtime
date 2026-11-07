@@ -280,9 +280,10 @@ def position_for(out):
 
 class Recorder:
     """Observe actual assembly and native physical attempts, without another retry loop."""
-    def __init__(self, out, engine, target):
+    def __init__(self, out, engine, target, *, verifier=verify, position=position_for):
         self.out, self.engine, self.target = Path(out), engine, target
-        self.owner, self.paths = verify(out)
+        self.verify,self.position=verifier,position
+        self.owner, self.paths = self.verify(out)
         self.body = self.paths.home / 'runtime/qq-acceptance'
         self.current = self.request = None
         self.audit = None
@@ -298,9 +299,9 @@ class Recorder:
 
     def before_dispatch(self, engine, turn, prepared):
         try:
-            verify(self.out)
+            self.verify(self.out)
             require(not self.blocked, 'blocked')
-            case = position_for(self.out)
+            case = self.position(self.out)
             require(case is not None, 'no_remaining_position')
             require(case['id'] != 'Q06' or (self.out / 'reopen.json').exists(), 'reopen_required')
             require(turn['channel'] == 'qq' and turn['persona_id'] == self.owner['persona_id'], 'wrong_entry')
@@ -352,7 +353,7 @@ class Recorder:
                 reserve = self.folder / (attempt['id'] + '.reserve.json')
                 if not reserve.exists():
                     require(attempt['status'] == 'running', 'missing_reservation')
-                    append(reserve, {'kind': 'real' if self.owner['private'] else 'simulated', 'attempt': attempt})
+                    append(reserve, {'kind': 'real' if self.owner.get('real',self.owner['private']) else 'simulated', 'attempt': attempt})
                 atomic_json(self.folder / (attempt['id'] + '.attempt.json'), attempt)
             atomic_json(self.folder / 'audit.json', value)
         except BaseException as e:
@@ -361,13 +362,13 @@ class Recorder:
 
     async def complete(self, model, messages):
         try:
-            verify(self.out)
+            self.verify(self.out)
             require(not self.blocked and self.request is not None and self.audit is not None, 'unowned_dispatch')
             wire = build_request(model, messages)[0]
             require(messages == self.request['messages'] and wire == self.request['wire'], 'input_changed')
             attempt = self.audit['generation_retry']['attempts'][-1]
             append(self.folder / (attempt['id'] + '.dispatch.json'), {
-                'kind': 'real' if self.owner['private'] else 'simulated', 'at': timestamp(),
+                'kind': 'real' if self.owner.get('real',self.owner['private']) else 'simulated', 'at': timestamp(),
                 'wire_hash': fingerprint(wire), 'messages_hash': fingerprint(messages)})
         except BaseException as e:
             self.stop(e)
@@ -558,9 +559,10 @@ def verify_closed(out):
 
 class Runtime:
     """Normal HTTP app with an injectable observer; only the tool owns its lifetime."""
-    def __init__(self, out, *, target=None):
+    def __init__(self, out, *, target=None, verifier=verify, position=position_for):
         self.out = Path(out)
-        self.owner, self.paths = verify(out)
+        self.verify,self.position=verifier,position
+        self.owner, self.paths = self.verify(out)
         self.target = target or ChatCompletionsClient()
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.loop.run_forever, name='qq-acceptance-api', daemon=True)
@@ -577,7 +579,7 @@ class Runtime:
         engine = self.app['engine']
         if self.owner['private']:
             await asyncio.to_thread(configure_local, engine, self.paths, self.owner['persona_id'])
-        self.recorder = Recorder(self.out, engine, self.target)
+        self.recorder = Recorder(self.out, engine, self.target, verifier=self.verify, position=self.position)
         engine.client = self.recorder
         engine.evaluation_session = self.recorder
         engine.generation_audit_sink = self.recorder.save
@@ -597,7 +599,7 @@ class Runtime:
                 if row:
                     atomic_json(self.paths.home / 'runtime/qq-progress.json', {
                         'latest': row['id'], 'coverage_passed': row['coverage_passed'],
-                        'next': (position_for(self.out) or {}).get('id'), 'at': timestamp()})
+                        'next': (self.position(self.out) or {}).get('id'), 'at': timestamp()})
             except BaseException as e:
                 if isinstance(e, asyncio.CancelledError): raise
                 self.recorder.stop(e)
