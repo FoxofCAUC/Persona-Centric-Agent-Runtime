@@ -12,7 +12,8 @@ RULES_VERSION = 'companion-runtime-v5'
 EXPERIENCE_VERSION = 'companion-runtime-v6'
 NATIVE_VERSION = 'companion-runtime-v7'
 IM_VERSION = 'companion-runtime-v8'
-NATIVE_VERSIONS = (NATIVE_VERSION, IM_VERSION)
+SELECTIVE_VERSION = 'companion-runtime-v9'
+NATIVE_VERSIONS = (NATIVE_VERSION, IM_VERSION, SELECTIVE_VERSION)
 CONTRACT_VERSIONS = (STRUCTURAL_VERSION, CHAT_VERSION, PERSONA_VERSION, RULES_VERSION, EXPERIENCE_VERSION)
 RESTORE_VERSION = 'companion-restore-v1'
 RESTORE_KEY = 'companion_restore'
@@ -56,10 +57,19 @@ def checked(value):
         if value == {'version': IM_VERSION, 'mode': 'minimal', 'format_contract': native_format,
                      'instruction_version': im_instruction, 'character_consumer': native_consumer}:
             return dict(value)
+        from .companion_selective_reply import INSTRUCTION_VERSION as selective_instruction
+        if value == {'version': SELECTIVE_VERSION, 'mode': 'minimal', 'format_contract': native_format,
+                     'instruction_version': selective_instruction, 'character_consumer': native_consumer}:
+            return dict(value)
     raise RuntimeErrorBase('companion_profile_invalid')
 
 
 def choose(mode):
+    if mode == 'minimal_im_selective':
+        from .companion_native import FORMAT_VERSION, VERSION as consumer
+        from .companion_selective_reply import INSTRUCTION_VERSION
+        return checked({'version': SELECTIVE_VERSION, 'mode': 'minimal', 'format_contract': FORMAT_VERSION,
+                        'instruction_version': INSTRUCTION_VERSION, 'character_consumer': consumer})
     if mode == 'minimal_im':
         from .companion_native import FORMAT_VERSION, VERSION as consumer
         from .companion_im import INSTRUCTION_VERSION

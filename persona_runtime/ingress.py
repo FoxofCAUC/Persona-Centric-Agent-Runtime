@@ -139,7 +139,7 @@ class IngressService:
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
-            if companion_mode in ('minimal_chat','minimal_persona','minimal_context_rules_off','minimal_experience','minimal_native','minimal_im') and companion_changed and old_data.get('companion'):
+            if companion_mode in ('minimal_chat','minimal_persona','minimal_context_rules_off','minimal_experience','minimal_native','minimal_im','minimal_im_selective') and companion_changed and old_data.get('companion'):
                 from .companion import restore_available
                 if not restore_available(current):raise RuntimeErrorBase('companion_restore_missing')
             reply_mode=reply_mode or current['reply_mode']

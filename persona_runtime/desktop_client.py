@@ -49,7 +49,8 @@ class LocalClient:
             raise RuntimeErrorBase('runtime_upgrade_required')
 
     def update_companion_policy(self, **args):
-        capability = {'minimal_im': 'companion_im_text_v1',
+        capability = {'minimal_im_selective': 'companion_selective_reply_v1',
+                      'minimal_im': 'companion_im_text_v1',
                       'minimal_native': 'companion_native_text_v1',
                       'minimal_experience': 'companion_prompt_light_v1',
                       'minimal_context_rules_off': 'companion_context_rules_workbench_v1',

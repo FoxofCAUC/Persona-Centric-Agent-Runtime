@@ -23,9 +23,12 @@ class Structural(unittest.TestCase):
         self.assertEqual([(r['case_id'],r['replicate']) for r in rows[:4]],[('G08',1),('G08',1),('G11',1),('G11',1)])
 
     def test_cli_has_no_implicit_real_action(self):
-        import sys
-        with patch.object(sys,'argv',['tool','execute']):
+        import os, sys
+        with tempfile.TemporaryDirectory(dir=t.HOME/'tmp') as tmp, patch.object(t,'OUT',Path(tmp)), \
+             patch.object(sys,'argv',['tool','execute']), patch.dict(os.environ):
             with self.assertRaisesRegex(Exception,'explicit_real_required'):t.main()
+            (Path(tmp)/'closure.json').write_text('{}',encoding='utf-8')
+            with self.assertRaisesRegex(Exception,'stage_sealed'):t.main()
 
     def test_ledger_success_cannot_repeat(self):
         with tempfile.TemporaryDirectory(dir=t.HOME/'tmp') as tmp:

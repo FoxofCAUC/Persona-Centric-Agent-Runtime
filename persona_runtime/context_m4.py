@@ -86,7 +86,7 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     if experimental_context and experimental_blocks:
         raise ModelError('experimental_context_conflict')
     from .references import ReferenceError
-    from .companion import minimal,read as read_companion,MINIMAL_INSTRUCTION,MINIMAL_RENDERER,CHAT_VERSION,CONTRACT_VERSIONS,PERSONA_VERSION,RULES_VERSION,EXPERIENCE_VERSION,NATIVE_VERSION,IM_VERSION,NATIVE_VERSIONS
+    from .companion import minimal,read as read_companion,MINIMAL_INSTRUCTION,MINIMAL_RENDERER,CHAT_VERSION,CONTRACT_VERSIONS,PERSONA_VERSION,RULES_VERSION,EXPERIENCE_VERSION,NATIVE_VERSION,IM_VERSION,SELECTIVE_VERSION,NATIVE_VERSIONS
     is_minimal=minimal(turn)
     is_native=is_minimal and read_companion(turn)['version'] in NATIVE_VERSIONS
     if is_minimal and (capsule or experimental_context or experimental_blocks):raise ModelError('companion_pipeline_conflict')
@@ -270,9 +270,12 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         from .companion_prompt_light import render_blocks, INSTRUCTION_VERSION, FORMAT_RENDERER
         from .companion_chat_contract import chat_contract
         blocks=render_blocks(blocks,legacy_instruction=MINIMAL_INSTRUCTION,legacy_contract=chat_contract())
-        if read_companion(turn)['version']==IM_VERSION:
+        if read_companion(turn)['version'] in (IM_VERSION,SELECTIVE_VERSION):
             from .companion_im import render_blocks as render_im, INSTRUCTION_VERSION
             blocks=render_im(blocks)
+            if read_companion(turn)['version']==SELECTIVE_VERSION:
+                from .companion_selective_reply import render_blocks as render_selective, INSTRUCTION_VERSION
+                blocks=render_selective(blocks)
         result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
         if sum(len(m['content']) for m in result)>limit:
             raise ModelError('companion_light_input_limit_exceeded')

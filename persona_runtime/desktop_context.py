@@ -7,7 +7,7 @@ from .models import identifier
 
 def companion_candidate(policy):
     from .companion import choose
-    return (policy or {}).get('companion') in (choose('minimal_structural'), choose('minimal_chat'), choose('minimal_persona'), choose('minimal_context_rules_off'), choose('minimal_experience'), choose('minimal_native'), choose('minimal_im'))
+    return (policy or {}).get('companion') in (choose('minimal_structural'), choose('minimal_chat'), choose('minimal_persona'), choose('minimal_context_rules_off'), choose('minimal_experience'), choose('minimal_native'), choose('minimal_im'), choose('minimal_im_selective'))
 
 
 def companion_activation_allowed(policy):
@@ -22,13 +22,15 @@ def companion_activation_allowed(policy):
         checked(profile)
     except RuntimeErrorBase:
         return False
-    return profile != choose('minimal_im') and restore_available(policy)
+    return profile not in (choose('minimal_im'), choose('minimal_im_selective')) and restore_available(policy)
 
 
 def companion_description(policy):
     profile = (policy or {}).get('companion')
     if companion_candidate(policy):
         from .companion import choose
+        if profile == choose('minimal_im_selective'):
+            return 'v9接话取舍候选：本地选材，一次主回复，原生文本；仅隔离验证启用，不注入表达样例。'
         if profile == choose('minimal_im'):
             return '即时通讯候选：本地选材，一次主回复，采用原生文本和即时通讯表达指导，不注入表达样例。'
         if profile == choose('minimal_native'):
@@ -157,7 +159,7 @@ class ContextUI:
         candidate=companion_candidate(policy)
         profile=(policy or {}).get('companion')
         label='启用伴侣聊天'
-        if profile == choose('minimal_im'):
+        if profile in (choose('minimal_im'), choose('minimal_im_selective')):
             label='已启用伴侣聊天'
         elif profile:
             label='升级伴侣聊天'

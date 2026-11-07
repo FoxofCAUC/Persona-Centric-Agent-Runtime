@@ -136,6 +136,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         failed = await self.chat("失败的敏感问题", "failure")
         self.assertEqual(failed["status"], "failed")
         self.assertIsNone(failed["reply_event_id"])
+        self.assertEqual(len(self.model.calls), 4)  # First attempt plus three native retries.
         self.model.failure = None
         await self.chat("另一轮消息", "next")
         self.assertFalse(any("失败的敏感问题" in m["content"] for m in self.model.calls[-1][1]))
@@ -146,7 +147,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(revised["attempt_count"], 2)
         self.assertEqual(revised["status"], "completed")
         await self.engine.retry(failed["id"])
-        self.assertEqual(len(self.model.calls), 3)
+        self.assertEqual(len(self.model.calls), 6)
 
     async def test_quota_persistent_and_test_call_counted(self):
         self.cfg.update({"model": {"hourly_limit": 1}})

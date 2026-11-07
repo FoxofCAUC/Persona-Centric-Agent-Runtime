@@ -205,15 +205,16 @@ class Arms(unittest.IsolatedAsyncioTestCase):
         again=EvaluationSession(self.engine.assist_admission).attach(self.engine)
         with self.assertRaisesRegex(Exception,'evaluation_saved_material_invalid'):again.register(self.engine,turns)
 
-    async def test_failed_selection_shares_production_fallback_and_recovers_without_call(self):
-        session,turns,b,c=await self.prepare_matrix(selection_output='broken synthetic output')
-        self.assertEqual(b['manifest']['character_retrieval']['effective_mode'],'lexical')
-        self.assertEqual(c['manifest']['character_retrieval']['degrade_reason'],'selector_invalid_output')
-        session.verify_pair(self.engine,turns['B'],b,turns['C'],c)
+    async def test_selection_exhaustion_stops_and_saved_failure_recovery_has_no_new_call(self):
+        with self.assertRaisesRegex(Exception,'provider_retries_exhausted'):
+            await self.prepare_matrix(selection_output='broken synthetic output')
+        session=self.engine.evaluation_session
+        turns={row['arm']:tid for tid,row in session.turns.items()}
+        self.assertEqual(len(self.fake.calls),4)
         before=len(self.fake.calls)
-        group=session.turns[turns['B']]['group'];session.shared.clear();session.material_path(self.engine,group).unlink()
+        # Explicit offline saved-record recovery; the failed dispatch did not continue.
         recovered=await self.engine.selector.prepare(turns['B'])
-        self.assertEqual(recovered['degrade_reason'],'selector_invalid_output')
+        self.assertEqual(recovered['degrade_reason'],'provider_retries_exhausted')
         self.assertIsNotNone(recovered['selection_attempt_id']);self.assertEqual(len(self.fake.calls),before)
         reused=await self.engine.selector.prepare(turns['C']);self.assertEqual(reused['selection_attempt_id'],recovered['selection_attempt_id'])
 

@@ -110,5 +110,78 @@ class QQIsolationTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_account_not_ready'):await bridge.deliver_stream({},send)
             request.assert_not_called();send.assert_not_called()
 
+    async def test_v2_designates_separate_bot_with_same_sender_and_restores(self):
+        other=self.service.create_persona(generic_persona())['id']
+        with patch.object(self.policy,'_stopped'):
+            self.policy.designate_bots('33333','44444','11111')
+            self.assertEqual(self.policy.load()['version'],2)
+            self.assertEqual(self.cfg.load()['bot_qq'],'33333')
+            self.policy.enter(other)
+            self.policy.require_ready('11111')
+            self.assertEqual((self.cfg.load()['bot_qq'],self.cfg.load()['owner_qq']),('44444','11111'))
+            self.assertTrue(self.policy.enter(other)['already_applied'])
+            self.policy.restore()
+        self.assertEqual((self.cfg.load()['bot_qq'],self.cfg.load()['owner_qq']),('33333','11111'))
+        self.assertEqual(self.service.show_persona()['id'],self.pid)
+        self.assertEqual(self.policy.load()['state'],'inactive')
+
+    async def test_v2_private_bot_rejected_even_with_same_authorized_sender(self):
+        with patch.object(self.policy,'_stopped'):
+            self.policy.designate_bots('33333','44444','11111');self.policy.enter(self.pid)
+        self.cfg.update({'bot_qq':'33333'})
+        with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_account_not_ready'):
+            self.ingress.accept({'channel':'qq','text':'人工测试','request_id':identifier(),
+                'bot':'33333','sender':'11111','platform_message_id':'artificial-private-bot'})
+        with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_account_not_ready'):
+            await self.engine.submit('qq','人工测试',identifier(),origin={'bot':'33333','sender':'11111'})
+        self.fake.complete.assert_not_called()
+        with self.store.connection() as db:self.assertEqual(db.execute('SELECT count(*) FROM events').fetchone()[0],0)
+
+    async def test_v2_new_test_bot_accepts_only_authorized_sender(self):
+        with patch.object(self.policy,'_stopped'):
+            self.policy.designate_bots('33333','44444','11111');self.policy.enter(self.pid)
+        with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_account_forbidden'):
+            self.policy.require_ready('22222')
+        with patch.object(self.engine,'_schedule'):
+            receipt=self.ingress.accept({'channel':'qq','text':'人工测试','request_id':identifier(),
+                'bot':'44444','sender':'11111','platform_message_id':'artificial-test-bot'})
+        with self.store.connection() as db:
+            row=db.execute('SELECT bot,peer FROM input_batches WHERE id=?',(receipt['batch_id'],)).fetchone()
+            self.assertEqual(tuple(row),('44444','11111'))
+        self.fake.complete.assert_not_called()
+
+    async def test_v2_entering_and_restoring_recovery_keeps_bot_binding(self):
+        with patch.object(self.policy,'_stopped'):
+            self.policy.designate_bots('33333','44444','11111')
+            value=self.policy.load();value.update(state='entering',restore_persona_id=self.pid,test_persona_id=self.pid)
+            atomic_json(self.policy.file,value)
+            self.policy.enter(self.pid)
+            with patch.object(ConfigStore,'update',side_effect=OSError('fixture-write-failure')):
+                with self.assertRaises(OSError):self.policy.restore()
+            self.assertEqual(self.policy.load()['state'],'restoring')
+            with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_account_not_ready'):self.policy.require_ready('11111')
+            self.policy.restore()
+        self.assertEqual(self.cfg.load()['bot_qq'],'33333')
+
+    async def test_v2_conflicting_manual_identity_not_overwritten(self):
+        with patch.object(self.policy,'_stopped'):
+            self.policy.designate_bots('33333','44444','11111');self.policy.enter(self.pid)
+            self.cfg.update({'bot_qq':'55555'})
+            with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_identity_changed'):self.policy.restore()
+        self.assertEqual(self.cfg.load()['bot_qq'],'55555')
+
+    async def test_v2_assignment_rejects_active_policy_and_same_bot(self):
+        with patch.object(self.policy,'_stopped'):
+            self.policy.designate_bots('33333','44444','11111')
+            with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_policy_invalid'):
+                self.policy.designate_bots('33333','33333','11111')
+            self.policy.enter(self.pid)
+            with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_restore_required'):
+                self.policy.designate_bots('33333','55555','11111')
+
+    async def test_unknown_identity_policy_version_rejected(self):
+        value=self.policy.load();value['version']=3;atomic_json(self.policy.file,value)
+        with self.assertRaisesRegex(RuntimeErrorBase,'qq_test_policy_invalid'):self.policy.load()
+
 
 if __name__=='__main__':unittest.main()

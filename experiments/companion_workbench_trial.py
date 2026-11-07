@@ -240,6 +240,8 @@ def open_window(binding_path=None, source_home=DEFAULT_HOME, *, trial_manifest=N
                 title = companion_c2_chat.LIGHT_TITLE
             if runtime.trial_owner["version"] == companion_c2_chat.NATIVE_VERSION:
                 title = companion_c2_chat.NATIVE_TITLE
+            if runtime.trial_owner["version"] == companion_c2_chat.SELECTIVE_VERSION:
+                title = companion_c2_chat.SELECTIVE_TITLE
             if runtime.trial_owner["version"] == companion_c2_chat.IM_VERSION:
                 title = companion_c2_chat.IM_TITLE
         else:

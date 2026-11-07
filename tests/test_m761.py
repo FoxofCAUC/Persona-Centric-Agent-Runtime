@@ -160,7 +160,7 @@ class M761(unittest.IsolatedAsyncioTestCase):
         op=identifier();self.ingress.update_policy(self.pid,'desktop',p['mode'],p['id'],op,disposition_mode='shadow')
         with self.assertRaisesRegex(RuntimeErrorBase,'submission_conflict'):
             self.ingress.update_policy(self.pid,'desktop',p['mode'],p['id'],op,disposition_mode='baseline')
-        with self.assertRaisesRegex(RuntimeErrorBase,'invalid_disposition_mode'):
+        with self.assertRaisesRegex(RuntimeErrorBase,'live_not_admitted'):
             self.ingress.update_policy(self.pid,'desktop',p['mode'],p['id'],identifier(),disposition_mode='live')
 
     async def test_foreign_source_and_missing_manifest_fail_before_provider(self):
@@ -341,7 +341,10 @@ class M761(unittest.IsolatedAsyncioTestCase):
     async def test_malformed_optional_shadow_snapshot_is_reported_not_applied(self):
         self.publish();self.shadow_on();r=await self.engine.submit('desktop','人工消息',identifier(),persona_id=self.pid);await self.engine.wait()
         with self.store.connection() as db:turn=dict(db.execute('SELECT * FROM turns WHERE id=?',(r['id'],)).fetchone())
-        for value in ({'mode':'live'},[],{'mode':'shadow','extra':'not-copied'}):
+        turn['context_policy_snapshot']=json.dumps({'disposition':{'mode':'live'}})
+        with self.assertRaisesRegex(RuntimeErrorBase,'live_not_admitted'):
+            self.engine.cognitive.shadow.prepare(turn)
+        for value in ([],{'mode':'shadow','extra':'not-copied'}):
             turn['context_policy_snapshot']=json.dumps({'disposition':value})
             result=self.engine.cognitive.shadow.prepare(turn)
             self.assertEqual(result['status'],'snapshot_invalid');self.assertFalse(result['applied_to_prompt'])

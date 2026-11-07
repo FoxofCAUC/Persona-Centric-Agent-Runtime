@@ -94,11 +94,11 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(turn['reply'],'\n\n'.join(row['text'] for row in turn['reply_batch']['segments']))
         self.assertIn('只返回一个 JSON 对象',self.fake.messages[0][0]['content'])
 
-    async def test_invalid_structured_reply_fails_without_second_call_and_keeps_usage(self):
+    async def test_invalid_structured_reply_exhausts_native_retries_and_keeps_usage(self):
         self.policy('context_structured');self.fake.response='{"schema_version":1,"segments":[{"text":"好","format":"plain","send_to":"other"}]}'
         receipt=self.accept('回答一下')
         await self.engine.wait();turn=self.engine.get(receipt['turn_id'])
-        self.assertEqual(self.fake.calls,1);self.assertEqual(turn['error_code'],'reply_schema_invalid')
+        self.assertEqual(self.fake.calls,4);self.assertEqual(turn['error_code'],'provider_retries_exhausted')
         self.assertIsNone(turn['reply']);self.assertIsNotNone(turn['usage']);self.assertEqual(turn['reply_batch'],None)
 
     async def test_mode_snapshot_is_frozen_at_acceptance(self):
@@ -132,7 +132,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         receipt=self.accept('代码修正')
         await self.engine.wait()
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],16);self.assertEqual(len(data['reply_batches']),1)
+        self.assertEqual(data['format_version'],17);self.assertEqual(len(data['reply_batches']),1)
         self.assertEqual(len(data['reply_segments']),2)
         self.assertNotIn('encrypted_key',json.dumps(data))
 
@@ -154,7 +154,7 @@ class M62Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_batches'").fetchone());db.close()
         store.initialize();store.initialize()
         with store.connection() as conn:
-            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],19)
+            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],20)
             self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(conn.execute("SELECT dflt_value FROM pragma_table_info('interaction_policies') WHERE name='reply_mode'").fetchone()[0],"'legacy_full'")
         self.assertTrue(list((path.home/'backups').glob('before-m62-*.sqlite3')))

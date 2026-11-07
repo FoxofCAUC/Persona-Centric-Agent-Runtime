@@ -1,7 +1,8 @@
 """Local QQ acceptance identity policy. Account identifiers never belong in Git.
 
 Switch only while all services are stopped; persist recovery before config writes.
-Ordinary operation keeps the daily account. Tests use a separate peer and persona.
+v1 isolates the peer; v2 isolates the Bot and may use the same authorized sender.
+Both retain the original identity and persona for explicit restoration.
 """
 import argparse
 import json
@@ -19,6 +20,18 @@ class QQTesting:
         self.paths=paths
         self.file=paths.home/'private/qq-testing.json'
 
+    @staticmethod
+    def _validate(value):
+        assert type(value['version']) is int and value['version'] in (1,2)
+        assert value['state'] in ('inactive','entering','active','restoring')
+        keys=('daily_peer','test_peer')+ (('daily_bot','test_bot') if value['version']==2 else ())
+        assert all(isinstance(value[k],str) and value[k].isascii() and value[k].isdigit() for k in keys)
+        if value['version']==1:
+            assert value['daily_peer']!=value['test_peer']
+        else:
+            assert value['daily_bot']!=value['test_bot']
+            assert value['daily_bot']!=value['daily_peer'] and value['test_bot']!=value['test_peer']
+
     def load(self, required=False):
         if not self.file.exists():
             if required:raise RuntimeErrorBase('qq_test_policy_missing')
@@ -27,23 +40,45 @@ class QQTesting:
         safe(self.file,self.paths.home)
         try:
             value=json.loads(self.file.read_text(encoding='utf-8'))
-            assert value['version']==1 and value['state'] in ('inactive','entering','active','restoring')
-            assert all(isinstance(value[k],str) and value[k].isascii() and value[k].isdigit()
-                       for k in ('daily_peer','test_peer'))
-            assert value['daily_peer']!=value['test_peer']
+            self._validate(value)
         except (OSError,ValueError,KeyError,TypeError,AssertionError):
             raise RuntimeErrorBase('qq_test_policy_invalid') from None
         return value
 
-    def configure(self, daily_peer, test_peer):
+    def configure(self, daily_peer, test_peer, *, daily_bot=None, test_bot=None):
         if self.load() is not None:raise RuntimeErrorBase('qq_test_policy_already_configured')
         from .private_personas import safe
         safe(self.file,self.paths.home)
-        value={'version':1,'state':'inactive','daily_peer':daily_peer,'test_peer':test_peer}
-        if any(not isinstance(v,str) or not v.isascii() or not v.isdigit() for v in (daily_peer,test_peer)) or daily_peer==test_peer:
-            raise RuntimeErrorBase('qq_test_policy_invalid')
+        value={'version':1 if daily_bot is None and test_bot is None else 2,
+               'state':'inactive','daily_peer':daily_peer,'test_peer':test_peer}
+        if value['version']==2:value.update(daily_bot=daily_bot,test_bot=test_bot)
+        try:self._validate(value)
+        except (KeyError,TypeError,AssertionError):raise RuntimeErrorBase('qq_test_policy_invalid') from None
         atomic_json(self.file,value)
         return {'configured':True,'active':False}
+
+    def designate_bots(self, daily_bot, test_bot, sender):
+        """Explicit stopped-instance assignment; never start or switch a live route."""
+        from .models import identifier
+        from .private_personas import safe
+        value={'version':2,'state':'inactive','daily_peer':sender,'test_peer':sender,
+               'daily_bot':daily_bot,'test_bot':test_bot}
+        try:self._validate(value)
+        except (KeyError,TypeError,AssertionError):raise RuntimeErrorBase('qq_test_policy_invalid') from None
+        with ExitStack() as stack:
+            self._stopped(stack)
+            previous=self.load()
+            if previous is not None and previous['state']!='inactive':
+                raise RuntimeErrorBase('qq_test_restore_required')
+            cfg=ConfigStore(self.paths).load()
+            if (cfg['bot_qq'],cfg['owner_qq'])!=(daily_bot,sender):
+                raise RuntimeErrorBase('qq_test_daily_account_changed')
+            if previous==value:return {'configured':True,'active':False,'already_applied':True,'version':2}
+            if previous is not None:
+                history=safe(self.paths.home/'private/qq-testing-history'/f'{identifier()}.json',self.paths.home)
+                atomic_json(history,previous)
+            atomic_json(self.file,value)
+        return {'configured':True,'active':False,'version':2,'services_started':False}
 
     def active(self):
         value=self.load()
@@ -51,7 +86,8 @@ class QQTesting:
 
     def require_ready(self, peer=None):
         value=self.load(True);cfg=ConfigStore(self.paths).load()
-        if value['state']!='active' or cfg['owner_qq']!=value['test_peer']:
+        if (value['state']!='active' or cfg['owner_qq']!=value['test_peer']
+                or value['version']==2 and cfg['bot_qq']!=value['test_bot']):
             raise RuntimeErrorBase('qq_test_account_not_ready')
         if peer is not None and str(peer)!=value['test_peer']:
             raise RuntimeErrorBase('qq_test_account_forbidden')
@@ -99,11 +135,21 @@ class QQTesting:
                 return {'active':True,'already_applied':True}
             if value['state']=='restoring':raise RuntimeErrorBase('qq_test_restore_required')
             if value['state']=='inactive':
-                if cfg.load()['owner_qq']!=value['daily_peer']:raise RuntimeErrorBase('qq_test_daily_account_changed')
+                current=cfg.load()
+                if (current['owner_qq']!=value['daily_peer']
+                        or value['version']==2 and current['bot_qq']!=value['daily_bot']):
+                    raise RuntimeErrorBase('qq_test_daily_account_changed')
                 value.update(state='entering',restore_persona_id=service.show_persona()['id'],test_persona_id=persona_id)
                 atomic_json(self.file,value)
             elif value['test_persona_id']!=persona_id:raise RuntimeErrorBase('qq_test_persona_conflict')
-            cfg.update({'owner_qq':value['test_peer']});service.use_persona(persona_id)
+            if value['version']==2:
+                current=cfg.load()
+                if (current['bot_qq'],current['owner_qq']) not in (
+                        (value['daily_bot'],value['daily_peer']), (value['test_bot'],value['test_peer'])):
+                    raise RuntimeErrorBase('qq_test_identity_changed')
+            update={'owner_qq':value['test_peer']}
+            if value['version']==2:update['bot_qq']=value['test_bot']
+            cfg.update(update);service.use_persona(persona_id)
             value['state']='active';atomic_json(self.file,value)
             return {'active':True,'services_started':False}
 
@@ -115,9 +161,16 @@ class QQTesting:
             self._stopped(stack);store=Store(self.paths);self._idle(store)
             value=self.load(True)
             if value['state']=='inactive':return {'active':False,'already_restored':True}
+            if value['version']==2:
+                current=ConfigStore(self.paths).load()
+                if (current['bot_qq'],current['owner_qq']) not in (
+                        (value['daily_bot'],value['daily_peer']), (value['test_bot'],value['test_peer'])):
+                    raise RuntimeErrorBase('qq_test_identity_changed')
             value['state']='restoring';atomic_json(self.file,value)
             cfg=ConfigStore(self.paths);QuotaService(store,cfg).end_acceptance()
-            cfg.update({'owner_qq':value['daily_peer']})
+            update={'owner_qq':value['daily_peer']}
+            if value['version']==2:update['bot_qq']=value['daily_bot']
+            cfg.update(update)
             RuntimeService(store).use_persona(value['restore_persona_id'])
             value['state']='inactive';atomic_json(self.file,value)
             return {'active':False,'daily_account_restored':True,'persona_restored':True}
@@ -133,7 +186,9 @@ def main():
     elif args.action=='restore':result=policy.restore()
     else:
         value=policy.load(True);result={'configured':True,'state':value['state'],
-            'configured_peer_is_test':ConfigStore(policy.paths).load()['owner_qq']==value['test_peer']}
+            'configured_peer_is_test':ConfigStore(policy.paths).load()['owner_qq']==value['test_peer'],
+            'configured_bot_is_test':(ConfigStore(policy.paths).load()['bot_qq']==value['test_bot']
+                                      if value['version']==2 else None)}
     print(json.dumps(result,ensure_ascii=False))
 
 

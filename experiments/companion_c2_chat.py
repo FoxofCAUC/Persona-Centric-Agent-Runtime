@@ -46,6 +46,9 @@ NATIVE_TITLE = 'PCAR · 无示范纯文本体验'
 IM_VERSION = 'companion-im-workbench-v1'
 IM_NAMESPACE = 'companion-im-chat'
 IM_TITLE = 'PCAR · DeepSeek即时通讯体验'
+SELECTIVE_VERSION = 'companion-selective-workbench-v1'
+SELECTIVE_NAMESPACE = 'companion-selective-chat'
+SELECTIVE_TITLE = 'PCAR · 接话取舍候选体验'
 read = replay.read
 
 
@@ -82,8 +85,8 @@ def conditions(paths, pid):
             'owner_hash': replay.sha(paths.home / 'private-sandbox.json')}
 
 
-def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=False, integration=False, persona_purpose=False, context_rules_off=False, prompt_light=False, native_text=False, im_style=False, model_configuration_home=None):
-    require(sum((integration, persona_purpose, context_rules_off, prompt_light, native_text, im_style)) <= 1, 'conflicting_trial_modes')
+def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=False, integration=False, persona_purpose=False, context_rules_off=False, prompt_light=False, native_text=False, im_style=False, selective=False, model_configuration_home=None):
+    require(sum((integration, persona_purpose, context_rules_off, prompt_light, native_text, im_style, selective)) <= 1, 'conflicting_trial_modes')
     source_home = Path(source_home).resolve()
     paths, _, record, _, _ = adoption._saved(binding_path, source_home)
     source = deepcopy(ConfigStore(paths).load())
@@ -116,9 +119,11 @@ def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=
         version, namespace, mode = NATIVE_VERSION, NATIVE_NAMESPACE, 'minimal_native'
     if im_style:
         version, namespace, mode = IM_VERSION, IM_NAMESPACE, 'minimal_im'
+    if selective:
+        version, namespace, mode = SELECTIVE_VERSION, SELECTIVE_NAMESPACE, 'minimal_im_selective'
     root = safe(source_home / 'tmp' / namespace / identifier(), source_home)
     root.mkdir(parents=True)
-    if (prompt_light or native_text or im_style) and private:
+    if (prompt_light or native_text or im_style or selective) and private:
         private_directory(source_home, root)
     owner = {'version': version, 'status': 'preparing', 'private': private,
              'source_home': str(source_home), 'source_config_hash': formal_config_hash,
@@ -141,7 +146,7 @@ def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=
             marker = read(marker_path)
             marker['purpose'] = version
             atomic_json(marker_path, marker)
-            if (prompt_light or native_text or im_style) and private:
+            if (prompt_light or native_text or im_style or selective) and private:
                 private_directory(source_home, copy_paths.home)
             config = configure(copy_paths, source, pid)
             atomic_json(copy_paths.home / 'runtime/private-copy-policy.json', {
@@ -159,7 +164,7 @@ def prepare(binding_path, source_home=DEFAULT_HOME, *, approve_current_provider=
                       'model_public': replay.base.public_model(source['model']),
                       'experience': ('one_free_conversation_10_to_15_turns_early_end_allowed' if persona_purpose
                                      else 'one_free_conversation_8_to_12_turns_early_end_allowed')}
-            if prompt_light or native_text or im_style:
+            if prompt_light or native_text or im_style or selective:
                 frozen['approved_versions'] = deepcopy(owner['approved_versions'])
             atomic_json(body(owner) / 'plan.json', frozen)
             atomic_json(body(owner) / 'state.json', {'status': 'prepared', 'real_calls': 0})
@@ -183,10 +188,10 @@ def verify(manifest):
     owner = read(manifest)
     source = Path(owner['source_home']).resolve()
     version = owner.get('version')
-    require(version in (VERSION, lifecycle.VERSION, PURPOSE_VERSION, RULES_VERSION, LIGHT_VERSION, NATIVE_VERSION, IM_VERSION), 'version_invalid')
+    require(version in (VERSION, lifecycle.VERSION, PURPOSE_VERSION, RULES_VERSION, LIGHT_VERSION, NATIVE_VERSION, IM_VERSION, SELECTIVE_VERSION), 'version_invalid')
     namespace = {VERSION: NAMESPACE, lifecycle.VERSION: lifecycle.NAMESPACE,
                  PURPOSE_VERSION: PURPOSE_NAMESPACE, RULES_VERSION: RULES_NAMESPACE,
-                 LIGHT_VERSION: LIGHT_NAMESPACE, NATIVE_VERSION: NATIVE_NAMESPACE, IM_VERSION: IM_NAMESPACE}[version]
+                 LIGHT_VERSION: LIGHT_NAMESPACE, NATIVE_VERSION: NATIVE_NAMESPACE, IM_VERSION: IM_NAMESPACE, SELECTIVE_VERSION: SELECTIVE_NAMESPACE}[version]
     require(manifest.name == 'trial.json' and manifest.parent.parent == source / 'tmp' / namespace,
             'manifest_scope')
     require(owner.get('status') == 'prepared', 'not_prepared')
@@ -202,8 +207,8 @@ def verify(manifest):
     require(conditions(RuntimePaths(home), owner['persona_id']) == plan['conditions'], 'conditions_changed')
     require(replay.sha(owner['author_binding']) == owner['author_binding_hash'], 'approval_changed')
     adoption._saved(owner['author_binding'], source)
-    if version in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION):
-        mode = {LIGHT_VERSION: 'minimal_experience', NATIVE_VERSION: 'minimal_native', IM_VERSION: 'minimal_im'}[version]
+    if version in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION, SELECTIVE_VERSION):
+        mode = {LIGHT_VERSION: 'minimal_experience', NATIVE_VERSION: 'minimal_native', IM_VERSION: 'minimal_im', SELECTIVE_VERSION: 'minimal_im_selective'}[version]
         require(plan['profile'] == choose(mode), 'light_profile_changed')
         require(plan.get('approved_versions') == owner['approved_versions'], 'light_author_binding_changed')
     require(fingerprint(ConfigStore(RuntimePaths(source)).load()) == owner['source_config_hash'],
@@ -305,13 +310,13 @@ class ConversationGuard:
                                        (turn['id'],)).fetchone(), 'previous_failure_requires_review')
             self.folder = self.data / 'turns' / turn['id']
             require(not (self.folder / 'request.json').exists(), 'successful_position_not_replayed')
-            if self.owner['version'] in (NATIVE_VERSION, IM_VERSION):
+            if self.owner['version'] in (NATIVE_VERSION, IM_VERSION, SELECTIVE_VERSION):
                 require(not (prepared['details'].get('character') or {}).get('example_ids'), 'native_examples_present')
                 require(all(b['characters'] == 0 for b in prepared['details']['prompt_assembly']['blocks']
                             if b['name'] == 'reply_protocol'), 'native_output_template_present')
             hook, captured = replay.base.capture_hook(self.folder, development=not self.owner['private'])
             hook.before_dispatch(engine, turn, prepared)
-            if self.owner['version'] in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION):
+            if self.owner['version'] in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION, SELECTIVE_VERSION):
                 atomic_json(self.folder / 'material-usage.json', light_material_record(turn, prepared))
             self.request = captured['request']
             self.audit = None
@@ -424,7 +429,7 @@ def audit(manifest):
                     row['retries'] = max(0, len(row['provider_attempts']) - 1)
                 row['wire_hash'] = request['wire_hash']
                 row['wire_matches'] = all(read(p)['wire_hash'] == request['wire_hash'] for p in dispatches)
-                if owner['version'] in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION):
+                if owner['version'] in (LIGHT_VERSION, NATIVE_VERSION, IM_VERSION, SELECTIVE_VERSION):
                     material = folder / 'material-usage.json'
                     row['material_usage'] = read(material) if material.exists() else {'status': 'not_collected'}
             atomic_json(folder / 'result.json', turn)

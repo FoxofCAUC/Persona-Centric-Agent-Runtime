@@ -94,7 +94,7 @@ def configure_policy(store, config, persona_id, mode, *, background_prepare=True
         ingress.update_policy(persona_id, 'desktop', 'natural_batch', current['id'], identifier(),
             companion_mode=mode, conversation_policy_version=2, expression_policy_version=3,
             disposition_mode='baseline', situation_observation_mode='disabled',
-            reply_mode='context_full' if mode in ('minimal_native', 'minimal_im') else 'natural_structured',
+            reply_mode='context_full' if mode in ('minimal_native', 'minimal_im', 'minimal_im_selective') else 'natural_structured',
             character_retrieval_mode='hybrid_llm' if mode == 'current' else 'hybrid')
     finally:
         if not background_prepare:
