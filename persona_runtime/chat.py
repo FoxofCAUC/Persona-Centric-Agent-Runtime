@@ -456,11 +456,8 @@ class ChatEngine:
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
-                    from .memory_policy import project_capacity_used
-                    count = project_capacity_used(conn, time.time()-3600, turn_id)
-                    limit = self.config.load()["model"]["hourly_limit"]
-                    if limit and count >= limit:
-                        raise ModelError("hourly_limit_reached")
+                    # Human main replies (including probes/retries) are audited
+                    # but do not consume the automatic-call quota.
                     conn.execute("UPDATE quota_reservations SET state='consumed' WHERE turn_id=? AND execution_revision=? AND state='active'",(turn_id,turn['execution_revision']))
                     attempt_id = identifier()
                     conn.execute("INSERT INTO attempts VALUES (?,?,?,'running',NULL,NULL,?)",
@@ -491,11 +488,6 @@ class ChatEngine:
                         guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
                         fresh=self.cognitive.finalize(conn,current,prepared)
                         if fresh['messages']!=messages:raise ModelError('generation_retry_sources_changed')
-                        if state['attempts']:
-                            from .memory_policy import project_capacity_used
-                            cap=self.config.load()['model']['hourly_limit']
-                            if cap and project_capacity_used(conn,time.time()-3600,turn_id)+1>cap:
-                                raise ModelError('hourly_limit_reached')
                 def validate_generation(text):
                     try:return validate_reply(text,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
                     except ReplySchemaError as error:

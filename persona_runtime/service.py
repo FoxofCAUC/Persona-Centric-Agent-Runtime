@@ -166,15 +166,19 @@ class RuntimeService:
             raise RuntimeErrorBase("limit must be between 1 and 1000")
         with self.store.connection() as conn:
             persona_id = self._persona(conn)["id"]
+            from .automatic_memory import usable_fact
             return [dict(row) for row in conn.execute(
                 "SELECT * FROM memories WHERE persona_id=? AND user_id=? AND status='active' "
                 "AND instr(text, ?) > 0 ORDER BY updated_at DESC, id DESC LIMIT ?",
-                (persona_id, LOCAL_USER_ID, query, limit))]
+                (persona_id, LOCAL_USER_ID, query, limit)) if usable_fact(conn,row)]
 
     def show_memory(self, memory_id: str) -> dict:
         with self.store.connection() as conn:
             persona_id = self._persona(conn)["id"]
             result = self._owned(conn, "memories", memory_id, persona_id)
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name='memory_facts'").fetchone():
+                fact=conn.execute('SELECT * FROM memory_facts WHERE memory_id=?',(memory_id,)).fetchone()
+                result['lifecycle']=dict(fact) if fact else None
             result["source"] = self._owned(conn, "events", result["source_event_id"], persona_id)
             result["sources"] = [dict(r) for r in conn.execute("SELECT * FROM memory_sources WHERE memory_id=?", (memory_id,))]
             result["history"] = []
@@ -186,6 +190,22 @@ class RuntimeService:
                 result["history"].append(revision)
             return result
 
+    def memory_history(self,at=None):
+        from datetime import datetime
+        if at is not None:
+            try:point=datetime.fromisoformat(at)
+            except (TypeError,ValueError):raise RuntimeErrorBase('invalid_memory_time') from None
+            if point.tzinfo is None:raise RuntimeErrorBase('invalid_memory_time')
+        with self.store.connection() as conn:
+            pid=self._persona(conn)['id'];result=[]
+            for row in conn.execute('SELECT * FROM memories WHERE persona_id=? AND user_id=? ORDER BY root_id,revision',(pid,LOCAL_USER_ID)):
+                m=dict(row);f=conn.execute('SELECT * FROM memory_facts WHERE memory_id=?',(m['id'],)).fetchone();m['lifecycle']=dict(f) if f else None
+                if at is not None:
+                    start=f['valid_from'] if f and f['valid_from'] else m['created_at'];end=f['valid_until'] if f and f['valid_until'] else m['updated_at'] if m['status']!='active' else None
+                    if point<datetime.fromisoformat(start) or end and point>=datetime.fromisoformat(end):continue
+                result.append(m)
+            return result
+
     def revise_memory(self, memory_id: str, text: str, source_event_id: str | None = None) -> dict:
         require_text(text, "text")
         with self.store.connection(write=True) as conn:
@@ -195,7 +215,9 @@ class RuntimeService:
                 raise RuntimeErrorBase("Only the active memory revision can be revised")
             source = old["source_event_id"] if source_event_id is None else source_event_id
             self._owned(conn, "events", source, persona_id)
-            exclude_memory(conn, old, "memory_revised")
+            from .automatic_memory import supersede_fact,copy_manual_fact,human_source_check
+            human_source_check(conn,old,[source])
+            fact=supersede_fact(conn,old)
             now = timestamp()
             conn.execute("UPDATE memories SET status='superseded', updated_at=? WHERE id=?", (now, memory_id))
             new_id = identifier()
@@ -204,6 +226,7 @@ class RuntimeService:
                           old["root_id"], old["id"], old["revision"] + 1, "active", now, now))
             if source_event_id is None:
                 conn.execute("INSERT INTO memory_sources SELECT ?,event_id,quote FROM memory_sources WHERE memory_id=?", (new_id, old["id"]))
+            copy_manual_fact(conn,fact,new_id)
             return self._owned(conn, "memories", new_id, persona_id)
 
     def retract_memory(self, memory_id: str) -> dict:
@@ -229,7 +252,8 @@ class RuntimeService:
     def export_persona(self, name: str | None = None) -> dict:
         with self.store.connection() as conn:
             persona = self._persona(conn)
-            payload = {"format_version": 17, "exported_at": timestamp(), "persona": persona,
+            automatic=bool(conn.execute("SELECT 1 FROM sqlite_master WHERE name='memory_batches'").fetchone())
+            payload = {"format_version": 18 if automatic else 17, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             payload['persona_lifecycle']=[dict(r) for r in conn.execute('SELECT * FROM persona_lifecycle WHERE persona_id=?',(persona['id'],))]
             payload['persona_operations']=[dict(r) for r in conn.execute("SELECT * FROM persona_operations WHERE json_extract(result_json,'$.id')=?",(persona['id'],))]
@@ -274,6 +298,19 @@ class RuntimeService:
             payload['quota_reservations']=[dict(r)|{'restore_active':False} for r in conn.execute('SELECT * FROM quota_reservations WHERE persona_id=? AND user_id=? ORDER BY rowid',(persona['id'],LOCAL_USER_ID))]
             payload['turn_input_batches']=[dict(r) for r in conn.execute('SELECT id,input_batch_id FROM turns WHERE persona_id=?',(persona['id'],))]
             payload['profile_heads']=[dict(r) for r in conn.execute('SELECT * FROM profile_heads WHERE persona_id=?',(persona['id'],))]
+            from .schema_m8d import TABLES as automatic_tables
+            for table in automatic_tables:
+                if not automatic or table in ('memory_defaults','memory_scopes'):continue
+                payload[table]=[dict(r) for r in conn.execute('SELECT * FROM '+table+' WHERE persona_id=?',(persona['id'],))]
+                if table=='memory_operations':payload[table]=[r for r in payload[table] if not r['id'].startswith('manual-memory-scan:')]
+                if table=='memory_fragments':
+                    for fragment in payload[table]:
+                        data=json.loads(fragment['data_json']);data.pop('manual_rebuild_operation',None);fragment['data_json']=json.dumps(data,ensure_ascii=False)
+            from .private_personas import PrivatePersonas
+            if automatic:
+                records=PrivatePersonas(self.store.paths).load()['records']
+                inherited=conn.execute('SELECT 1 FROM persona_lifecycle WHERE (persona_id=? AND privacy_root IS NOT NULL) OR privacy_root=? LIMIT 1',(persona['id'],persona['id'])).fetchone()
+                payload['private_protected']=bool(inherited or any(r.get('persona_id')==persona['id'] for r in records))
         path = self._output_path("exports", name, ".json")
         created = False
         try:

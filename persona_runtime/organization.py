@@ -62,6 +62,9 @@ class SummaryService:
             conn.execute("WITH RECURSIVE dependent(id) AS (SELECT id FROM summaries WHERE id=? UNION ALL "
                          "SELECT s.id FROM summaries s JOIN dependent d ON s.previous_id=d.id) "
                          "UPDATE summaries SET status='disabled',reason='user_disabled' WHERE id IN (SELECT id FROM dependent)", (summary_id,))
+            if row.get('reason')=='automatic_memory':
+                conn.execute("UPDATE memory_fragments SET state='disabled' WHERE session_id=? AND state='active'",(row['session_id'],))
+                conn.execute("UPDATE memory_coverage SET summary_state='disabled' WHERE turn_id IN (SELECT id FROM turns WHERE session_id=?)",(row['session_id'],))
         return self.show(summary_id)
 
 
@@ -126,6 +129,8 @@ class CandidateService:
             old = RuntimeService._owned(conn, "memories", target_memory_id, candidate["persona_id"])
             if old["status"] != "active" or old["revision"] != expected_revision:
                 raise RuntimeErrorBase("memory_version_conflict")
+            from .automatic_memory import human_source_check
+            human_source_check(conn,old,[s['event_id'] for s in sources])
         else:
             for existing in conn.execute("SELECT * FROM memories WHERE persona_id=? AND status='active' AND category=?", (candidate["persona_id"], candidate["category"])):
                 if normalized(existing["text"]) == normalized(text):
@@ -136,7 +141,8 @@ class CandidateService:
         if old or memory_id is None:
             memory_id, now = identifier(), timestamp()
             if old:
-                exclude_memory(conn, old, "memory_revised")
+                from .automatic_memory import supersede_fact
+                supersede_fact(conn,old)
                 conn.execute("UPDATE memories SET status='superseded',updated_at=? WHERE id=?", (now, old["id"]))
             conn.execute("INSERT INTO memories VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
                 memory_id, candidate["persona_id"], LOCAL_USER_ID, candidate["category"], text,
@@ -144,6 +150,11 @@ class CandidateService:
                 old["id"] if old else None, old["revision"]+1 if old else 1, "active", now, now))
         for source in sources:
             conn.execute("INSERT OR IGNORE INTO memory_sources VALUES (?,?,?)", (memory_id, source["event_id"], source["quote"]))
+        if old:
+            from .automatic_memory import available,copy_manual_fact
+            if available(conn):
+                fact=conn.execute('SELECT * FROM memory_facts WHERE memory_id=?',(old['id'],)).fetchone()
+                copy_manual_fact(conn,dict(fact) if fact else None,memory_id)
         conn.execute("UPDATE candidates SET status='accepted',memory_id=? WHERE id=?", (memory_id, candidate["id"]))
         conn.execute("INSERT INTO candidate_reviews VALUES (?,?,?,?,?,?,?,?)", (operation_id, candidate["persona_id"], LOCAL_USER_ID, candidate["id"], "revise" if old else "accept", memory_id, text, timestamp()))
         return {"memory_id": memory_id, "already_accepted": False}
@@ -175,6 +186,8 @@ class OrganizationEngine:
         self.schedule.initialize()
         from .managed_organization import ManagedOrganization
         self.managed = ManagedOrganization(self)
+        from .automatic_memory import AutomaticMemory,available
+        with self.store.connection() as db:self.automatic=AutomaticMemory(self) if available(db) else None
 
     def model(self):
         cfg = self.config.load()
@@ -254,6 +267,9 @@ class OrganizationEngine:
 
     @staticmethod
     def messages(payload):
+        if payload.get('automatic_memory'):
+            from .automatic_memory_output import messages
+            return messages(payload)
         if payload.get('source_format') == 2:
             from .session_organization import messages
             return messages(payload)
@@ -272,7 +288,7 @@ class OrganizationEngine:
             "mode": payload["mode"], "existing_memories": payload.get("existing_memories", []),
             "previous_summary": json.loads(previous["items_json"]) if previous else [], "events": payload["events"]})}]
 
-    def submit(self, preview, request_id, automatic=False, fixed_persona=None):
+    def submit(self, preview, request_id, automatic=False, fixed_persona=None, *, manual_request=False):
         from .private_personas import guard_acceptance_write
         if isinstance(preview,dict):guard_acceptance_write(self.store,preview.get('persona_id'))
         require_text(request_id, 'request_id')
@@ -290,6 +306,10 @@ class OrganizationEngine:
             if self.draining or self.chat.draining:raise RuntimeErrorBase('service_draining')
             fresh=self._preview(conn,preview['session_id'],preview['mode'],preview['rows'][0],preview['rows'][-1],pid,preview.get('rebuild',False))
             if fresh['fingerprint']!=preview.get('fingerprint'):raise RuntimeErrorBase('source_expired')
+            if manual_request:
+                fresh['manual_quota_request']=True;fresh['fingerprint']=digest({k:v for k,v in fresh.items() if k!='fingerprint'})
+            if self.automatic and self.automatic.is_enabled(conn,pid):
+                return self.automatic.submit_range(conn,fresh,request_id,trigger)
             return self.managed.register(conn,fresh,request_id,int(automatic),trigger)
 
     @staticmethod
@@ -298,6 +318,7 @@ class OrganizationEngine:
         result.pop("model_snapshot")
         payload = json.loads(result.pop("payload_json"))
         result["range"] = payload.get("rows", [])
+        if payload.get('automatic_memory'):result['automatic_memory']=payload['automatic_memory']
         if detail:
             result["source"] = payload
         return result
@@ -331,6 +352,10 @@ class OrganizationEngine:
         return self.managed.recover()
 
     def validate_output(self, conn, payload, text, audit=None):
+        if payload.get('automatic_memory'):
+            from .automatic_memory_output import parse
+            if audit is not None:audit.update(output_contract='automatic-memory-v1',stage=payload['automatic_memory']['stage'],purpose=payload['automatic_memory']['purpose'])
+            return parse(payload,text,audit),None
         if payload.get('source_format') == 2:
             from .session_organization import validate
             return validate(conn,payload,text,audit)
@@ -386,6 +411,8 @@ class OrganizationEngine:
             raise RuntimeErrorBase("organization_invalid_output") from None
 
     def _publish(self, conn, task, payload, summary, candidates):
+        if payload.get('automatic_memory'):
+            return self.automatic.published(conn,task,payload,summary)
         if payload.get('source_format') == 2:
             from .session_organization import publish
             return publish(self,conn,task,payload,summary,candidates)
@@ -453,6 +480,7 @@ class OrganizationEngine:
         while not self.draining:
             try:
                 self.schedule.pause_changed_models()
+                if self.automatic:self.automatic.tick()
                 if time.time()-self.last_scan >= 30 and not self.chat.draining:
                     self.last_scan = time.time()
                     self.schedule.daily_tick()

@@ -37,14 +37,17 @@ class SelectorTests(prior.IntegrationTests):
             self.assertEqual(db.execute('SELECT count(*) FROM character_selection_attempts').fetchone()[0],1)
             self.assertEqual(db.execute('SELECT state FROM quota_reservations').fetchone()[0],'consumed')
             self.assertEqual(db.execute('SELECT count(*) FROM context_manifests').fetchone()[0],2)
-        used=QuotaService(self.store,self.config).current()['used'];self.assertEqual(used['project_hourly'],2)
+        used=QuotaService(self.store,self.config).current()['used'];self.assertEqual(used['project_hourly'],1);self.assertEqual(used['manual_hourly'],1)
         await self.engine._run(t['id']);self.assertEqual(len(self.model.calls),2)
 
-    async def test_last_quota_kept_for_main(self):
+    async def test_last_automatic_slot_does_not_reserve_a_manual_reply(self):
         self.enable();self.config.update({'model':{'hourly_limit':1}});t=await self.turn('书店')
-        with patch.object(self.rt,'local_pool',side_effect=self.pool):await self.engine._run(t['id'])
-        self.assertEqual(self.engine.get(t['id'])['status'],'completed');self.assertEqual(len(self.model.calls),1)
-        self.assertEqual(self.engine.selector.list(self.pid),[])
+        async def model(cfg,msg):
+            self.model.calls.append(msg)
+            return ('{"schema_version":1,"lore_ids":["book"],"example_ids":[]}' if cfg['name']=='selector' else '主回复'),{'total_tokens':1}
+        with patch.object(self.rt,'local_pool',side_effect=self.pool),patch.object(self.model,'complete',side_effect=model):await self.engine._run(t['id'])
+        self.assertEqual(self.engine.get(t['id'])['status'],'completed');self.assertEqual(len(self.model.calls),2)
+        self.assertEqual(len(self.engine.selector.list(self.pid)),1)
 
     async def test_invalid_output_exhaustion_aborts_and_keeps_usage(self):
         self.enable();t=await self.turn('书店')
@@ -81,7 +84,7 @@ class SelectorTests(prior.IntegrationTests):
         with patch.object(self.rt,'local_pool',side_effect=self.pool):result=self.rt.preview(self.pid,'书店',channel='desktop',mode='hybrid_llm')
         self.assertEqual(result['effective_mode'],'lexical');self.assertFalse(self.model.calls)
         path=self.service.export_persona()['path'];value=json.loads(__import__('pathlib').Path(path).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],17);self.assertNotIn('encrypted_key',json.dumps(value))
+        self.assertEqual(value['format_version'],18);self.assertNotIn('encrypted_key',json.dumps(value))
 
     async def test_probe_durable_no_turn_and_idempotent(self):
         self.enable();op=identifier()
@@ -116,7 +119,7 @@ class SelectorTests(prior.IntegrationTests):
         with self.store.connection(write=True) as db:
             from persona_runtime.character_selector import probe_material
             probe_pool,probe_payload=probe_material(model)
-            with self.assertRaisesRegex(SemanticFailure,'selector_project_quota'):self.engine.selector._start(db,self.pid,None,model,probe_payload,probe_pool,identifier())
+            self.engine.selector._start(db,self.pid,None,model,probe_payload,probe_pool,identifier())
         with self.store.connection(write=True) as db:self.engine.selector.recover(db)
         with self.store.connection() as db:
             self.assertEqual(db.execute('SELECT state FROM quota_reservations').fetchone()[0],'released')
@@ -141,7 +144,7 @@ class SelectorTests(prior.IntegrationTests):
         from persona_runtime.config import atomic_json
         atomic_json(quota.journal,{'status':'active','restore_limits':{'project_hourly':7,'background_hourly':2,'background_daily':3}})
         quota.end_acceptance();self.assertEqual(quota.current()['limits']['project_hourly'],7)
-        self.assertEqual(quota.current()['limits']['selector_daily'],200)
+        self.assertEqual(quota.current()['limits']['selector_daily'],2000)
 
     async def test_cancel_retry_while_cloud_inflight_does_not_reply_old_run(self):
         self.enable();t=await self.turn('书店');started=asyncio.Event();gate=asyncio.Event()

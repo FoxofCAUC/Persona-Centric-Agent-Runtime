@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "0.8.0.dev1",
+  "release": "0.8.0.dev2",
   "mode": "source",
   "roots": ["persona_runtime", "integrations/astrbot/astrbot_plugin_persona_runtime"],
   "excluded_modules": [
@@ -12,5 +12,5 @@
   ],
   "development_only": ["experiments", "plugins", "tests", "scripts/dialogue_*.py"],
   "configuration": ["pyproject.toml", "requirements-astrbot.lock"],
-  "note": "Source inventory only. Historical decoders and policy restore modules remain included; no installer or automatic scheduler."
+  "note": "Source inventory only. Historical decoders and policy restore modules remain included. Automatic memory uses the existing managed worker; no installer or unattended host. Development plugins require explicit invocation."
 }

@@ -124,7 +124,11 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
         await self.assert_reference_preflight_failure_recorded({'name':''},'model_not_configured')
 
     async def test_valid_reference_check_survives_quota_limit_and_retry(self):
-        await self.assert_reference_preflight_failure_recorded({'hourly_limit':1},'hourly_limit_reached')
+        _,seed=await self.seed('有效引用来源');self.config.update({'model':{'hourly_limit':1}})
+        receipt=self.accept('引用',reference={'kind':'turn','id':seed['id']});await self.engine.wait()
+        turn=self.engine.get(self.batch(receipt)['turn_id']);self.assertEqual(turn['status'],'completed')
+        with self.store.connection() as db:
+            check=db.execute('SELECT error FROM reference_checks WHERE turn_id=?',(turn['id'],)).fetchone();self.assertIsNone(check[0])
 
     async def test_binding_does_not_follow_changed_original_text(self):
         self.natural();a=self.accept('原文');self.seal(a);await self.engine.wait();event=self.batch(a)['members'][0]['event_id']
@@ -149,7 +153,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
     async def test_export_and_reinitialization(self):
         r=self.accept('引用',reference={'kind':'turn','id':'missing'});await self.engine.wait();self.store.initialize()
         value=json.loads(__import__('pathlib').Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],17);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
+        self.assertEqual(value['format_version'],18);self.assertEqual(len(value['input_references']),1);self.assertEqual(len(value['reference_checks']),1)
 
     async def test_draft_dedup_includes_reference(self):
         journal=SubmissionJournal(self.paths,'desktop');p={'channel':'desktop','persona_id':self.pid,'text':'same','request_id':'one','reference':{'kind':'event','id':'A'}}
@@ -263,6 +267,9 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
             for trigger, in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
                 conn.execute('DROP TRIGGER "'+trigger+'"')
             # Remove later schemas before simulating a genuine v10 DB.
+            from persona_runtime.schema_m8d import TABLES as memory_tables
+            from persona_runtime.schema_m8a import TABLES as managed_tables
+            for table in reversed(memory_tables+managed_tables):conn.execute('DROP TABLE "'+table+'"')
             conn.execute('DROP TABLE organization_receipts')
             from persona_runtime.schema_disposition import TABLES19
             for table in reversed(TABLES19):conn.execute('DROP TABLE "'+table+'"')
@@ -287,7 +294,7 @@ class M70Tests(unittest.IsolatedAsyncioTestCase):
         with closing(sqlite3.connect(self.store.path)) as conn:
             self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0],10)
             self.assertFalse(conn.execute("SELECT 1 FROM sqlite_master WHERE name='partial_m70'").fetchone())
-        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],22)
+        self.store.initialize();self.assertEqual(self.store.status()['schema_version'],23)
 
     async def test_legacy_standalone_event_audit_reports_unknown_scope_without_fabrication(self):
         session={'id':identifier()};eid=identifier()

@@ -265,6 +265,11 @@ def guard_cloud_dispatch(store,persona_id,kind,model):
     private=PrivatePersonas(store.paths)
     policy=private.record_for_persona(persona_id)
     if policy is not None and kind in ('main','organization') and private.model_authorized(persona_id,policy,kind,model):return
+    with store.connection() as db:
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_imports'").fetchone():
+            for row in db.execute('SELECT data_json FROM memory_imports WHERE persona_id=?',(persona_id,)):
+                if json.loads(row[0]).get('private_review_required'):
+                    raise RuntimeErrorBase('private_import_registration_required')
     copied=store.paths.home/'runtime/private-copy-policy.json'
     if policy is None and copied.exists():
         candidate=json.loads(copied.read_text(encoding='utf-8'))

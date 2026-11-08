@@ -219,9 +219,8 @@ class M761(unittest.IsolatedAsyncioTestCase):
         self.fake.output='{"schema_version":1,"definitions":[]}'
         r=self.source()
         await self.compiler.compile(self.pid,[r['source_id']],0,identifier());await self.compiler.task
-        with self.assertRaisesRegex(RuntimeErrorBase,'selector_limit_reached'):
-            await self.compiler.compile(self.pid,[r['source_id']],1,identifier())
-        self.assertEqual(len(self.fake.calls),1)
+        await self.compiler.compile(self.pid,[r['source_id']],1,identifier());await self.compiler.task
+        self.assertEqual(len(self.fake.calls),2)
 
     async def test_compiler_busy_and_recovery_never_replays(self):
         event=asyncio.Event();original=self.fake.complete
@@ -266,7 +265,7 @@ class M761(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(before,after)
         result=self.service.export_persona()
         payload=json.loads(Path(result['path']).read_text(encoding='utf-8'))
-        self.assertEqual(payload['format_version'],17);self.assertIn('disposition_versions',payload)
+        self.assertEqual(payload['format_version'],18);self.assertIn('disposition_versions',payload)
         self.assertIn('situation_observation_attempts',payload)
 
     async def test_timeout_busy_late_result_and_retry_records(self):
@@ -336,8 +335,9 @@ class M761(unittest.IsolatedAsyncioTestCase):
             revision=db.execute("SELECT execution_revision FROM turns WHERE id='reserved'").fetchone()[0]
             db.execute('INSERT INTO quota_reservations VALUES(?,?,?,?,?,?,?,?)',(identifier(),'reserved',revision,self.pid,LOCAL_USER_ID,'active',time.time(),time.time()+120))
         r=self.source()
-        with self.assertRaisesRegex(RuntimeErrorBase,'hourly_limit_reached'):await self.compiler.compile(self.pid,[r['source_id']],0,identifier())
-        self.assertEqual(self.fake.calls,[])
+        self.fake.output='{"schema_version":1,"definitions":[]}'
+        await self.compiler.compile(self.pid,[r['source_id']],0,identifier());await self.compiler.task
+        self.assertEqual(len(self.fake.calls),1)
 
     async def test_malformed_optional_shadow_snapshot_is_reported_not_applied(self):
         self.publish();self.shadow_on();r=await self.engine.submit('desktop','人工消息',identifier(),persona_id=self.pid);await self.engine.wait()

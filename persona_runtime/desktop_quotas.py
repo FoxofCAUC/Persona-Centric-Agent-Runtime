@@ -5,7 +5,7 @@ from tkinter import ttk
 from .quotas import QuotaService
 from .storage import Store
 
-LABELS = {'project_hourly': '全部模型调用 / 小时', 'background_hourly': '后台整理调用 / 小时', 'background_daily': '后台整理调用 / 24 小时', 'selector_hourly':'选择、编译与理解共享调用 / 小时','selector_daily':'选择、编译与理解共享调用 / 24 小时'}
+LABELS = {'project_hourly': '自动模型调用总额 / 小时', 'background_hourly': '自动整理调用 / 小时', 'background_daily': '自动整理调用 / 24 小时', 'selector_hourly':'自动选择与理解共享调用 / 小时','selector_daily':'自动选择与理解共享调用 / 24 小时'}
 
 
 class QuotaUI:
@@ -31,7 +31,7 @@ class QuotaUI:
                 used = str(used_value) if used_value is not None else '未知'
                 lines.append(f'{label}：已用 {used} / {limit if limit else "不限额"}')
             if value['used'] is not None:
-                lines.append('其中编译：小时 '+str(value['used'].get('compiler_hourly',0))+' / 日 '+str(value['used'].get('compiler_daily',0)))
+                lines.append('人工调用不限次数；小时内已记账 '+str(value['used'].get('manual_hourly',0))+' 次（聊天、手动整理、模型测试及编译）。')
                 lines.append('其中理解：小时 '+str(value['used'].get('understanding_hourly',0))+' / 日 '+str(value['used'].get('understanding_daily',0)))
                 lines.append(f"主回复已调用：{value['used']['primary_hourly']}；未消费的回复预留：{value['used']['reserved']}")
             if value['acceptance_active']:

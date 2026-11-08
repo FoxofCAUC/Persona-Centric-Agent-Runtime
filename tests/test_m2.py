@@ -61,6 +61,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         policies=IngressService(self.engine)
         for channel in ('desktop','qq'):
             p=policies.current_policy(self.persona['id'],channel)
+            p=policies.update_policy(self.persona['id'],channel,p['mode'],p['id'],'legacy-disable-'+channel,companion_mode='disabled')
             policies.update_policy(self.persona['id'],channel,'legacy_per_message',p['id'],'legacy-fixture-'+channel,reply_mode='legacy_full',character_retrieval_mode='lexical')
 
     async def asyncTearDown(self):
@@ -149,15 +150,15 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         await self.engine.retry(failed["id"])
         self.assertEqual(len(self.model.calls), 6)
 
-    async def test_quota_persistent_and_test_call_counted(self):
+    async def test_manual_probe_and_chat_are_unlimited_after_restart(self):
         self.cfg.update({"model": {"hourly_limit": 1}})
         test = await self.engine.submit("test", "OK", "probe", test=True)
         await self.engine.wait()
         self.assertEqual(self.engine.get(test["id"])["status"], "completed")
         self.engine = ChatEngine(Store(self.paths), self.cfg, self.model)
         turn = await self.chat(request_id="over-limit")
-        self.assertEqual(turn["error_code"], "hourly_limit_reached")
-        self.assertEqual(len(self.model.calls), 1)
+        self.assertEqual(turn['status'],'completed')
+        self.assertEqual(len(self.model.calls),2)
 
     async def test_queue_bound_and_serial_execution(self):
         self.model.gate = asyncio.Event()

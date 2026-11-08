@@ -80,6 +80,8 @@ def current(conn,persona_id,channel):
 
 
 def initialize(conn,persona_id=None,*,new_persona=False,disposition_default='baseline'):
+    if new_persona and persona_id and conn.execute("SELECT 1 FROM sqlite_master WHERE name='memory_defaults'").fetchone():
+        conn.execute('INSERT OR IGNORE INTO memory_defaults VALUES(?)',(persona_id,))
     if disposition_default not in ('baseline','live'):raise ValueError('invalid_initial_disposition')
     from .ingress import PARAMS
     ids=[persona_id] if persona_id else [r[0] for r in conn.execute('SELECT id FROM personas')]

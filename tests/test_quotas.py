@@ -26,7 +26,7 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_zero_is_valid_but_negative_bool_and_unknown_fields_are_rejected(self):
         unlimited=dict(project_hourly=0,background_hourly=0,background_daily=0)
-        self.assertEqual(self.quotas.update(unlimited)['limits'],unlimited | {'selector_hourly':30,'selector_daily':200})
+        self.assertEqual(self.quotas.update(unlimited)['limits'],unlimited | {'selector_hourly':300,'selector_daily':2000})
         for bad in (-1,True,10001,'0'):
             with self.assertRaises(RuntimeErrorBase):self.quotas.update(dict(unlimited,project_hourly=bad))
         with self.assertRaises(RuntimeErrorBase):self.quotas.update(dict(unlimited,other=1))
@@ -63,9 +63,10 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
         turns=[await engine.submit('desktop','test',identifier()) for _ in range(3)]
         await engine.wait()
         self.assertTrue(all(engine.get(t['id'])['status']=='completed' for t in turns))
-        self.assertEqual(self.quotas.current()['used']['project_hourly'],3)
+        self.assertEqual(self.quotas.current()['used']['project_hourly'],0)
+        self.assertEqual(self.quotas.current()['used']['manual_hourly'],3)
 
-    async def test_background_limits_wait_without_calling_then_zero_resumes_same_task(self):
+    async def test_manual_background_probes_bypass_automatic_limits_but_keep_usage(self):
         class Fake:
             calls = 0
             async def complete(self, model, messages):
@@ -77,22 +78,12 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
         service.use_persona(service.create_persona(generic_persona())['id'])
         fake = Fake(); chat = ChatEngine(self.store, self.cfg, fake)
         org = OrganizationEngine(self.store, self.cfg, fake, chat)
-        self.quotas.update(dict.fromkeys(('project_hourly', 'background_hourly', 'background_daily'), 0))
-        first = org.test_model(); self.assertTrue(await org.run_next())
-        self.assertEqual(org.show(first['id'])['status'], 'completed')
-        for limited in ('project_hourly', 'background_hourly', 'background_daily'):
-            with self.subTest(limited=limited):
-                limits = dict.fromkeys(('project_hourly', 'background_hourly', 'background_daily'), 0)
-                limits[limited] = 1; self.quotas.update(limits)
-                task = org.test_model(); before = fake.calls
-                self.assertFalse(await org.run_next())
-                self.assertEqual(org.show(task['id'])['status'], 'waiting_quota')
-                self.assertEqual(fake.calls, before)
-                self.quotas.update(dict.fromkeys(limits, 0))
-                self.assertTrue(await org.run_next())
-                self.assertEqual(org.show(task['id'])['status'], 'completed')
-                self.assertEqual(fake.calls, before + 1)
-        self.assertEqual(self.quotas.current()['used']['background_hourly'], 4)
+        self.quotas.update(dict.fromkeys(('project_hourly', 'background_hourly', 'background_daily'), 1))
+        for _ in range(4):
+            task=org.test_model();self.assertTrue(await org.run_next());self.assertEqual(org.show(task['id'])['status'],'completed')
+        self.assertEqual(fake.calls,4)
+        self.assertEqual(self.quotas.current()['used']['background_hourly'],0)
+        self.assertEqual(self.quotas.current()['used']['manual_hourly'],4)
 
     async def test_quota_management_requires_admin_and_restores_original_limits(self):
         class Fake:

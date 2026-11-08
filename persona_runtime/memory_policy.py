@@ -25,6 +25,8 @@ def exclude_sources(conn, persona_id, event_ids, reason):
     for row in conn.execute("SELECT id,sources_json FROM candidates WHERE persona_id=? AND status='pending'", (persona_id,)).fetchall():
         if expanded.intersection(s["event_id"] for s in json.loads(row["sources_json"])):
             conn.execute("UPDATE candidates SET status='stale' WHERE id=?", (row["id"],))
+    from .automatic_memory import invalidate
+    invalidate(conn,persona_id,expanded)
 
 
 def exclude_memory(conn, memory, reason):
@@ -43,7 +45,11 @@ def project_capacity_used(conn, since, exclude_turn=None):
     import time
     organization=0
     if conn.execute("SELECT 1 FROM sqlite_master WHERE name='organization_reservations'").fetchone():
-        organization=conn.execute("SELECT count(*) FROM organization_reservations WHERE state='active' AND expires_epoch>?",(time.time(),)).fetchone()[0]
-    return organization+project_calls(conn,since)+conn.execute(
-        "SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>? AND (? IS NULL OR turn_id!=?)",
-        (time.time(),exclude_turn,exclude_turn)).fetchone()[0]
+        organization=conn.execute("SELECT count(*) FROM organization_reservations r JOIN organization_tasks t ON t.id=r.task_id WHERE r.state='active' AND r.expires_epoch>? AND t.automatic!=0 AND coalesce(json_extract(t.payload_json,'$.manual_quota_request'),0)!=1",(time.time(),)).fetchone()[0]
+    # The old reply reservations reserve a human main reply, now unmetered.
+    return organization+automatic_calls(conn,since)
+
+
+def automatic_calls(conn,since):
+    from .generation_retry import call_count
+    return sum(call_count(conn,t,since,automatic_only=True) for t in ('organization_attempts','character_selection_attempts','situation_observation_attempts'))

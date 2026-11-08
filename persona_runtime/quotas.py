@@ -18,15 +18,17 @@ def reserve_organization(conn,config,task,now):
     from .models import identifier
     cfg=config.load();limits=cfg['organization']
     conn.execute("UPDATE organization_reservations SET state='released' WHERE state='active' AND expires_epoch<=?",(now,))
-    reserved=conn.execute("SELECT count(*) FROM organization_reservations WHERE state='active'").fetchone()[0]
+    from .generation_retry import automatic_organization
+    automatic=automatic_organization(task)
+    reserved=conn.execute("SELECT count(*) FROM organization_reservations r JOIN organization_tasks t ON t.id=r.task_id WHERE r.state='active' AND t.automatic!=0 AND coalesce(json_extract(t.payload_json,'$.manual_quota_request'),0)!=1").fetchone()[0]
     windows=((3600,limits['hourly_limit']),(86400,limits['daily_limit']))
     waits=[]
-    for seconds,cap in windows:
-        used=call_count(conn,'organization_attempts',now-seconds)+reserved
+    for seconds,cap in windows if automatic else ():
+        used=call_count(conn,'organization_attempts',now-seconds,automatic_only=True)+reserved
         if cap and used>=cap:
-            row=conn.execute('SELECT min(started_epoch) FROM organization_attempts WHERE started_epoch>?',(now-seconds,)).fetchone()
+            row=conn.execute("SELECT min(a.started_epoch) FROM organization_attempts a JOIN organization_tasks t ON t.id=a.task_id WHERE a.started_epoch>? AND t.automatic!=0 AND coalesce(json_extract(t.payload_json,'$.manual_quota_request'),0)!=1",(now-seconds,)).fetchone()
             waits.append((row[0]+seconds+.01) if row[0] is not None else now+60)
-    if cfg['model']['hourly_limit'] and project_capacity_used(conn,now-3600)>=cfg['model']['hourly_limit']:
+    if automatic and cfg['model']['hourly_limit'] and project_capacity_used(conn,now-3600)>=cfg['model']['hourly_limit']:
         # Check again on a bounded poll; the primary ledger is the authority.
         waits.append(now+1)
     if waits:return None,max(waits)
@@ -57,15 +59,18 @@ class QuotaService:
         try:
             with self.store.connection() as conn:
                 now = time.time()
-                used = {'project_hourly': project_calls(conn, now-3600),
-                        'background_hourly': call_count(conn,'organization_attempts',now-3600),
-                        'background_daily': call_count(conn,'organization_attempts',now-86400),
-                        'selector_hourly':call_count(conn,'character_selection_attempts',now-3600),
-                        'selector_daily':call_count(conn,'character_selection_attempts',now-86400),
+                from .memory_policy import automatic_calls
+                used = {'project_hourly': automatic_calls(conn, now-3600),
+                        'all_hourly':project_calls(conn,now-3600),
+                        'manual_hourly':project_calls(conn,now-3600)-automatic_calls(conn,now-3600),
+                        'background_hourly': call_count(conn,'organization_attempts',now-3600,automatic_only=True),
+                        'background_daily': call_count(conn,'organization_attempts',now-86400,automatic_only=True),
+                        'selector_hourly':call_count(conn,'character_selection_attempts',now-3600,automatic_only=True),
+                        'selector_daily':call_count(conn,'character_selection_attempts',now-86400,automatic_only=True),
                         'understanding_hourly':call_count(conn,'situation_observation_attempts',now-3600),
                         'understanding_daily':call_count(conn,'situation_observation_attempts',now-86400),
-                        'compiler_hourly':call_count(conn,'disposition_compile_attempts',now-3600),
-                        'compiler_daily':call_count(conn,'disposition_compile_attempts',now-86400),
+                        'compiler_hourly':0,
+                        'compiler_daily':0,
                         'reserved':conn.execute("SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0]+conn.execute("SELECT count(*) FROM organization_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0],
                         'background_unknown':conn.execute("SELECT count(*) FROM organization_attempts WHERE usage_json IS NULL AND status='interrupted'").fetchone()[0],
                         'primary_hourly':call_count(conn,'attempts',now-3600)}
@@ -73,6 +78,7 @@ class QuotaService:
             pass  # Settings remain editable before storage is initialized/upgraded.
         active = record.get('status') == 'active'
         return {'limits': limits, 'used': used, 'acceptance_active': active,
+                'manual_unlimited':True,'quota_scope':'automatic_calls_only',
                 'restore_limits': (limits | record.get('restore_limits',{})) if active else None,
                 'acceptance_started_at': record.get('started_at') if active else None}
 

@@ -16,6 +16,11 @@ class ManagedTests(unittest.IsolatedAsyncioTestCase):
     asyncTearDown=fixtures.M4Tests.asyncTearDown
     seed=fixtures.M4Tests.seed
 
+    async def auto_tasks(self,count=2):
+        turns=await self.seed(count)
+        with self.store.connection() as db:orders=[db.execute('SELECT rowid FROM turns WHERE id=?',(t['id'],)).fetchone()[0] for t in turns]
+        return [self.org.submit(self.org.preview(turns[i]['session_id'],'candidates',start_row=n,end_row=n),'auto-'+str(n),automatic=1) for i,n in enumerate(orders)]
+
     async def test_cross_trigger_dedupe_and_operation_conflict(self):
         turn=(await self.seed())[0];p=self.org.preview(turn['session_id'])
         a=self.org.submit(p,'manual');b=self.org.submit(p,'daily',automatic=2)
@@ -77,8 +82,7 @@ class ManagedTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_quota_naturally_resumes_and_recovery_before_dispatch_is_free(self):
         self.cfg.update({'organization':{'hourly_limit':1,'daily_limit':24}})
-        one=self.org.test_model('one');await self.org.run_next()
-        two=self.org.test_model('two');await self.org.run_next()
+        one,two=await self.auto_tasks();await self.org.run_next();await self.org.run_next()
         self.assertEqual(self.org.show(two['id'])['status'],'waiting_quota')
         self.org.recover();self.org.managed.clock=lambda:time.time()+3601
         await self.org.run_next()
@@ -159,7 +163,7 @@ class ManagedTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_daily_cap_recovers_only_after_full_window(self):
         self.cfg.update({'organization':{'hourly_limit':0,'daily_limit':1}})
-        self.org.test_model('one');await self.org.run_next();t=self.org.test_model('two')
+        one,t=await self.auto_tasks();await self.org.run_next()
         self.org.managed.clock=lambda:time.time()+3601;await self.org.run_next()
         self.assertEqual(self.org.show(t['id'])['status'],'waiting_quota')
         self.org.managed.clock=lambda:time.time()+86401;await self.org.run_next()
@@ -248,7 +252,8 @@ class MigrationTests(unittest.TestCase):
             paths=RuntimePaths(Path(temp)/'source');store=Store(paths)
             with patch('persona_runtime.storage.SCHEMA_VERSION',21):
                 store.initialize();service=RuntimeService(store);p=service.create_persona(generic_persona());service.use_persona(p['id'])
-            self.assertTrue(verify(store.path,Path(temp)/'proof')['source_unchanged'])
+            with patch('persona_runtime.storage.SCHEMA_VERSION',22):
+                self.assertTrue(verify(store.path,Path(temp)/'proof')['source_unchanged'])
 
 
 if __name__=='__main__':unittest.main()

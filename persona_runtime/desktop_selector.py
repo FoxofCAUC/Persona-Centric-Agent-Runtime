@@ -14,7 +14,7 @@ class SelectorUI:
         self.selector_clear=tk.BooleanVar(value=False);self.selector_epoch=0
         for var in (*self.selector_vars.values(),self.selector_enabled,self.selector_clear):
             var.trace_add('write',lambda *_:setattr(self,'selector_epoch',self.selector_epoch+1))
-        self.fields(group,self.selector_vars,(('base_url','接口基础地址'),('name','模型名称'),('api_key','新密钥（留空保留）'),('timeout','超时（最多240秒）'),('max_tokens','输出tokens'),('max_input_chars','输入字符上限'),('hourly_limit','选择调用/小时（0不限）'),('daily_limit','选择调用/24小时（0不限）')),secret='api_key')
+        self.fields(group,self.selector_vars,(('base_url','接口基础地址'),('name','模型名称'),('api_key','新密钥（留空保留）'),('timeout','超时（最多240秒）'),('max_tokens','输出tokens'),('max_input_chars','输入字符上限'),('hourly_limit','自动选择与理解/小时（0不限）'),('daily_limit','自动选择与理解/24小时（0不限）')),secret='api_key')
         ttk.Checkbutton(group,text='启用独立选择模型',variable=self.selector_enabled).pack(anchor='w')
         ttk.Checkbutton(group,text='明确清除选择模型密钥',variable=self.selector_clear).pack(anchor='w')
         self.selector_notice=tk.StringVar(value='密钥已保存' if cfg['has_key'] else '未设置密钥')

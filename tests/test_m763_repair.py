@@ -160,11 +160,10 @@ class Repair(unittest.IsolatedAsyncioTestCase):
 
     async def test_quota_preserves_main_capacity_and_body_free_manifest(self):
         self.observe_setup();self.config.update({'model':{'hourly_limit':1}});tid=await self.queued('给我建议')
-        self.assertEqual((await self.engine.observer.prepare(tid))['status'],'project_quota')
-        self.config.update({'model':{'hourly_limit':2}});observed=await self.engine.observer.prepare(tid)
+        observed=await self.engine.observer.prepare(tid)
         with self.store.connection() as db:
             from persona_runtime.memory_policy import project_capacity_used
-            self.assertEqual(project_capacity_used(db,0),2)
+            self.assertEqual(project_capacity_used(db,0),1)
             raw=db.execute("SELECT manifest_json FROM context_manifests WHERE task_type='situation_observation'").fetchone()[0]
             self.assertNotIn('给我建议',raw)
         await self.engine._run(tid);self.assertEqual(self.engine.get(tid)['status'],'completed')
@@ -179,7 +178,7 @@ class Repair(unittest.IsolatedAsyncioTestCase):
     async def test_schema_export_and_integrity(self):
         self.store.initialize()
         with self.store.connection() as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],22)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],23)
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
 
     async def test_first_member_freezes_model_and_policy(self):

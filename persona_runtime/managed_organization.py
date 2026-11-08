@@ -43,8 +43,10 @@ class ManagedOrganization:
 
     def update_policy(self,persona_id,data,expected_version,expected_selected,operation_id):
         if not isinstance(operation_id,str) or not operation_id:raise RuntimeErrorBase('operation_id_required')
-        if (not isinstance(data,dict) or set(data)!={'version','enabled','triggers','channels','qq','provider'}
+        if (not isinstance(data,dict) or set(data)-{'memory_automation','memory_backfill'}!={'version','enabled','triggers','channels','qq','provider'}
             or data['version']!=1 or type(data['enabled']) is not bool
+            or 'memory_automation' in data and type(data['memory_automation']) is not bool
+            or 'memory_backfill' in data and type(data['memory_backfill']) is not bool
             or not isinstance(data['triggers'],list) or any(t not in TRIGGERS for t in data['triggers'])
             or not isinstance(data['channels'],list) or any(c not in ('desktop','qq') for c in data['channels'])
             or not isinstance(data['qq'],dict) or set(data['qq'])!={'bot','peer'}
@@ -63,6 +65,11 @@ class ManagedOrganization:
             current=self.policy(db,persona_id)
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
             if data['provider']!=provider_identity(self.engine.model()):raise RuntimeErrorBase('organization_model_changed')
+            data=dict(data)
+            if 'memory_automation' not in data and 'memory_automation' in current['data']:
+                data['memory_automation']=current['data']['memory_automation']
+            if 'memory_backfill' not in data and 'memory_backfill' in current['data']:
+                data['memory_backfill']=current['data']['memory_backfill']
             db.execute('INSERT INTO organization_policies VALUES(?,?,?,?,?,?,?)',
                 (identifier(),persona_id,current['revision']+1,encoded(data),operation_id,fp,timestamp()))
             # Pending work must be explicitly rebound to a new policy, not silently enlarged.
@@ -85,8 +92,11 @@ class ManagedOrganization:
         evidence=sorted((e.get('kind','event'),e['id'],digest(e['text'])) for e in payload.get('events',[]))
         if payload['mode']=='test':evidence=[('probe',request_id,'')]
         rebuild=self.rebuild_root(db,payload,request_id,trigger)
+        automatic=payload.get('automatic_memory')
+        purpose=[automatic['purpose'],automatic['stage'],automatic.get('previous_fragment'),digest(payload.get('proposals')),payload.get('memory_dependency_hash')] if automatic else None
         return digest([self.scope(db,payload),payload.get('session_id'),payload['mode'],evidence,
-                       payload.get('existing_memories',[]),rebuild])
+                       payload.get('existing_memories',[]),rebuild,purpose] if automatic else
+                      [self.scope(db,payload),payload.get('session_id'),payload['mode'],evidence,payload.get('existing_memories',[]),rebuild])
 
     def rebuild_root(self,db,payload,request_id,trigger):
         if payload.get('rebuild') and trigger in ('manual','sealed'):return request_id
@@ -133,6 +143,7 @@ class ManagedOrganization:
 
     def rebase(self,db,task,c,payload):
         """Serialize overlapping accepted work and trim only already completed sources."""
+        if payload.get('automatic_memory'):return payload
         if task['mode']=='test' or c['data'].get('rebuild_root') or db.execute('SELECT 1 FROM organization_attempts WHERE task_id=?',(task['id'],)).fetchone():return payload
         covered=set();providers=[]
         for row in db.execute("SELECT * FROM organization_tasks WHERE session_id=? AND id!=? AND status='completed' AND mode IN (?, 'both')",(task['session_id'],task['id'],task['mode'])):
@@ -202,7 +213,12 @@ class ManagedOrganization:
             raise RuntimeErrorBase('organization_scope_mismatch')
         if task['mode']!='test':
             guard_cloud_dispatch(self.store,task['persona_id'],'organization',model)
-            if check_sources and (payload['guard']!=self.engine.guard(db,task['persona_id'],task['session_id']) or not valid(db,payload)):
+            if payload.get('automatic_memory'):
+                if not p.get('memory_automation',False):raise RuntimeErrorBase('organization_policy_changed')
+                if check_sources:
+                    from .automatic_memory import validate_sources
+                    validate_sources(db,payload,check_memories=payload['automatic_memory']['stage']=='verify')
+            elif check_sources and (payload['guard']!=self.engine.guard(db,task['persona_id'],task['session_id']) or not valid(db,payload)):
                 raise RuntimeErrorBase('source_expired')
         if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
         if contract['data']['cancel_requested']:raise RuntimeErrorBase('cancelled_by_user')
@@ -304,12 +320,16 @@ class ManagedOrganization:
             for row in db.execute("SELECT * FROM organization_tasks WHERE status IN ('queued','waiting_quota') ORDER BY rowid"):
                 t=dict(row);c=self.contract(db,t['id']);m=c['data']
                 cfg=e.config.load();quota_signature=digest([cfg['model']['hourly_limit'],cfg['organization']['hourly_limit'],cfg['organization']['daily_limit']])
+                from .generation_retry import automatic_organization
+                if t['status']=='waiting_quota' and not automatic_organization(t):m['next_epoch']=0
                 if t['status']=='waiting_quota' and m.get('quota_signature')!=quota_signature:m['next_epoch']=0
                 if m['next_epoch']>self.clock():continue
                 priority=0 if m['trigger'] in ('manual','sealed','probe') or self.clock()-m['created_epoch']>=600 else 1
-                choices.append((priority,m['created_epoch'],t,c))
+                p=json.loads(t['payload_json']);a=p.get('automatic_memory',{})
+                subpriority=0 if a.get('stage')=='verify' else 1 if a.get('urgency')=='correction' else 2 if a.get('purpose')=='repair' else 4 if a.get('urgency')=='backfill' else 3
+                choices.append((priority,m['created_epoch'] if priority==0 else 0,subpriority if priority else 0,m['created_epoch'],t,c))
             if not choices:return False
-            _,_,task,c=min(choices,key=lambda x:(x[0],x[1]));payload=json.loads(task['payload_json'])
+            *_,task,c=min(choices,key=lambda x:x[:4]);payload=json.loads(task['payload_json'])
             try:
                 self.check(db,task,c,payload,check_sources=False)
                 payload=self.rebase(db,task,c,payload)

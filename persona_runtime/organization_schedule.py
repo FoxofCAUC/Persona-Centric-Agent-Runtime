@@ -101,7 +101,13 @@ class OrganizationSchedule:
             raise RuntimeErrorBase('daily_cycle_already_active_or_blocked')
         now = time.time()
         with self.store.connection(write=True) as conn:
-            conn.execute("UPDATE daily_updates SET next_epoch=? WHERE id='daily'", (now,))
+            progress=dict(status['progress']);progress['manual_requested']=True
+            conn.execute("UPDATE daily_updates SET next_epoch=?,payload_json=? WHERE id='daily'", (now,encoded(progress)))
+            pid=self.store.current(conn)
+            if self.engine.automatic and self.engine.automatic.is_enabled(conn,pid):
+                upper=conn.execute('SELECT coalesce(max(rowid),0) FROM turns WHERE persona_id=?',(pid,)).fetchone()[0]
+                record={'upper_order':upper,'policy_id':self.engine.managed.policy(conn,pid)['id']}
+                conn.execute('INSERT INTO memory_operations VALUES(?,?,?,?,?,?)',('manual-memory-scan:'+identifier(),pid,LOCAL_USER_ID,'manual-scan',encoded(record),timestamp()))
         self.daily_tick(now)
         return self.status()
 
@@ -111,6 +117,18 @@ class OrganizationSchedule:
 
     def daily_tick(self, now=None):
         now = time.time() if now is None else now
+        if self.engine.automatic:
+            with self.store.connection() as conn:
+                cycle=conn.execute("SELECT persona_id,status FROM daily_updates WHERE id='daily'").fetchone()
+                pid=cycle['persona_id'] if cycle['status']!='scheduled' and cycle['persona_id'] else self.store.current(conn,required=False)
+                auto=pid and self.engine.automatic.is_enabled(conn,pid)
+                new_off=pid and conn.execute('SELECT 1 FROM memory_defaults WHERE persona_id=?',(pid,)).fetchone() and not auto
+                daily=conn.execute("SELECT next_epoch FROM daily_updates WHERE id='daily'").fetchone()[0]
+            if auto or new_off:
+                if auto and self.engine.config.load()['organization']['daily_enabled'] and now>=daily:
+                    self.engine.automatic.tick(force=True)
+                    self._save('scheduled',{'automatic_memory':True},pid,next_epoch=now+86400)
+                return
         row = self.status()
         if not row["enabled"] or row["status"] in ("blocked", "paused_model", "paused"):
             return
@@ -144,7 +162,7 @@ class OrganizationSchedule:
                 next_epoch += 86400
             payload = {"sessions": sessions, "index": 0, "completed_batches": 0, "last_task": None,
                        "started_local_time": datetime.fromtimestamp(now).astimezone().isoformat(),
-                       "model_fingerprint": self.engine.model_fingerprint()}
+                       "model_fingerprint": self.engine.model_fingerprint(),"manual_cycle":bool(payload.get('manual_requested'))}
             self._save("running", payload, persona, next_epoch)
             row["persona_id"] = persona
         if payload.get("last_task"):
@@ -177,7 +195,7 @@ class OrganizationSchedule:
                     payload["index"] += 1
                     continue
             try:
-                task = self.engine.submit(preview, 'daily-'+identifier(), automatic=2, fixed_persona=row["persona_id"])
+                task = self.engine.submit(preview, 'daily-'+identifier(), automatic=2, fixed_persona=row["persona_id"],manual_request=payload.get('manual_cycle',False))
             except RuntimeErrorBase as error:
                 if str(error) in ('organization_queue_full','organization_session_busy'):
                     self._save('running', payload)
@@ -206,6 +224,7 @@ class OrganizationSchedule:
         for config in enabled:
             with self.store.connection(write=True) as conn:
                 policy=self.engine.managed.policy(conn,config['persona_id'])['data']
+                if policy.get('memory_automation',False):continue
                 if not policy['enabled'] or 'incremental' not in policy['triggers']:continue
                 sessions = list(conn.execute("SELECT id FROM sessions WHERE persona_id=?", (config['persona_id'],)))
                 choices = []

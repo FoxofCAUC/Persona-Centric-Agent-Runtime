@@ -66,12 +66,11 @@ class SelectorService:
             prepare(conn,dict(current))
             old=conn.execute('SELECT id FROM character_selection_attempts WHERE turn_id=? AND execution_revision=?',(turn['id'],turn['execution_revision'])).fetchone()
             if old:raise SemanticFailure('selector_already_attempted')
-        needed=2 if turn else 1
-        if limit and project_capacity_used(conn,now-3600)+needed>limit:raise SemanticFailure('selector_project_quota')
-        for field,period in (('hourly_limit',3600),('daily_limit',86400)):
+        if turn and limit and project_capacity_used(conn,now-3600)+1>limit:raise SemanticFailure('selector_project_quota')
+        for field,period in ((('hourly_limit',3600),('daily_limit',86400)) if turn else ()):
             cap=cfg['character_selector'][field]
             from .generation_retry import call_count
-            count=sum(call_count(conn,t,now-period) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
+            count=sum(call_count(conn,t,now-period,automatic_only=True) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
             if cap and count>=cap:raise SemanticFailure('selector_quota')
         aid=identifier();tid=turn['id'] if turn else None;revision=turn['execution_revision'] if turn else None
         from .archive import turn_scope
@@ -124,13 +123,13 @@ class SelectorService:
                         members=[m['text'] for m in load_turn_input(conn,current)]
                         if messages(pool,members,refs,limit,model['max_input_chars'],prompt_version=prompt_version)!=payload:
                             raise RuntimeErrorBase('selector_retry_sources_changed')
-                    if state['attempts']:
+                    if state['attempts'] and turn:
                         now=time.time();cfg=self.config.load();cap=cfg['model']['hourly_limit']
-                        if cap and project_capacity_used(conn,now-3600)+1>cap:raise RuntimeErrorBase('selector_project_quota')
+                        if cap and project_capacity_used(conn,now-3600)+1>cap:raise SemanticFailure('selector_project_quota')
                         for field,period in (('hourly_limit',3600),('daily_limit',86400)):
                             cap=cfg['character_selector'][field]
-                            count=sum(call_count(conn,t,now-period) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
-                            if cap and count+1>cap:raise RuntimeErrorBase('selector_quota')
+                            count=sum(call_count(conn,t,now-period,automatic_only=True) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
+                            if cap and count+1>cap:raise SemanticFailure('selector_quota')
                     if turn:
                         conn.execute("UPDATE quota_reservations SET expires_epoch=? WHERE turn_id=? AND execution_revision=? AND state='active'",(time.time()+min(SELECTOR_TIMEOUT_MAX,model['timeout'])+60,turn['id'],turn['execution_revision']))
             try:

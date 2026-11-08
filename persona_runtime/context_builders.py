@@ -40,8 +40,22 @@ def pool(conn,turn,budget,*,keys_only=False):
 
 
 def summary_usable(conn,turn,summary):
+    summary=dict(summary)
     # Old QQ summaries contain generated semantics, not a confirmed send
     # snapshot. Keep them in the archive without promoting them to sent facts.
+    if summary.get('reason')=='automatic_memory':
+        refs=json.loads(summary.get('source_refs_json') or '[]');selected=turn_scope(conn,turn)
+        # Enforce time validity at read time even between coordinator ticks.
+        from datetime import datetime,timezone
+        for f in conn.execute('SELECT m.source_event_id,f.valid_until FROM memory_facts f JOIN memories m ON m.id=f.memory_id WHERE f.persona_id=? AND f.valid_until IS NOT NULL',(turn['persona_id'],)):
+            until=datetime.fromisoformat(f['valid_until'])
+            if until<=datetime.now(timezone.utc) and datetime.fromisoformat(summary['created_at'])<until and f['source_event_id'] in json.loads(summary['sources_json']):return False
+        for ref in refs:
+            result=read_exact(conn,selected,{'kind':ref['kind'],'id':ref['id']})
+            if result['status']!='found':return False
+            source=next((e for e in result['members']+result['replies'] if e['id']==ref['id']),None)
+            if not source or fingerprint(source['text'])!=ref['hash']:return False
+        return bool(refs)
     if turn['channel']=='qq':return False
     ids=json.loads(summary['sources_json'])
     if len(ids)>200:return False
@@ -49,10 +63,12 @@ def summary_usable(conn,turn,summary):
     return all(read_exact(conn,selected,{'kind':'event','id':i})['status']=='found' for i in ids)
 
 
-def memory_usable(conn,turn,memory):
+def memory_usable(conn,turn,memory,*,for_review=False):
     """Human corrections remain authoritative; withdrawn evidence does not."""
     from .archive import find_turn
     from .turn_input import load_turn_sources
+    from .automatic_memory import usable_fact
+    if not for_review and not usable_fact(conn,memory):return False
     ids={memory['source_event_id']}
     ids.update(r[0] for r in conn.execute('SELECT event_id FROM memory_sources WHERE memory_id=?',(memory['id'],)))
     selected=turn_scope(conn,turn)
@@ -186,9 +202,9 @@ class ReflectionBuilder:
         previous=payload.get('previous')
         refs=([{'kind':'summary','id':previous['id'],'revision':previous['revision']}] if previous else [])
         refs += [{'kind':'memory','id':m['id'],'revision':m['revision']} for m in payload.get('existing_memories',[])]
-        return {'purpose':'provider_probe' if task['mode']=='test' else 'memory_organization','evidence_refs':evidence,
+        return {'purpose':payload['automatic_memory']['stage']+'_'+payload['automatic_memory']['purpose'] if payload.get('automatic_memory') else 'provider_probe' if task['mode']=='test' else 'memory_organization','evidence_refs':evidence,
                 'included_state_refs':refs,'missing_data':['belief_state_not_implemented'], 'session_package_id':payload.get('package_id'),
-                'hard_constraints':['source_guard','exact_source_quotes','existing_M4_approval_policy'],
+                'hard_constraints':['source_guard','exact_source_quotes','automatic_memory_independent_review' if payload.get('automatic_memory') else 'existing_M4_approval_policy'],
                 'soft_tendencies':[],'input_snapshot_hash':fingerprint(messages),'builder_version':BUILDER_VERSION}
 
 

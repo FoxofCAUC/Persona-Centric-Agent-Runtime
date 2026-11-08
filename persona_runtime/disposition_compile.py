@@ -110,12 +110,7 @@ class DispositionCompiler:
                 {'source_id':r['source_id'],'kind':r['kind'],'text':r['text']} for r in sources]})}]
             if sum(len(m['content']) for m in payload)>model['max_input_chars']:fail('source_selection_required')
             now=time.time()
-            from .memory_policy import project_capacity_used
-            if cfg['model']['hourly_limit'] and project_capacity_used(conn,now-3600)>=cfg['model']['hourly_limit']:fail('hourly_limit_reached')
-            for seconds,key in ((3600,'hourly_limit'),(86400,'daily_limit')):
-                from .generation_retry import call_count
-                count=sum(call_count(conn,t,now-seconds) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
-                if model[key] and count>=model[key]:fail('selector_limit_reached')
+            # This entry is an explicit human compilation, not an auto trigger.
             refs=[{k:v for k,v in r.items() if k!='text'} for r in sources]
             conn.execute('INSERT INTO disposition_compile_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (aid,persona_id,LOCAL_USER_ID,operation_id,fp,'running',now,None,encoded(model),encoded(refs),fingerprint(payload),None,None,None,None,timestamp()))

@@ -254,7 +254,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
 
     def test_export10_has_lifecycle_no_credentials(self):
         self.seed();self.seal();path=Path(self.service.export_persona()['path']);value=json.loads(path.read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],17);self.assertEqual(len(value['session_packages']),1)
+        self.assertEqual(value['format_version'],18);self.assertEqual(len(value['session_packages']),1)
         self.assertNotIn('encrypted_key',path.read_text(encoding='utf-8'))
 
     async def test_manifest_failure_prevents_organization_call(self):

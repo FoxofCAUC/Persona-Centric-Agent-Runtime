@@ -1,6 +1,7 @@
 """Bounded generation retries with durable, body-free per-dispatch evidence."""
 import asyncio
 import hashlib
+import json
 import re
 import time
 from .models import RuntimeErrorBase, identifier
@@ -60,11 +61,20 @@ def aggregate(state):
     return result
 
 
-def call_count(conn, table, since):
+def automatic_organization(task):
+    return bool(task['automatic']) and json.loads(task['payload_json']).get('manual_quota_request') is not True
+
+
+def call_count(conn, table, since, *, automatic_only=False):
     allowed=('attempts','character_selection_attempts','organization_attempts',
              'disposition_compile_attempts','situation_observation_attempts')
     if table not in allowed:raise ValueError('invalid_attempt_table')
     if not conn.execute("SELECT 1 FROM sqlite_master WHERE name=?",(table,)).fetchone():return 0
+    condition=''
+    if automatic_only:
+        if table in ('attempts','disposition_compile_attempts'):return 0
+        if table=='organization_attempts':condition=" WHERE EXISTS (SELECT 1 FROM organization_tasks t WHERE t.id=counted.task_id AND t.automatic!=0 AND coalesce(json_extract(t.payload_json,'$.manual_quota_request'),0)!=1)"
+        elif table=='character_selection_attempts':condition=' WHERE counted.turn_id IS NOT NULL'
     # Count each dispatch at its own time, including retries across an hour/day
     # boundary. Old rows without retry evidence continue to count as one.
     return conn.execute('''SELECT coalesce(sum(CASE WHEN json_valid(usage_json)
@@ -72,7 +82,7 @@ def call_count(conn, table, since):
         AND json_array_length(usage_json,'$.generation_retry.attempts')>0
         THEN (SELECT count(*) FROM json_each(usage_json,'$.generation_retry.attempts') j
               WHERE json_extract(j.value,'$.started_epoch')>?)
-        ELSE CASE WHEN started_epoch>? THEN 1 ELSE 0 END END),0) FROM '''+table,(since,since)).fetchone()[0]
+        ELSE CASE WHEN started_epoch>? THEN 1 ELSE 0 END END),0) FROM '''+table+' AS counted'+condition,(since,since)).fetchone()[0]
 
 
 async def _one(client, model, messages, timeout_code):

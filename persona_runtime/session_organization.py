@@ -201,5 +201,6 @@ class SessionOrganization:
             if fresh['status']=='no_action':result={'status':'no_action','reason':'no_uncovered_eligible_turns'}
             else:
                 if self.engine.draining or self.engine.chat.draining:raise RuntimeErrorBase('service_draining')
-                result=self.engine.managed.register(conn,fresh,'session-'+operation_id,trigger='sealed')
+                if self.engine.automatic and self.engine.automatic.is_enabled(conn,persona_id):result=self.engine.automatic.submit_range(conn,fresh,'session-'+operation_id,'sealed')
+                else:result=self.engine.managed.register(conn,fresh,'session-'+operation_id,trigger='sealed')
             record_operation(conn,operation_id,'session.organize',selected,digest,result);return result

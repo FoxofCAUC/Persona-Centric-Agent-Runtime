@@ -434,7 +434,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
     def build_model(self, parent):
         self.heading(parent, "模型", "Chat Completions 兼容接口。地址填写到 /v1 等基础路径，程序追加 /chat/completions。")
         self.fields(parent, self.model_vars, (("base_url", "接口基础地址"), ("name", "模型名称"), ("api_key", "新密钥（留空保留）"),
-                    ("timeout", "总超时（秒）"), ("max_tokens", "输出 token 上限"), ("hourly_limit", "每小时调用上限（0 为不限额）"),
+                    ("timeout", "总超时（秒）"), ("max_tokens", "输出 token 上限"), ("hourly_limit", "自动调用总额／小时（0不限）"),
                     ("max_input_chars", "输入字符上限")), secret="api_key")
         self.key_status = tk.StringVar(value="")
         ttk.Label(parent, textvariable=self.key_status).pack(anchor="w", pady=5)
@@ -443,7 +443,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         bar.pack(fill="x", pady=10)
         self.button(bar, "保存配置", self.save_model, {"config"}, True)
         self.button(bar, "测试已保存配置", self.test_model, {"model-test"})
-        ttk.Label(parent, text="保存不调用模型；测试会产生一次真实请求并计入限额。默认失败不自动重试。用量缺失时显示未知，不估算费用。", wraplength=700).pack(anchor="w", pady=10)
+        ttk.Label(parent, text="手动聊天和模型测试不受调用次数额度限制，仍可能产生真实费用并记录用量。自动调用另受额度管理。用量缺失时显示未知，不估算费用。", wraplength=700).pack(anchor="w", pady=10)
         group = ttk.LabelFrame(parent, text="私聊交互（默认保持原有行为）", padding=12)
         group.pack(fill="x", pady=12)
         ttk.Checkbutton(group, text="允许取消尚未开始生成的排队消息", variable=self.allow_queue_cancel).pack(anchor="w", pady=4)
@@ -671,7 +671,12 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
     def import_persona(self):
         path = filedialog.askopenfilename(initialdir=self.paths.home / "config", filetypes=[("人格 JSON", "*.json")])
         if path:
-            self.run_task("导入新的人格", {"persona"}, lambda _: self.client.manage("persona.create", spec=json.loads(Path(path).read_text(encoding="utf-8-sig"))), lambda _: self.refresh_personas())
+            package=json.loads(Path(path).read_text(encoding='utf-8-sig'))
+            if package.get('format_version') in (17,18):
+                if not messagebox.askyesno('导入历史','将创建新角色并保留导出中的业务历史供核对。原任务和授权不恢复，导入记忆不自动成为已确认事实，自动记忆默认关闭。继续？'):return
+                operation_id=identifier();selected=self.persona_id
+                self.run_task('导入业务历史',{'persona'},lambda _:self.client.manage('persona.import-export',package=package,expected_selected=selected,operation_id=operation_id),lambda _:self.refresh_personas())
+            else:self.run_task("导入新的人格", {"persona"}, lambda _: self.client.manage("persona.create", spec=package), lambda _: self.refresh_personas())
 
     def selected_persona(self):
         selection = self.persona_list.curselection()

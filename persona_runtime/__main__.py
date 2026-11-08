@@ -31,7 +31,7 @@ def parser() -> argparse.ArgumentParser:
         "session": ("create", "list", "show"),
         "event": ("append", "list"),
         "memory": ("add", "search", "show", "revise", "retract"),
-        "data": ("export", "backup"),
+        "data": ("export", "backup", "import"),
     }
     for group, actions in commands.items():
         parent = groups.add_parser(group)
@@ -67,6 +67,7 @@ def parser() -> argparse.ArgumentParser:
                     cmd.add_argument("--limit", type=int, default=20)
             if group == "data":
                 cmd.add_argument("--name", help="File name within the configured export/backup directory")
+                if action=='import':cmd.add_argument('--file',type=Path,required=True)
     return root
 
 
@@ -138,6 +139,10 @@ def dispatch(args, paths: RuntimePaths):
         if action == "revise":
             return service.revise_memory(args.id, args.text, args.source)
         return service.retract_memory(args.id)
+    if group=='data' and action=='import':
+        from .portable_memory import import_export
+        from .models import identifier
+        return import_export(store,json.loads(args.file.read_text(encoding='utf-8-sig')),service.show_persona()['id'],identifier())
     return service.export_persona(args.name) if action == "export" else service.backup(args.name)
 
 

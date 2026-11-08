@@ -28,8 +28,8 @@ REASONS={'organization_effect_unknown':'请求已派发，结果未知；禁止�
 class OrganizationUI:
     def init_organization_vars(self):
         self.org_model_vars = {key: tk.StringVar() for key in ('base_url','name','api_key','timeout','max_tokens','max_input_chars')}
-        self.org_hour = tk.StringVar(value='6')
-        self.org_day = tk.StringVar(value='20')
+        self.org_hour = tk.StringVar(value='60')
+        self.org_day = tk.StringVar(value='240')
         self.org_reuse = tk.BooleanVar(value=False)
         self.org_clear_key = tk.BooleanVar(value=False)
         self.daily_enabled = tk.BooleanVar(value=True)
@@ -55,6 +55,16 @@ class OrganizationUI:
         bar.pack(fill='x')
         self.button(bar, '刷新整理状态', self.refresh_organization, {'org-read'})
         self.button(bar, '暂停／恢复整理授权', self.toggle_organization_policy, {'org-write'})
+        bar = self.bar(parent)
+        bar.pack(fill='x')
+        self.button(bar, '开启／暂停自动记忆', self.toggle_automatic_memory, {'org-write'})
+        self.button(bar, '覆盖与自动处理详情', lambda: self.org_call('organization.coverage',title='自动记忆覆盖、隔离与修复'), {'org-read'})
+        self.button(bar, '复核决策与隔离项', lambda: self.org_call('organization.decision.list',title='自动记忆来源复核记录'), {'org-read'})
+        self.button(bar, '记忆历史与有效期', lambda: self.org_call('memory.history',title='历史、过期及待核对记忆'), {'org-read'})
+        bar = self.bar(parent)
+        bar.pack(fill='x')
+        self.button(bar, '人工处理隔离项', self.review_automatic_memory, {'org-review'})
+        self.button(bar, '修复自动摘要（先预览）', self.rebuild_automatic_summary, {'org-write'})
         self.button(bar, '每日更新详情与屏蔽来源', lambda: self.org_call('organization.status', title='每日计划、进度与屏蔽来源'), {'org-read'})
         self.button(bar, '继续受阻的每日更新', self.resume_daily_update, {'org-write'})
         self.button(bar, '立即执行一次全量更新', self.run_daily_now, {'org-write'})
@@ -112,9 +122,9 @@ class OrganizationUI:
         ttk.Checkbutton(group, text='明确清除整理模型密钥', variable=self.org_clear_key).pack(anchor='w')
         limits = ttk.Frame(group)
         limits.pack(fill='x', pady=5)
-        ttk.Label(limits, text='后台小时上限（0 不限）：').pack(side='left')
+        ttk.Label(limits, text='自动整理小时上限（0 不限）：').pack(side='left')
         ttk.Entry(limits, textvariable=self.org_hour, width=7).pack(side='left')
-        ttk.Label(limits, text='后台24小时上限（0 不限）：').pack(side='left')
+        ttk.Label(limits, text='自动整理24小时上限（0 不限）：').pack(side='left')
         ttk.Entry(limits, textvariable=self.org_day, width=7).pack(side='left')
         ttk.Checkbutton(group, text='每24小时全量自动更新当前人格，正常记忆自动生效，冲突待授权', variable=self.daily_enabled).pack(anchor='w', pady=5)
         bar = self.bar(group)
@@ -161,7 +171,7 @@ class OrganizationUI:
                 self.watch_organization_test({'id':pending['task_id'],'status':'queued'},key)
             else:self.submit_organization_test(pending)
             return
-        if messagebox.askyesno('整理模型测试', '将使用已保存配置请求一次模型，计入后台和全项目额度。继续？'):
+        if messagebox.askyesno('整理模型测试', '将使用已保存配置请求模型并记录真实用量；手动测试不受自动调用次数额度限制。继续？'):
             pending={'key':key,'request_id':identifier()}
             self.org_model_test_pending=pending
             self.submit_organization_test(pending)
@@ -204,7 +214,7 @@ class OrganizationUI:
     def refresh_organization(self):
         epoch = self.view_epoch
         def read(_):
-            return {'policy':self.client.manage('organization.policy.current'),'quota':self.client.manage('quota.current'),
+            return {'coverage':self.client.manage('organization.coverage'),'policy':self.client.manage('organization.policy.current'),'quota':self.client.manage('quota.current'),
                     'status': self.client.manage('organization.status'), 'sessions': self.client.manage('organization.sessions'),
                     'tasks': self.client.manage('organization.list'), 'candidates': self.client.manage('candidate.list'), 'summaries': self.client.manage('summary.list')}
         def done(value):
@@ -217,7 +227,9 @@ class OrganizationUI:
                                     f"已完成批次：{progress.get('completed_batches',0)}；剩余有效轮次：{status['remaining_turns']}/{status['total_turns']}；空闲增量：{'开启' if status['automatic']['enabled'] else '关闭'}"
                                     + ('；尚未配置整理模型' if not status.get('model_ready') else '')
                                     + ('\n整理授权：已开启' if value['policy']['data']['enabled'] else '\n整理授权：已暂停')
-                                    + f"；后台额度：每小时 {value['quota']['limits']['background_hourly'] or '不限'}／每日 {value['quota']['limits']['background_daily'] or '不限'} 次（含重试）")
+                                    + f"；自动整理额度：每小时 {value['quota']['limits']['background_hourly'] or '不限'}／每日 {value['quota']['limits']['background_daily'] or '不限'} 次（含重试）；手动不限次数")
+            coverage=value['coverage']
+            self.org_state_text.set(self.org_state_text.get()+f"\n自动记忆：{'开启' if coverage['enabled'] else '关闭或暂停'}；有效来源已处理 {coverage['processed_turns']}/{coverage['eligible_turns']}；摘要可用 {coverage['summary_available_turns']} 轮；待登记 {coverage['unregistered_turns']} 轮")
             old_session = self.org_session.get()
             self.org_session_rows = value['sessions']
             labels = [f"{s['channel'] or '未分配入口'} · {s['id']} · {s['successful_turns']}轮" for s in value['sessions']]
@@ -235,6 +247,8 @@ class OrganizationUI:
                     content = row.get('text', REASONS.get(row.get('error_code'),row.get('error_code')) or row.get('mode') or ('摘要第'+str(row.get('revision',''))+'版'))
                     if key=='tasks' and row.get('contract'):
                         contract=row['contract'];content+=f" · 已调用{contract.get('physical_calls',0)}次"
+                        a=row.get('automatic_memory')
+                        if a:content=('独立复核' if a['stage']=='verify' else '摘要修复提取' if a['purpose']=='repair' else '自动记忆提取')+' · '+content
                         if contract.get('next_epoch'):
                             from datetime import datetime
                             content+=' · 下次检查 '+datetime.fromtimestamp(contract['next_epoch']).strftime('%H:%M:%S')
@@ -358,6 +372,59 @@ class OrganizationUI:
         if enabled and not messagebox.askyesno('开启空闲增量整理', '仅处理开启后的新增成功对话。保留最近10轮，旧轮次累计10轮且空闲120秒后整理；可能产生后台费用，候选仍须审阅。继续？'):
             return
         self.org_call('organization.automatic', enabled=enabled)
+
+    def rebuild_automatic_summary(self):
+        index=self.org_session_box.current()
+        if index<0 or index>=len(self.org_session_rows):self.notice.set('请先刷新并选择会话。');return
+        sid=self.org_session_rows[index]['id'];key=(self.persona_id,self.view_epoch)
+        def loaded(preview):
+            if key!=(self.persona_id,self.view_epoch):return
+            if preview['state']=='no_action':self.notice.set('没有需要修复的自动摘要。');return
+            if not messagebox.askyesno('修复自动摘要',f"发现 {len(preview['invalid_fragments'])} 个失效或手动停用的片段。修复只处理当前有效来源，并可能产生提取和独立复核费用。继续？"):return
+            self.org_call('organization.rebuild.submit',preview=preview,expected_selected=key[0],operation_id=identifier())
+        self.run_task('预览自动摘要修复',{'org-read'},lambda _:self.client.manage('organization.rebuild.preview',session_id=sid,persona_id=key[0]),loaded)
+
+    def toggle_automatic_memory(self):
+        def loaded(policy):
+            data=dict(policy['data']);data['memory_automation']=not data.get('memory_automation',False)
+            text=('一次性为当前角色和已授权渠道启用自动记忆，包含有效历史补齐。每批提取和独立复核分别计费，受已保存的后台小时／日额度限制；普通记忆自动生效，可判定更正自动形成新版本。私人资料仍须独立整理授权。继续？' if data['memory_automation'] else '暂停自动记忆的新派发及后续重试；保留已有记忆和实际调用记录。继续？')
+            if not messagebox.askyesno('自动记忆',text):return
+            self.org_call('organization.policy.update',persona_id=policy['persona_id'],data=data,expected_version=policy['id'],expected_selected=policy['persona_id'],operation_id=identifier())
+        self.run_task('读取自动记忆政策',{'org-read'},lambda _:self.client.manage('organization.policy.current'),loaded)
+
+    def review_automatic_memory(self):
+        key=(self.persona_id,self.view_epoch)
+        def loaded(rows):
+            if key!=(self.persona_id,self.view_epoch):return
+            rows=[r for r in rows if r['state']=='quarantined' and r['kind']=='candidates']
+            if not rows:self.notice.set('当前没有需要人工处理的自动记忆隔离项。');return
+            dialog=tk.Toplevel(self);dialog.title('选择隔离项');listing=tk.Listbox(dialog,width=75,height=12);listing.pack(fill='both',expand=True,padx=12,pady=12)
+            for row in rows:listing.insert('end',json.loads(row['data_json'])['proposal']['text'])
+            def choose():
+                if not listing.curselection():return
+                row=rows[listing.curselection()[0]];detail=json.loads(row['data_json']);dialog.destroy()
+                decision=messagebox.askyesnocancel('人工处理','是否将这条候选作为人工确认的事实？选择“否”将忽略该候选。\n\n'+detail['proposal']['text']+'\n\n来源：'+json.dumps(detail['proposal']['sources'],ensure_ascii=False))
+                if decision is None:return
+                operation=identifier()
+                def submit(text=None,target=None):
+                    if key!=(self.persona_id,self.view_epoch):return
+                    args={'decision_id':row['id'],'action':'revise' if target else 'publish' if decision else 'omit','expected_selected':key[0],'operation_id':operation,'text':text}
+                    if target:args.update(target_memory_id=target['id'],expected_revision=target['revision'])
+                    self.org_call('organization.decision.override',**args)
+                if not decision:submit();return
+                targets=detail.get('blocked_memory_ids',[])
+                def edit(target=None):self.text_dialog('人工确认记忆',detail['proposal']['text'],lambda text:submit(text,target))
+                if not targets:edit();return
+                def select_target(memories):
+                    if key!=(self.persona_id,self.view_epoch):return
+                    picker=tk.Toplevel(self);picker.title('选择要修订的已有记忆');box=tk.Listbox(picker,width=75,height=8);box.pack(fill='both',expand=True,padx=12,pady=12)
+                    for memory in memories:box.insert('end',memory['text'])
+                    def confirmed():
+                        if box.curselection():target=memories[box.curselection()[0]];picker.destroy();edit(target)
+                    ttk.Button(picker,text='修订选中的记忆',command=confirmed).pack(pady=8)
+                self.run_task('读取相关记忆',{'org-read'},lambda _:[self.client.manage('memory.show',memory_id=ident) for ident in targets],select_target)
+            ttk.Button(dialog,text='处理选中项',command=choose).pack(pady=8)
+        self.run_task('读取隔离项',{'org-read'},lambda _:self.client.manage('organization.decision.list'),loaded)
 
     def toggle_organization_policy(self):
         def loaded(policy):

@@ -67,6 +67,9 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         self.service = RuntimeService(self.store)
         self.persona = self.service.create_persona(generic_persona())
         self.service.use_persona(self.persona['id'])
+        with self.store.connection(write=True) as db:
+            # This historical fixture explicitly exercises the legacy daily policy.
+            db.execute('DELETE FROM memory_defaults WHERE persona_id=?',(self.persona['id'],))
         self.chat = ChatEngine(self.store, self.cfg, ChatModel())
         self.model = OrganizerModel()
         self.org = OrganizationEngine(self.store, self.cfg, self.model, self.chat)
@@ -218,19 +221,20 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         await self.org.run_next()
         self.assertEqual(len(self.model.calls), 1)
         with self.assertRaisesRegex(RuntimeErrorBase,'effect_unknown'):self.org.retry(task['id'])
+        self.model.failure=None
         probe=self.org.test_model('new-probe')
         await self.org.run_next()
-        self.assertEqual(self.org.show(probe['id'])['status'], 'waiting_quota')
-        self.assertEqual(len(self.model.calls), 1)
+        self.assertEqual(self.org.show(probe['id'])['status'], 'completed')
+        self.assertEqual(len(self.model.calls),2)
 
-    async def test_shared_project_quota_includes_background(self):
+    async def test_manual_chat_is_independent_of_automatic_project_quota(self):
         turn = (await self.seed())[0]
         task = self.org.submit(self.org.preview(turn['session_id']), 'budget')
         await self.org.run_next()
         self.cfg.update({'model': {'hourly_limit': 2}})
         next_turn = await self.chat.submit('desktop', '额度应该用完', 'limit')
         await self.chat.wait()
-        self.assertEqual(self.chat.get(next_turn['id'])['error_code'], 'hourly_limit_reached')
+        self.assertEqual(self.chat.get(next_turn['id'])['status'],'completed')
         self.assertEqual(self.org.show(task['id'])['status'], 'completed')
 
     async def test_queue_cancel_recover_and_encrypted_model_not_public(self):
@@ -458,7 +462,7 @@ class M4Tests(unittest.IsolatedAsyncioTestCase):
         candidate=self.org.candidates.list()[0]
         self.org.candidates.accept(candidate['id'],'accept')
         data=json.loads(Path(self.service.export_persona()['path']).read_text(encoding='utf-8'))
-        self.assertEqual(data['format_version'],17)
+        self.assertEqual(data['format_version'],18)
         self.assertEqual(len(data['candidate_reviews']),1)
         self.assertNotIn('encrypted_key',encoded(data))
         destination=Path(self.service.backup()['path'])
