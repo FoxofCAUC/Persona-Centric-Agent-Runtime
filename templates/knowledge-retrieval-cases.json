@@ -1,0 +1,257 @@
+{
+  "format_version": 1,
+  "frozen_at": "2026-11-09",
+  "description": "Public Chinese M9.A retrieval cases frozen before observing package results. Simplified and traditional orthographic aliases are accepted. Keep failures and missing articles.",
+  "success": {
+    "knowledge_cases": 20,
+    "top5_required": 18,
+    "chitchat_cases": 4,
+    "chitchat_no_retrieval_required": 4
+  },
+  "cases": [
+    {
+      "id": "fact-01",
+      "kind": "fact",
+      "query": "水循环是什么",
+      "expected_titles": [
+        "水循环",
+        "水循環"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "fact-02",
+      "kind": "fact",
+      "query": "牛顿第二定律描述了什么",
+      "expected_titles": [
+        "牛顿运动定律",
+        "牛顿第二定律",
+        "牛頓運動定律",
+        "牛頓第二定律"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "fact-03",
+      "kind": "fact",
+      "query": "黄河发源于哪里",
+      "expected_titles": [
+        "黄河",
+        "黃河"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "fact-04",
+      "kind": "fact",
+      "query": "哈姆雷特是谁创作的",
+      "expected_titles": [
+        "哈姆雷特",
+        "威廉·莎士比亚",
+        "威廉·莎士比亞"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "fact-05",
+      "kind": "fact",
+      "query": "万里长城是什么",
+      "expected_titles": [
+        "长城",
+        "万里长城",
+        "長城",
+        "萬里長城"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "fact-06",
+      "kind": "fact",
+      "query": "光合作用是什么",
+      "expected_titles": [
+        "光合作用"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "fact-07",
+      "kind": "fact",
+      "query": "地球的天然卫星叫什么",
+      "expected_titles": [
+        "月球"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "fact-08",
+      "kind": "fact",
+      "query": "北京位于哪个国家",
+      "expected_titles": [
+        "北京市",
+        "北京"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-01",
+      "kind": "paraphrase",
+      "query": "为什么城市中心通常比周边乡村更热",
+      "expected_titles": [
+        "热岛效应",
+        "城市热岛",
+        "熱島效應",
+        "城市熱島"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-02",
+      "kind": "paraphrase",
+      "query": "声音听起来高还是低主要由什么决定",
+      "expected_titles": [
+        "音高",
+        "频率",
+        "頻率"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-03",
+      "kind": "paraphrase",
+      "query": "绿色植物怎样把阳光转化为养分",
+      "expected_titles": [
+        "光合作用"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-04",
+      "kind": "paraphrase",
+      "query": "海水蒸发形成云再下雨回到地面的过程叫什么",
+      "expected_titles": [
+        "水循环",
+        "水循環"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-05",
+      "kind": "paraphrase",
+      "query": "物体为什么会受到地球的吸引而落下",
+      "expected_titles": [
+        "重力",
+        "万有引力",
+        "萬有引力"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-06",
+      "kind": "paraphrase",
+      "query": "把文件里重复的内容用更短方式表示是什么技术",
+      "expected_titles": [
+        "数据压缩",
+        "无损数据压缩",
+        "數據壓縮",
+        "資料壓縮",
+        "無損資料壓縮",
+        "無損數據壓縮"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-07",
+      "kind": "paraphrase",
+      "query": "生物中更适应环境的特征逐渐保留下来叫什么",
+      "expected_titles": [
+        "自然选择",
+        "自然選擇"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "paraphrase-08",
+      "kind": "paraphrase",
+      "query": "用两个镜片把很远的东西看清楚的仪器叫什么",
+      "expected_titles": [
+        "望远镜",
+        "望遠鏡"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "alias-01",
+      "kind": "alias",
+      "query": "臺灣",
+      "expected_titles": [
+        "台湾",
+        "臺灣"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "alias-02",
+      "kind": "alias",
+      "query": "網際網路",
+      "expected_titles": [
+        "互联网",
+        "因特网",
+        "網際網路",
+        "互聯網",
+        "因特網"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "alias-03",
+      "kind": "alias",
+      "query": "西红柿还有什么名字",
+      "expected_titles": [
+        "番茄",
+        "西红柿",
+        "西紅柿"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "alias-04",
+      "kind": "alias",
+      "query": "脚踏车是什么",
+      "expected_titles": [
+        "自行车",
+        "脚踏车",
+        "自行車",
+        "腳踏車"
+      ],
+      "retrieval_required": true
+    },
+    {
+      "id": "chitchat-01",
+      "kind": "chitchat",
+      "query": "早上好呀",
+      "expected_titles": [],
+      "retrieval_required": false
+    },
+    {
+      "id": "chitchat-02",
+      "kind": "chitchat",
+      "query": "我今天有点累，陪我聊会儿",
+      "expected_titles": [],
+      "retrieval_required": false
+    },
+    {
+      "id": "chitchat-03",
+      "kind": "chitchat",
+      "query": "哈哈你这说法挺逗",
+      "expected_titles": [],
+      "retrieval_required": false
+    },
+    {
+      "id": "chitchat-04",
+      "kind": "chitchat",
+      "query": "晚安，明天见",
+      "expected_titles": [],
+      "retrieval_required": false
+    }
+  ]
+}

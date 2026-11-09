@@ -186,6 +186,8 @@ class OrganizationEngine:
         self.schedule.initialize()
         from .managed_organization import ManagedOrganization
         self.managed = ManagedOrganization(self)
+        from .proactive import ProactiveService
+        self.proactive=ProactiveService(self)
         from .automatic_memory import AutomaticMemory,available
         with self.store.connection() as db:self.automatic=AutomaticMemory(self) if available(db) else None
 
@@ -267,6 +269,7 @@ class OrganizationEngine:
 
     @staticmethod
     def messages(payload):
+        if payload.get('proactive'):return payload['proactive']['context']['messages']
         if payload.get('automatic_memory'):
             from .automatic_memory_output import messages
             return messages(payload)
@@ -481,6 +484,7 @@ class OrganizationEngine:
             try:
                 self.schedule.pause_changed_models()
                 if self.automatic:self.automatic.tick()
+                self.proactive.tick()
                 if time.time()-self.last_scan >= 30 and not self.chat.draining:
                     self.last_scan = time.time()
                     self.schedule.daily_tick()

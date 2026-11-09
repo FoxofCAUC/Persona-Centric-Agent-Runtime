@@ -20,7 +20,7 @@ async def heartbeat_loop(paths, config, platforms, *, publish=atomic_json, sleep
 
     while True:
         cfg = None
-        verified = online = False
+        verified = online = connected = False
         stage = 'config'
         error_type = error_stage = None
         try:
@@ -35,6 +35,7 @@ async def heartbeat_loop(paths, config, platforms, *, publish=atomic_json, sleep
                 login = await asyncio.wait_for(client.get_login_info(), 3)
                 verified = str(login.get('user_id', '')) == cfg['bot_qq']
                 status = await asyncio.wait_for(client.get_status(), 3)
+                connected = True
                 online = verified and bool(status.get('online'))
                 break
         except Exception as error:
@@ -45,7 +46,8 @@ async def heartbeat_loop(paths, config, platforms, *, publish=atomic_json, sleep
             try:
                 publish(paths.home / 'runtime/astrbot-health.json', {
                     'at':time.time(), 'pid':os.getpid(), 'instance_id':cfg['instance_id'],
-                    'verified':verified, 'online':online, 'plugin_version':'0.7.2',
+                    'verified':verified, 'online':online, 'plugin_version':'0.7.3',
+                    'connected':connected,
                     'error_type':error_type, 'error_stage':error_stage})
             except Exception as error:
                 failure('publish', error)

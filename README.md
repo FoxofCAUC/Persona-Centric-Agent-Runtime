@@ -6,7 +6,7 @@
 
 对话连续性、长期记忆、关系维护和故障恢复，是让这份陪伴更好发生的支持能力。工程正确性与可溯源应服务产品体验，不能用更多通过的检查、完整的架构或精细的记录，代替一个好相处的 AI 伴侣。
 
-![Version](https://img.shields.io/badge/version-0.8.0.dev2-4263eb)
+![Version](https://img.shields.io/badge/version-0.8.0.dev3-4263eb)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 [MIT 开源协议](LICENSE)
@@ -16,6 +16,10 @@
 当前采用 **v8 伴侣聊天**：本地选材、原生文本、即时通讯表达指导，无表达样例。新建、原生导入和复制角色的工作台、QQ入口统一默认v8；可以在入口政策中关闭并恢复启用前设置。已有角色及历史请求不会随初始化自动改写。
 
 阶段6后台百轮、记忆修复及阶段7正式交付验收已完成；M8.D已交付自动覆盖、独立复核、事实更正与局部修复。工程、隔离真实、正式短验收、清理及验收限流偏差分别记录于[当前状态](docs/STATUS.md)和[实施记录](docs/M8.D-自动记忆实施记录.md)。后台仍随工作台启停，不宣称无人值守或G-AUTO通过。
+
+<!-- M8E_README_BEGIN -->
+M8.E规定范围已交付。工作台和托盘运行期间自动工作，退出确认注销本次Bot并释放所属组件。当前正式组合已完成两小时白天连续观察，详情见[实施记录](docs/M8.E-工作台绑定运行实施记录.md)及[当前状态](docs/STATUS.md)。G-AUTO后续仍需世界知识、时效学习与联合验收。
+<!-- M8E_README_END -->
 
 [完整施工指导](docs/AI伴侣底层重构总施工指导.md) · [大肥鱼参考结论](docs/AI伴侣产品方向与大肥鱼参考线.md) · [源码交付清单](source-delivery.json) · [当前M8.A交接](docs/M8.A-v8当前系统职责交接.md)
 

@@ -44,6 +44,11 @@ class M63Tests(unittest.IsolatedAsyncioTestCase):
         self.service=RuntimeService(self.store);self.persona=self.service.create_persona(generic_persona())["id"];self.service.use_persona(self.persona)
         self.reply="A"*901+"B"*500
         self.fake=Fake(self.reply);self.engine=ChatEngine(self.store,self.config,self.fake);self.delivery=DeliveryService(self.store)
+        # Historical transport fixture explicitly opts out of the released v8 default.
+        from persona_runtime.ingress import IngressService
+        ingress=IngressService(self.engine);policy=ingress.current_policy(self.persona,'qq')
+        policy=ingress.update_policy(self.persona,'qq',policy['mode'],policy['id'],identifier(),companion_mode='disabled')
+        ingress.update_policy(self.persona,'qq','legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         self.turn=await self.engine.submit("qq","question",identifier(),origin={"sender":"123","bot":"456"})
         await self.engine.wait();self.turn=self.engine.get(self.turn["id"])
         self.stream=self.delivery.by_batch(self.turn["reply_batch"]["id"])
@@ -183,7 +188,7 @@ class M63Tests(unittest.IsolatedAsyncioTestCase):
         part=self.stream["parts"][0];claim=self.claim(part)
         exported=self.service.export_persona()
         payload=Path(exported["path"]).read_text(encoding="utf-8")
-        self.assertIn('"format_version": 18',payload)
+        self.assertIn('"format_version": 19',payload)
         self.assertNotIn(claim["claim_token"],payload)
         self.assertIn('"reply_delivery_parts"',payload)
         self.assertIn('"reply_delivery_attempts"',payload)
@@ -228,7 +233,7 @@ class M63Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
         self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='reply_delivery_parts'").fetchone());db.close()
         store.initialize();store.initialize()
-        self.assertEqual(store.status()['schema_version'],23)
+        self.assertEqual(store.status()['schema_version'],24)
         self.assertTrue(list((path.home/'backups').glob('before-m63-*.sqlite3')))
 
     async def test_v2_api_bridge_scope_admin_resolution_and_legacy_rejection(self):
@@ -238,7 +243,7 @@ class M63Tests(unittest.IsolatedAsyncioTestCase):
             admin={'Authorization':'Bearer '+self.config.token()}
             async with client.post(server.make_url('/v1/manage'),headers=admin,
                 json={'action':'delivery.pending','args':{}}) as response:
-                self.assertEqual(response.status,200)
+                self.assertEqual(response.status,200,await response.text())
                 self.assertEqual(len(await response.json()),len(self.stream['parts']))
             async with client.get(server.make_url('/v2/replies/'+self.turn['reply_batch']['id']+'/parts'),headers=bridge) as response:
                 self.assertEqual(response.status,200);parts=(await response.json())['parts']

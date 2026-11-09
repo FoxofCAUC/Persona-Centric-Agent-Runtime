@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import threading
+import hashlib
 
 from .config import ConfigStore, atomic_json
 from .deployment import NO_WINDOW, child_environment, write_component_config, validate_onebot_config
@@ -69,6 +70,11 @@ async def run_astrbot(paths, stop):
 
 
 def installed_qq():
+    override=os.environ.get('PCAR_QQ_EXECUTABLE')
+    if override:
+        executable=Path(override)
+        if not executable.is_absolute() or not executable.is_file():raise RuntimeErrorBase('显式 QQ 路径无效。')
+        return executable
     import winreg
     key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\QQ")
     try:
@@ -98,6 +104,27 @@ def normal_close(identity):
     user32.EnumWindows(callback_type(callback), 0)
 
 
+def qq_data_environment(paths,env):
+    """Opt in through verified component metadata; never fall back on failure."""
+    manifest=paths.home/'runtime/deployment.json'
+    if not manifest.exists():return env
+    data=json.loads(manifest.read_text(encoding='utf-8'))
+    contract=data.get('qq_data_contract')
+    if contract is None:return env
+    if contract!='runtime-home-v1':raise RuntimeErrorBase('未知 QQ 资料目录合同，未启动。')
+    root=paths.home/'components/napcat';file=root/'napcat.mjs'
+    if (data.get('napcat_release')!='4.18.42' or not file.is_file()
+            or hashlib.sha256(file.read_bytes()).hexdigest()!=data.get('napcat_main_sha256')):
+        raise RuntimeErrorBase('独立 QQ 资料目录的组件版本未验证，未启动。')
+    directory=paths.home/'data/qq'
+    if not directory.resolve().is_relative_to(paths.home.resolve()):
+        raise RuntimeErrorBase('QQ 资料目录超出本应用范围，未启动。')
+    from .character_embedding import private_directory
+    private_directory(paths.home,directory)
+    result=dict(env);result.update(NAPCAT_QQ_DATA_DIR=str(directory),NAPCAT_WORKDIR=str(root))
+    return result
+
+
 def run_napcat(paths, cfg, record, stop):
     root = paths.home / "components/napcat"
     config_path = root / "config" / f"onebot11_{cfg['bot_qq']}.json"
@@ -106,11 +133,22 @@ def run_napcat(paths, cfg, record, stop):
     before = listener(cfg["napcat_port"])
     if before:
         raise RuntimeErrorBase("NapCat port already occupied")
-    env = child_environment(paths)
+    env = qq_data_environment(paths,child_environment(paths))
+    from .models import identifier
+    from .deployment import REPO
+    session_token = identifier()
+    session_root = paths.home / 'runtime/qq-session' / session_token
+    from .character_embedding import private_directory
+    private_directory(paths.home, session_root)
+    record.update(session_token=session_token, bot=cfg['bot_qq'])
+    env.update(PCAR_SESSION_ROOT=str(session_root), PCAR_SESSION_TOKEN=session_token,
+               PCAR_SESSION_INSTANCE=cfg['instance_id'], PCAR_SESSION_BOT=cfg['bot_qq'],
+               NAPCAT_DISABLE_MULTI_PROCESS='1', NAPCAT_DISABLE_TIME_SYNC='1')
     for key, name in (("NAPCAT_PATCH_PACKAGE", "qqnt.json"), ("NAPCAT_LOAD_PATH", "loadNapCat.js"),
                       ("NAPCAT_INJECT_PATH", "NapCatWinBootHook.dll"), ("NAPCAT_LAUNCHER_PATH", "NapCatWinBootMain.exe"),
                       ("NAPCAT_MAIN_PATH", "napcat.mjs")):
         env[key] = str(root / name)
+    env['NAPCAT_LOAD_PATH'] = str(REPO / 'integrations/napcat/pcar-session.cjs')
     launched = time.time()
     loader = subprocess.Popen([str(root / "NapCatWinBootMain.exe"), str(qq), str(root / "NapCatWinBootHook.dll"), cfg["bot_qq"]],
                               cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

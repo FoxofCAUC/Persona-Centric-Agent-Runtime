@@ -202,7 +202,8 @@ class ReflectionBuilder:
         previous=payload.get('previous')
         refs=([{'kind':'summary','id':previous['id'],'revision':previous['revision']}] if previous else [])
         refs += [{'kind':'memory','id':m['id'],'revision':m['revision']} for m in payload.get('existing_memories',[])]
-        return {'purpose':payload['automatic_memory']['stage']+'_'+payload['automatic_memory']['purpose'] if payload.get('automatic_memory') else 'provider_probe' if task['mode']=='test' else 'memory_organization','evidence_refs':evidence,
+        if payload.get('proactive'):refs+=payload['proactive']['context']['profile_refs']
+        return {'purpose':'scheduled_reply' if payload.get('proactive') else payload['automatic_memory']['stage']+'_'+payload['automatic_memory']['purpose'] if payload.get('automatic_memory') else 'provider_probe' if task['mode']=='test' else 'memory_organization','evidence_refs':evidence,
                 'included_state_refs':refs,'missing_data':['belief_state_not_implemented'], 'session_package_id':payload.get('package_id'),
                 'hard_constraints':['source_guard','exact_source_quotes','automatic_memory_independent_review' if payload.get('automatic_memory') else 'existing_M4_approval_policy'],
                 'soft_tendencies':[],'input_snapshot_hash':fingerprint(messages),'builder_version':BUILDER_VERSION}

@@ -16,7 +16,8 @@ SELECTOR_DEFAULTS = {"enabled": False, "base_url": "", "name": "", "encrypted_ke
                      "hourly_limit": 300, "daily_limit": 2000}
 
 DEFAULTS = {
-    "version": 2, "character_selector": SELECTOR_DEFAULTS, "service_port": 8765, "napcat_port": 6399,
+    "version": 3, "character_selector": SELECTOR_DEFAULTS, "service_port": 8765, "napcat_port": 6399,
+    "runtime": {"revision":1,"components":{"service":True,"astrbot":True,"napcat":True},"qq_persona_id":""},
     "astrbot_port": 6285, "onebot_port": 6299, "bot_qq": "", "owner_qq": "",
     "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
               "max_tokens": 1024, "hourly_limit": 300, "max_input_chars": 24000},
@@ -52,9 +53,9 @@ class ConfigStore:
             atomic_json(self.file, value)
         value=self.load()
         raw=json.loads(self.file.read_text(encoding='utf-8'))
-        if raw.get('version')==1:
-            backup=self.file.with_name('workbench-v1-'+identifier()+'.json')
-            backup.write_bytes(self.file.read_bytes())
+        if raw.get('version') in (1,2):
+            backup=self.paths.home/'backups'/('workbench-before-v3-'+identifier()+'.dpapi.json')
+            atomic_json(backup,{'format':'windows-dpapi','original':protect(self.file.read_text(encoding='utf-8'))})
             atomic_json(self.file,value)
         return value
 
@@ -62,16 +63,24 @@ class ConfigStore:
         value = json.loads(self.file.read_text(encoding="utf-8"))
         value.setdefault("interaction", copy.deepcopy(DEFAULTS["interaction"]))
         value.setdefault("organization", copy.deepcopy(DEFAULTS["organization"]))
-        if value.get("version") == 1:
-            value["version"] = 2
+        if value.get("version") in (1,2):
+            value["version"] = 3
+            value.setdefault('runtime',copy.deepcopy(DEFAULTS['runtime']))
         value.setdefault("character_selector", copy.deepcopy(SELECTOR_DEFAULTS))
         self.validate(value)
         return value
 
     @staticmethod
     def validate(value):
-        if value.get("version") != 2:
+        if value.get("version") != 3:
             raise RuntimeErrorBase("Unsupported workbench configuration version")
+        runtime=value.get('runtime')
+        if (not isinstance(runtime,dict) or set(runtime)!=set(DEFAULTS['runtime']) or
+                type(runtime['revision']) is not int or runtime['revision']<1 or
+                not isinstance(runtime['qq_persona_id'],str) or
+                not isinstance(runtime['components'],dict) or set(runtime['components'])!={'service','astrbot','napcat'} or
+                any(type(v) is not bool for v in runtime['components'].values())):
+            raise RuntimeErrorBase('Invalid application runtime settings')
         selector = value.get("character_selector")
         if not isinstance(selector, dict) or set(selector) != set(SELECTOR_DEFAULTS) or type(selector['enabled']) is not bool:
             raise RuntimeErrorBase('Invalid character selector configuration')
@@ -143,6 +152,12 @@ class ConfigStore:
         return value
 
     def update(self, changes):
+        from .instance import InstanceLock
+        lock=InstanceLock(self.paths.home/'runtime/config-write.lock')
+        try:return self._update(changes)
+        finally:lock.close()
+
+    def _update(self, changes):
         value = self.load()
         allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization", "character_selector"}
         if not isinstance(changes, dict) or not set(changes) <= allowed:

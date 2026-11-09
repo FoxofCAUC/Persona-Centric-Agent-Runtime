@@ -220,7 +220,11 @@ class CognitiveService:
             'organization_task_id':task['id'],'created_at':timestamp(),'input_characters':sum(len(m['content']) for m in messages),
             'excluded_state_refs':[],'truncation_info':[],'soft_tendencies':[]}
         from .provider_compat import describe_request
-        manifest['provider_request_contract']=describe_request(json.loads(task['model_snapshot'])|{'_json_output':task['mode']!='test'})
+        if payload.get('proactive'):
+            manifest['hard_constraints']=['explicit_appointment','frozen_scope','private_proactive_authorization','automatic_quota']
+            manifest['scope']=payload['scope']
+            manifest['proactive']={k:v for k,v in payload['proactive'].items() if k not in ('content','context')}
+        manifest['provider_request_contract']=describe_request(json.loads(task['model_snapshot'])|{'_json_output':task['mode'] not in ('test','proactive')})
         return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
 
     @staticmethod
@@ -236,8 +240,10 @@ class CognitiveService:
             row=conn.execute('SELECT * FROM organization_tasks WHERE id=? AND persona_id=? AND user_id=?',(task_id,persona_id,LOCAL_USER_ID)).fetchone()
             if not row or row['channel']!=channel and not (row['mode']=='test' and channel=='desktop'):raise RuntimeErrorBase('context_unavailable')
             if channel=='qq':
-                events=json.loads(row['payload_json']).get('events',[])
-                if not events or any(read_exact(conn,selected,{'kind':e.get('kind','event'),'id':e['id']})['status']!='found' for e in events):raise RuntimeErrorBase('context_unavailable')
+                payload=json.loads(row['payload_json']);events=payload.get('events',[])
+                if payload.get('proactive'):
+                    if payload['scope']!=selected:raise RuntimeErrorBase('context_unavailable')
+                elif not events or any(read_exact(conn,selected,{'kind':e.get('kind','event'),'id':e['id']})['status']!='found' for e in events):raise RuntimeErrorBase('context_unavailable')
         return dict(row)
 
     def preview(self,persona_id,channel,task_type='dialogue',turn_id=None,task_id=None,bot='',peer=''):

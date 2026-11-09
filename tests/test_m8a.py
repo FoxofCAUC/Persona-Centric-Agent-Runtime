@@ -189,6 +189,35 @@ class ManagedTests(unittest.IsolatedAsyncioTestCase):
         self.org.recover();await self.org.run_next()
         self.assertEqual(self.org.show(t['id'])['status'],'blocked_unknown');self.assertFalse(self.model.calls)
 
+    async def test_erased_completed_ledger_survives_recovery_without_rebuilding_sources(self):
+        tasks=[]
+        for mode in ('test','candidates','both'):
+            task=self.org.test_model('erased-'+mode)
+            await self.org.run_next()
+            tasks.append(task['id'])
+            with self.store.connection(write=True) as db:
+                db.execute('DELETE FROM organization_submissions WHERE task_id=?',(task['id'],))
+                db.execute('DELETE FROM organization_contracts WHERE task_id=?',(task['id'],))
+                db.execute('UPDATE organization_tasks SET mode=?,payload_json=?,model_snapshot=? WHERE id=?',
+                           (mode,encoded({'private_data_erased':True,'manual_quota_request':True}),'{}',task['id']))
+        with self.store.connection() as db:
+            attempts=[dict(row) for row in db.execute('SELECT * FROM organization_attempts ORDER BY id')]
+        self.org.recover()
+        self.org.recover()
+        self.assertFalse(await self.org.run_next())
+        self.assertEqual(len(self.model.calls),3)
+        for tid in tasks:
+            self.assertEqual(self.org.retry(tid)['status'],'completed')
+            with self.store.connection() as db:
+                detail=self.org.managed.inspect(db,tid)
+                self.assertEqual(detail['phase'],'erased')
+                self.assertEqual(detail['recovery'],'already_committed')
+                self.assertEqual(detail['physical_calls'],1)
+        with self.store.connection() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM organization_contracts').fetchone()[0],0)
+            self.assertEqual(attempts,[dict(row) for row in db.execute('SELECT * FROM organization_attempts ORDER BY id')])
+            self.assertTrue(all(json.loads(row[0])['private_data_erased'] for row in db.execute('SELECT payload_json FROM organization_tasks')))
+
     async def test_corrupt_receipt_never_regenerates(self):
         t=self.org.test_model('corrupt');await self.org.run_next()
         with self.store.connection(write=True) as db:

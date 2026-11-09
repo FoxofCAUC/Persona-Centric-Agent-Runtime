@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "release": "0.8.0.dev2",
+  "release": "0.8.0.dev3",
   "mode": "source",
-  "roots": ["persona_runtime", "integrations/astrbot/astrbot_plugin_persona_runtime"],
+  "roots": ["persona_runtime", "integrations/astrbot/astrbot_plugin_persona_runtime", "integrations/napcat"],
   "excluded_modules": [
     "persona_runtime/dialogue_frame.py",
     "persona_runtime/communication_spec.py",
@@ -12,5 +12,5 @@
   ],
   "development_only": ["experiments", "plugins", "tests", "scripts/dialogue_*.py"],
   "configuration": ["pyproject.toml", "requirements-astrbot.lock"],
-  "note": "Source inventory only. Historical decoders and policy restore modules remain included. Automatic memory uses the existing managed worker; no installer or unattended host. Development plugins require explicit invocation."
+  "note": "Source inventory only. Historical decoders and policy restore modules remain included. The Workbench owns all resident components; tray visibility never creates a detached host. Automatic memory and scheduled generation share the managed worker. No system startup registration or installer. Development plugins require explicit invocation."
 }

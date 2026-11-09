@@ -83,13 +83,15 @@ class ConsoleLifecycleTests(unittest.TestCase):
 
     def test_start_passes_console_token_and_rechecks_it_before_spawn(self):
         lease = self.lease()
+        self.ctl.console_lease=lease
+        self.ctl.app_processes=Mock()
         with patch("persona_runtime.lifecycle.require_console", return_value=lease) as require, \
                 patch.object(self.ctl, "health", side_effect=[{"state": "已停止", "owned": False, "port": 1}, {"state": "运行"}]), \
                 patch("persona_runtime.lifecycle.port_open", return_value=False), \
                 patch("persona_runtime.lifecycle.time.sleep"), \
-                patch("persona_runtime.lifecycle.subprocess.Popen") as spawn:
+                patch.object(self.ctl.app_processes,'start') as spawn:
             self.ctl.start("service")
-        command = spawn.call_args.args[0]
+        command = spawn.call_args.args[1]
         self.assertEqual(command[command.index("--console-token") + 1], lease["token"])
         self.assertEqual(require.call_count, 2)
         self.assertEqual(require.call_args.args, (self.paths, lease["token"]))

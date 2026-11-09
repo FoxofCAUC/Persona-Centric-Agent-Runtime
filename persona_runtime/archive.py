@@ -62,6 +62,18 @@ def read_exact(conn, selected_scope, target, audit=False):
         raise RuntimeErrorBase('invalid_archive_target')
     turn = find_turn(conn, kind, ident)
     if not turn:
+        if kind=='part' and conn.execute("SELECT 1 FROM sqlite_master WHERE name='proactive_occurrences'").fetchone():
+            row=conn.execute('SELECT p.*,o.id AS outbound_id,o.scope_json FROM reply_delivery_parts p JOIN reply_batches b ON b.id=p.reply_batch_id JOIN proactive_occurrences o ON o.id=b.outbound_id WHERE p.id=?',(ident,)).fetchone()
+            if row and json.loads(row['scope_json'])==selected_scope:
+                usable=row['state']=='sent' and not row['isolated']
+                if not usable and not audit:return {'status':'unavailable'}
+                parts=conn.execute('SELECT * FROM reply_delivery_parts WHERE reply_batch_id=? ORDER BY part_index',(row['reply_batch_id'],)).fetchall()
+                return {'status':'found','target':target,'scope':selected_scope,'turn_id':None,'outbound_id':row['outbound_id'],
+                    'session_id':None,'batch_id':None,'turn_status':'outbound','usable':usable,'audit_only':audit,
+                    'coverage':'generated_outbound','members':[],
+                    'replies':[{'kind':'part','id':p['id'],'text':p['text'],'state':p['state']} for p in parts if p['state']=='sent' and not p['isolated']] if usable else [],
+                    'delivery':[{k:p[k] for k in ('id','state','platform_message_id','sent_at')} for p in parts],
+                    'raw_metadata':[],'recorded_at':row['sent_at'] or row['created_at'],'user_read':'unknown'}
         if audit and kind == 'event':
             row = conn.execute('SELECT * FROM events WHERE id=? AND persona_id=? AND user_id=?', (ident, selected_scope['persona_id'], LOCAL_USER_ID)).fetchone()
             if row:
@@ -118,6 +130,10 @@ def resolve(conn, selected_scope, target, audit=False):
     for row in conn.execute('SELECT event_id FROM raw_events WHERE persona_id=? AND user_id=? AND channel=? AND bot=? AND peer=? AND platform_message_id=?', (*selected_scope.values(), target['message_id'])):
         candidates.append({'kind':'event','id':row[0]})
     for row in conn.execute('SELECT id,turn_id FROM reply_delivery_parts WHERE platform_message_id=? AND persona_id=? AND user_id=?', (target['message_id'],selected_scope['persona_id'],LOCAL_USER_ID)):
+        if row['turn_id'] is None:
+            projected=read_exact(conn,selected_scope,{'kind':'part','id':row['id']},audit)
+            if projected['status']=='found':candidates.append({'kind':'part','id':row['id']})
+            continue
         t = dict(conn.execute('SELECT * FROM turns WHERE id=?',(row['turn_id'],)).fetchone())
         if turn_scope(conn,t) == selected_scope: candidates.append({'kind':'part','id':row[0]})
     if len(candidates) != 1: return {'status':'ambiguous' if candidates else 'not_found'}
@@ -127,17 +143,21 @@ def resolve(conn, selected_scope, target, audit=False):
 def binding(result):
     if result['status'] != 'found': return {'status':result['status']}
     body = {'turn_id':result['turn_id'],'members':result['members'],'replies':result['replies']}
-    return {'status':'found','target':result['target'],'turn_id':result['turn_id'],'hash':fingerprint(body),
+    extra={'outbound_id':result['outbound_id']} if result.get('outbound_id') else {}
+    body.update(extra)
+    return {'status':'found','target':result['target'],'turn_id':result['turn_id'],**extra,'hash':fingerprint(body),
             'member_ids':[m['id'] for m in result['members']], 'reply_ids':[r['id'] for r in result['replies']]}
 
 
 def reference_group(result):
-    return {'turn_id':result['turn_id'],'targets':[result['target']],
+    extra={'outbound_id':result['outbound_id']} if result.get('outbound_id') else {}
+    return {'turn_id':result['turn_id'],**extra,'targets':[result['target']],
             'members':result['members'],'replies':list(result['replies']),'user_read':'unknown'}
 
 
 def reference_selection(input_event_id, result):
-    return {'input_event_id':input_event_id,'target':result['target'],'turn_id':result['turn_id']}
+    extra={'outbound_id':result['outbound_id']} if result.get('outbound_id') else {}
+    return {'input_event_id':input_event_id,'target':result['target'],'turn_id':result['turn_id'],**extra}
 
 
 def serialize_reference_block(groups, selections):

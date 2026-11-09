@@ -82,13 +82,33 @@ class DeliveryService:
             for stream in waiting:
                 self._record(conn,identifier(),stream[0],None,'wait_restart','runtime','bounded_wait_restarted',True,
                              _fingerprint({'stream':stream[0]}),{'restarted':True})
-            rows = conn.execute("SELECT id,stream_id FROM reply_delivery_parts WHERE state='sending'").fetchall()
+            rows = conn.execute("SELECT * FROM reply_delivery_parts WHERE state='sending'").fetchall()
             for row in rows:
+                sender=json.loads(row['sender_json'] or 'null')
+                from .instance import process_identity_alive
+                if sender and process_identity_alive(sender.get('process')):continue
                 conn.execute("UPDATE reply_delivery_parts SET state='uncertain',claim_token=NULL,error=?,updated_at=? WHERE id=?",
-                             ("service_restarted_before_delivery_confirmation", timestamp(), row[0]))
+                             ("service_restarted_before_delivery_confirmation", timestamp(), row['id']))
+                conn.execute('UPDATE reply_delivery_parts SET uncertain_since=? WHERE id=?',(time.time(),row['id']))
                 conn.execute("UPDATE reply_delivery_attempts SET state='uncertain',error=?,ended_at=? WHERE part_id=? AND state='sending'",
-                             ("service_restarted_before_delivery_confirmation", timestamp(), row[0]))
-                self._refresh(conn, row[1])
+                             ("service_restarted_before_delivery_confirmation", timestamp(), row['id']))
+                self._refresh(conn, row['stream_id'])
+
+    def reconcile_unknown(self,now=None):
+        from .instance import process_identity_alive
+        now=time.time() if now is None else now
+        with self.store.connection() as check:
+            if not check.execute("SELECT 1 FROM reply_delivery_parts WHERE state IN ('uncertain','failed') AND uncertain_since<=? LIMIT 1",(now-120,)).fetchone():return
+        with self.store.connection(write=True) as conn:
+            rows=conn.execute("SELECT * FROM reply_delivery_parts WHERE state IN ('uncertain','failed') AND uncertain_since IS NOT NULL AND uncertain_since<=?",(now-120,)).fetchall()
+            for part in rows:
+                sender=json.loads(part['sender_json'] or 'null')
+                if not sender or not sender.get('finished') and process_identity_alive(sender.get('process')):continue
+                conn.execute("UPDATE reply_delivery_parts SET state='skipped',isolated=CASE WHEN id=? THEN 1 ELSE isolated END,revision=revision+1,claim_token=NULL,error='uncertain_isolated_no_replay',updated_at=? WHERE reply_batch_id=? AND part_index>=? AND state IN ('pending','uncertain','failed')",
+                    (part['id'],timestamp(),part['reply_batch_id'],part['part_index']))
+                self._refresh(conn,part['stream_id'])
+                self._record(conn,identifier(),part['stream_id'],part['id'],'isolate','runtime','unknown_not_sent_or_replayed',True,
+                    _fingerprint([part['id'],'isolate']),{'isolated':True})
 
     def create_for_batch(self, conn, batch_id, turn):
         if turn["channel"] != "qq":
@@ -122,6 +142,7 @@ class DeliveryService:
                 conn.execute("INSERT INTO reply_delivery_parts (id,stream_id,reply_batch_id,turn_id,persona_id,user_id,semantic_index,part_index,stream_seq,text,text_hash,state,revision,claim_token,attempt,platform_message_id,sent_at,error,created_at,updated_at,display_message_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',1,NULL,0,NULL,NULL,NULL,?,?,?)",
                              (identifier(), stream_id, batch_id, turn["id"], turn["persona_id"], LOCAL_USER_ID,
                               segment['semantic_index'] if displays else segment['segment_index'], part_index, stream_seq, text, hashlib.sha256(text.encode("utf-8")).hexdigest(), timestamp(), timestamp(),segment['id'] if displays else None))
+        if turn.get('outbound_id'):return stream_id
         latest = conn.execute('SELECT new_input_event_id FROM turns WHERE id=?',(turn['id'],)).fetchone()[0]
         # A batch can remain capacity-blocked while newer inputs are already accepted.
         # Resolve only authoritative same-session events, excluding this batch's members.
@@ -264,8 +285,12 @@ class DeliveryService:
             return [self._view(conn, row[0]) for row in conn.execute(
                 "SELECT id FROM reply_delivery_streams WHERE persona_id=? ORDER BY updated_at DESC", (persona_id,))]
 
-    def claim(self, stream_id, part_id, expected_revision, operation_id, *, persona_id=None, origin=None, actor="bridge", capabilities=None):
+    def claim(self, stream_id, part_id, expected_revision, operation_id, *, persona_id=None, origin=None, actor="bridge", capabilities=None,sender=None):
+        from .maintenance import require_writable_storage
+        require_writable_storage(self.store.paths)
+        if sender is not None:self.validate_sender(sender)
         request = {"stream_id": stream_id, "part_id": part_id, "expected_revision": expected_revision,"capabilities":capabilities}
+        if sender is not None:request['sender']=sender
         request_hash = _fingerprint(request)
         with self.store.connection(write=True) as conn:
             stream = self._stream(conn, stream_id); self._scope(stream, persona_id, origin)
@@ -277,6 +302,13 @@ class DeliveryService:
             part = conn.execute("SELECT * FROM reply_delivery_parts WHERE id=? AND stream_id=?", (part_id, stream_id)).fetchone()
             if not part:
                 raise RuntimeErrorBase("Delivery part not found")
+            if part['turn_id'] is None:
+                from .proactive import ProactiveService
+                try:ProactiveService.check_delivery(conn,part['reply_batch_id'],time.time(),self.store)
+                except RuntimeErrorBase as error:
+                    conn.execute("UPDATE reply_delivery_parts SET state='skipped',error=?,revision=revision+1,updated_at=? WHERE reply_batch_id=? AND state='pending'",(str(error),timestamp(),part['reply_batch_id']))
+                    stream=self._refresh(conn,stream_id)
+                    return {'claimed':False,'state':'skipped','reason':str(error),'revision':stream['revision']}
             if part['display_message_id'] and 'reply_display_messages_v1' not in (capabilities or []):
                 raise RuntimeErrorBase('reply_display_capability_required')
             batch=conn.execute('SELECT schema_version FROM reply_batches WHERE id=?',(part['reply_batch_id'],)).fetchone()
@@ -296,6 +328,8 @@ class DeliveryService:
                 self._record(conn,operation_id,stream_id,part_id,'claim',actor,'rhythm_wait',False,request_hash,result)
                 return result
             token = identifier()
+            conn.execute('UPDATE reply_delivery_parts SET sender_json=?,claimed_epoch=? WHERE id=?',
+                (json.dumps(sender) if sender else None,time.time(),part_id))
             conn.execute("UPDATE reply_delivery_parts SET state='sending',revision=revision+1,claim_token=?,attempt=attempt+1,updated_at=? WHERE id=? AND state='pending'",
                          (token, timestamp(), part_id))
             conn.execute("INSERT INTO reply_delivery_attempts (id,part_id,attempt_no,state,platform_message_id,error,started_at,ended_at) VALUES (?,?,?,'sending',NULL,NULL,?,NULL)",
@@ -309,7 +343,7 @@ class DeliveryService:
             return result
 
     def result(self, stream_id, part_id, claim_token, status, expected_revision, operation_id, *, platform_message_id=None,
-               error=None, persona_id=None, origin=None, actor="bridge"):
+               error=None, persona_id=None, origin=None, actor="bridge",transport_done=False):
         if status not in ("sent", "failed", "uncertain"):
             raise RuntimeErrorBase("Invalid delivery result")
         request = {"stream_id": stream_id, "part_id": part_id, "claim_token": claim_token, "status": status,
@@ -321,10 +355,35 @@ class DeliveryService:
             if old is not None:
                 return old
             part = conn.execute("SELECT * FROM reply_delivery_parts WHERE id=? AND stream_id=?", (part_id, stream_id)).fetchone()
+            if part and part['state']!='sending':
+                known=conn.execute("SELECT result_json FROM reply_delivery_operations WHERE part_id=? AND action='claim' AND json_extract(result_json,'$.claim_token')=?",(part_id,claim_token)).fetchone()
+                if not known:
+                    raise RuntimeErrorBase('claim_token_mismatch')
+                if platform_message_id:
+                    conn.execute('INSERT OR IGNORE INTO delivery_late_receipts VALUES(?,?,?,?,?,?)',
+                        (identifier(),part_id,claim_token,platform_message_id,'late_evidence_no_reopen',timestamp()))
+                same_attempt=json.loads(known[0]).get('attempt')==part['attempt']
+                if same_attempt and part['state']=='uncertain' and not part['isolated']:
+                    sender=json.loads(part['sender_json'] or 'null')
+                    if sender and transport_done:
+                        sender['finished']=True
+                        conn.execute('UPDATE reply_delivery_parts SET sender_json=? WHERE id=?',(json.dumps(sender),part_id))
+                    if status=='sent' and platform_message_id:
+                        conn.execute("UPDATE reply_delivery_parts SET state='sent',platform_message_id=?,sent_at=?,revision=revision+1,error='late_confirmed',updated_at=? WHERE id=?",(platform_message_id,timestamp(),timestamp(),part_id))
+                        conn.execute("UPDATE reply_delivery_attempts SET state='sent',platform_message_id=?,error='late_confirmed',ended_at=? WHERE part_id=? AND attempt_no=?",(platform_message_id,timestamp(),part_id,part['attempt']))
+                        stream=self._refresh(conn,stream_id)
+                actual=conn.execute('SELECT state FROM reply_delivery_parts WHERE id=?',(part_id,)).fetchone()[0]
+                return {'state':actual,'revision':stream['revision'],'part_id':part_id,'late_evidence':True}
             if not part or part["revision"] != expected_revision:
                 raise RuntimeErrorBase("version_conflict")
             if not part or part["state"] != "sending" or part["claim_token"] != claim_token:
                 raise RuntimeErrorBase("claim_token_mismatch")
+            sender=json.loads(part['sender_json'] or 'null')
+            if sender:
+                sender['finished']=bool(transport_done)
+                conn.execute('UPDATE reply_delivery_parts SET sender_json=? WHERE id=?',(json.dumps(sender),part_id))
+            if status in ('failed','uncertain'):
+                conn.execute('UPDATE reply_delivery_parts SET uncertain_since=? WHERE id=?',(time.time(),part_id))
             conn.execute("UPDATE reply_delivery_parts SET state=?,revision=revision+1,claim_token=NULL,platform_message_id=?,sent_at=?,error=?,updated_at=? WHERE id=?",
                          (status, platform_message_id, timestamp() if status == "sent" else None, error, timestamp(), part_id))
             conn.execute("UPDATE reply_delivery_attempts SET state=?,platform_message_id=?,error=?,ended_at=? WHERE part_id=? AND attempt_no=? AND state='sending'",
@@ -336,6 +395,23 @@ class DeliveryService:
             result = {"state": status, "revision": stream["revision"], "part_id": part_id}
             self._record(conn, operation_id, stream_id, part_id, "result", actor, error, False, request_hash, result)
             return result
+
+    def validate_sender(self,sender):
+        from .config import ConfigStore
+        from .instance import process_identity_alive
+        from .lifecycle import same_process,read_console
+        try:
+            record=json.loads((self.store.paths.home/'runtime/astrbot.json').read_text(encoding='utf-8'))
+            console=read_console(self.store.paths)
+            if (sender['instance_id']!=ConfigStore(self.store.paths).load()['instance_id'] or
+                sender['process']['pid']!=record['host']['ProcessId'] or
+                sender['console_token']!=record['console_token'] or not same_process(record['host']) or
+                not process_identity_alive(sender['process']) or not console or console['state']!='active' or
+                console['token']!=sender['console_token']):raise ValueError
+            closing=self.store.paths.home/'runtime/application-closing.json'
+            if closing.exists() and json.loads(closing.read_text())['token']==console['token']:
+                raise RuntimeErrorBase('application_closing')
+        except (OSError,ValueError,KeyError,TypeError):raise RuntimeErrorBase('delivery_sender_not_current') from None
 
     def resolve(self, stream_id, part_id, action, expected_revision, operation_id, *, persona_id=None, reason=None,
                 actor="admin", allow_continue=True):

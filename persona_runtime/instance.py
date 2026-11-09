@@ -86,6 +86,25 @@ def process_identity_alive(identity):
         process.close()
 
 
+def native_identity_matches(saved):
+    """Cheap retained-handle identity check; never launch a shell for idle polling."""
+    from datetime import datetime, timezone
+    from pathlib import Path
+    import re
+    try:
+        identity=saved['native']
+        if identity['pid']!=saved['ProcessId']:return False
+        process=ProcessIdentityHandle(identity['pid'],identity)
+        try:
+            k=process.kernel
+            k.QueryFullProcessImageNameW.argtypes=[wintypes.HANDLE,wintypes.DWORD,wintypes.LPWSTR,ctypes.POINTER(wintypes.DWORD)]
+            size=wintypes.DWORD(32768);buffer=ctypes.create_unicode_buffer(size.value)
+            return bool(process.alive() and k.QueryFullProcessImageNameW(process.handle,0,buffer,ctypes.byref(size))
+                        and Path(buffer.value).resolve()==Path(saved['ExecutablePath']).resolve())
+        finally:process.close()
+    except (OSError,ValueError,KeyError,TypeError,RuntimeErrorBase):return False
+
+
 def bind_host_job():
     """Keep this handle open for the host's lifetime; exit kills all its children."""
     class BasicLimits(ctypes.Structure):

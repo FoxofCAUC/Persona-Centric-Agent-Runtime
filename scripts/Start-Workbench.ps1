@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 try {
     $projectRoot = Split-Path -Parent $PSScriptRoot
     $runtimeHome = if ($env:PERSONA_RUNTIME_HOME) { $env:PERSONA_RUNTIME_HOME } else { 'D:\Persona-Centric Agent Runtime' }
-    $pythonw = 'D:\Persona-Centric Agent Runtime\.venv\Scripts\pythonw.exe'
+    $pythonw = if ($env:PCAR_PYTHON) { Join-Path (Split-Path -Parent $env:PCAR_PYTHON) 'pythonw.exe' } else { Join-Path $runtimeHome '.venv\Scripts\pythonw.exe' }
     if (-not (Test-Path -LiteralPath $pythonw)) { throw 'Project environment is not prepared.' }
     $env:PERSONA_RUNTIME_HOME = $runtimeHome
     $env:PYTHONPATH = $projectRoot

@@ -10,7 +10,7 @@ from .private_personas import provider_identity,guard_cloud_dispatch
 from .instance import current_process_identity,process_identity_alive
 
 VERSION='organization-contract-v1'
-TRIGGERS=('manual','daily','incremental','sealed','probe')
+TRIGGERS=('manual','daily','incremental','sealed','probe','scheduled')
 WAITING=('queued','waiting_quota')
 
 
@@ -88,6 +88,7 @@ class ManagedOrganization:
         return result
 
     def key(self,db,payload,request_id,trigger):
+        if payload.get('proactive'):return digest(['scheduled',payload['scope'],payload['proactive']['occurrence_id']])
         # Event IDs/text revisions normalize legacy and sealed desktop wrappers.
         evidence=sorted((e.get('kind','event'),e['id'],digest(e['text'])) for e in payload.get('events',[]))
         if payload['mode']=='test':evidence=[('probe',request_id,'')]
@@ -134,14 +135,19 @@ class ManagedOrganization:
         if db.execute("SELECT count(*) FROM organization_tasks WHERE status IN ('queued','waiting_quota')").fetchone()[0]>=10:
             raise RuntimeErrorBase('organization_queue_full')
         ident=identifier();now=timestamp()
+        model=self.engine.model()
+        if payload.get('proactive'):
+            from .companion import choose,GENERATION_PROFILE
+            model=self.engine.config.load()['model']|{'_companion_profile':choose('minimal_im'),'_generation_profile':GENERATION_PROFILE}
         db.execute('INSERT INTO organization_tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (ident,request_id,payload['persona_id'],LOCAL_USER_ID,payload.get('session_id'),payload.get('channel'),payload['mode'],int(automatic),
-             payload['fingerprint'],encoded(payload),encoded(self.engine.model()),'queued',None,now,now))
+             payload['fingerprint'],encoded(payload),encoded(model),'queued',None,now,now))
         task=dict(db.execute('SELECT * FROM organization_tasks WHERE id=?',(ident,)).fetchone())
         self.attach(db,task,payload,trigger)
         return self.engine._view(task)
 
     def rebase(self,db,task,c,payload):
+        if payload.get('proactive'):return payload
         """Serialize overlapping accepted work and trim only already completed sources."""
         if payload.get('automatic_memory'):return payload
         if task['mode']=='test' or c['data'].get('rebuild_root') or db.execute('SELECT 1 FROM organization_attempts WHERE task_id=?',(task['id'],)).fetchone():return payload
@@ -197,6 +203,10 @@ class ManagedOrganization:
                    (encoded(contract['data']),contract['policy_id'],contract['task_id']))
 
     def check(self,db,task,contract,payload,check_sources=True):
+        if contract['data']['cancel_requested']:raise RuntimeErrorBase('cancelled_by_user')
+        if payload.get('proactive'):
+            self.engine.proactive.check(db,task,payload)
+            return
         from .persona_management import active
         from .session_organization import valid
         active(db,task['persona_id'])
@@ -225,7 +235,13 @@ class ManagedOrganization:
 
     def inspect(self,db,tid):
         c=self.contract(db,tid)
-        if not c:return {'version':VERSION,'legacy':True,'recovery':'requires_legacy_audit'}
+        if not c:
+            task=db.execute('SELECT status,payload_json FROM organization_tasks WHERE id=?',(tid,)).fetchone()
+            if task and task['status']=='completed' and json.loads(task['payload_json']).get('private_data_erased') is True:
+                count=db.execute('SELECT count(*) FROM organization_attempts WHERE task_id=?',(tid,)).fetchone()[0]
+                return {'version':VERSION,'phase':'erased','recovery':'already_committed',
+                        'source_data_erased':True,'physical_calls':count}
+            return {'version':VERSION,'legacy':True,'recovery':'requires_legacy_audit'}
         count=db.execute('SELECT count(*) FROM organization_attempts WHERE task_id=?',(tid,)).fetchone()[0]
         slot=dict(db.execute("SELECT * FROM organization_execution WHERE id='singleton'").fetchone())
         return {'version':VERSION,'policy_id':c['policy_id'],'trigger':c['data']['trigger'],
@@ -241,6 +257,8 @@ class ManagedOrganization:
         with self.store.connection(write=True) as db:
             for row in db.execute('SELECT * FROM organization_tasks WHERE id NOT IN (SELECT task_id FROM organization_contracts)').fetchall():
                 task=dict(row);p=json.loads(task['payload_json'])
+                if task['status']=='completed' and p.get('private_data_erased') is True:
+                    continue
                 if task['mode']=='test':p.update(persona_id=task['persona_id'],user_id=LOCAL_USER_ID,channel='desktop',mode='test',fingerprint=task['fingerprint'])
                 self.attach(db,task,p,'probe' if task['mode']=='test' else {0:'manual',1:'incremental',2:'daily'}.get(task['automatic'],'manual'),legacy=True)
             slot=dict(db.execute("SELECT * FROM organization_execution WHERE id='singleton'").fetchone())
@@ -310,6 +328,9 @@ class ManagedOrganization:
     async def run_next(self):
         e=self.engine
         if e.running or e.draining or e.chat.draining:return False
+        from .maintenance import require_writable_storage
+        try:require_writable_storage(self.store.paths)
+        except RuntimeErrorBase:return False
         self.recover()
         task=None;aid=None;generation=None;received=None
         with self.store.connection(write=True) as db:
@@ -379,7 +400,7 @@ class ManagedOrganization:
                     raise RuntimeErrorBase('organization_receipt_corrupt')
             else:
                 from .generation_retry import _one
-                value=await _one(e.client,model|{'_json_output':task['mode']!='test'},messages,'provider_timeout')
+                value=await _one(e.client,model|{'_json_output':task['mode'] not in ('test','proactive')},messages,'provider_timeout')
                 reply,usage=value;audit=receipt(reply);audit['status']='received'
                 with self.store.connection(write=True) as db:
                     db.execute('UPDATE organization_attempts SET usage_json=? WHERE id=?',(encoded(usage),aid))
@@ -390,7 +411,9 @@ class ManagedOrganization:
             with self.store.connection(write=True) as db:
                 if not self.owns(db,task['id'],generation):raise RuntimeErrorBase('organization_lease_lost')
                 c=self.contract(db,task['id']);self.check(db,task,c,payload)
-                if task['mode']!='test':
+                if payload.get('proactive'):
+                    e.proactive.publish(db,task,payload,reply)
+                elif task['mode']!='test':
                     summary,candidates=e.validate_output(db,payload,reply,audit)
                     e._publish(db,task,payload,summary,candidates)
                 if audit.get('error_code'):

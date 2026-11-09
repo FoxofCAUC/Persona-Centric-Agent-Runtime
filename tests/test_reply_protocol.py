@@ -69,6 +69,8 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.config.update({'model':{'base_url':str(self.provider.make_url('/v1')),'name':'mock'}})
         self.service=RuntimeService(self.store);self.pid=self.service.create_persona(generic_persona())['id'];self.service.use_persona(self.pid)
         self.engine=ChatEngine(self.store,self.config);self.ingress=IngressService(self.engine)
+        policy=self.ingress.current_policy(self.pid,'desktop')
+        self.ingress.update_policy(self.pid,'desktop',policy['mode'],policy['id'],identifier(),companion_mode='disabled')
         # This suite verifies the frozen pre-bubble wire contract.
         from persona_runtime.reply_batch import expression_snapshot
         with self.store.connection(write=True) as conn:

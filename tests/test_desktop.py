@@ -18,6 +18,25 @@ from persona_runtime.profile import ProfileService
 
 
 class DesktopTests(unittest.TestCase):
+    def test_tray_status_action_restores_hidden_window_after_menu_callback(self):
+        from persona_runtime.tray import Tray
+        window=self.window();window.tray=Tray(window)
+        window.current_page='chat';window.hide_to_tray()
+        with patch('tkinter.Menu.tk_popup'),patch.object(window,'focus_force') as focus:
+            window.tray.menu();menu=window.tray.menu_widget
+            menu.invoke(1)
+            self.assertEqual(window.state(),'withdrawn')
+            window.update()
+            self.assertEqual(window.state(),'normal');self.assertEqual(window.current_page,'home')
+            focus.assert_called_once();window.poll.assert_called_once_with(force=True)
+            self.assertTrue(menu.winfo_exists())
+
+    def test_automatic_visible_fallback_does_not_activate_window(self):
+        window=self.window();window.withdraw()
+        with patch.object(window,'focus_force') as focus,patch.object(window,'lift') as lift:
+            window.show_from_tray(activate=False)
+            self.assertEqual(window.state(),'normal');focus.assert_not_called();lift.assert_not_called()
+
     @staticmethod
     def widgets(parent):
         for child in parent.winfo_children():
@@ -528,13 +547,13 @@ class DesktopTests(unittest.TestCase):
         window.controller.management_url.return_value = "http://127.0.0.1:6285"
         Workbench.open_panel(window, "astrbot")
         action = window.run_task.call_args.args[2]
-        with patch("persona_runtime.desktop.webbrowser.open", return_value=True) as browser:
+        with patch("persona_runtime.desktop.open_browser", return_value=True) as browser:
             action(None)
             browser.assert_called_once_with("http://127.0.0.1:6285")
-        with patch("persona_runtime.desktop.webbrowser.open", return_value=False):
+        with patch("persona_runtime.desktop.open_browser", return_value=False):
             with self.assertRaisesRegex(ValueError, "未接受"):
                 action(None)
-        with patch("persona_runtime.desktop.webbrowser.open", side_effect=OSError("sensitive detail")):
+        with patch("persona_runtime.desktop.open_browser", side_effect=OSError("sensitive detail")):
             with self.assertRaisesRegex(ValueError, "无法启动默认浏览器") as error:
                 action(None)
             self.assertNotIn("sensitive", str(error.exception))
@@ -631,22 +650,23 @@ class DesktopTests(unittest.TestCase):
         window=self.window();window.managed_lifecycle=True
         import threading
         entered=threading.Event();release=threading.Event()
-        def stop(_):
-            entered.set();release.wait(2);return {'success':True,'report_file':'mock'}
-        with patch.object(window.controller,'end_console') as end, patch('persona_runtime.emergency.force_stop_all_elevated',side_effect=stop), patch.object(window,'destroy_console') as destroy:
+        def stop():
+            entered.set();release.wait(2);return {'processes_released':True}
+        with patch.object(window.controller,'shutdown',side_effect=stop) as shutdown, patch('persona_runtime.emergency.force_stop_all_elevated') as broad, patch.object(window,'destroy_console') as destroy:
             window.close_window();self.assertTrue(entered.wait(1));self.assertTrue(window.winfo_exists())
             window.finish_console_shutdown();destroy.assert_not_called()
             release.set();self.pump(window,lambda:window.shutdown_result is not None)
-            window.finish_console_shutdown();destroy.assert_called();end.assert_called_once()
+            window.finish_console_shutdown();destroy.assert_called();shutdown.assert_called_once();broad.assert_not_called()
         window.managed_lifecycle=False;window.shutdown_started=False;window.closed=False
 
     def test_managed_console_denied_stop_keeps_window_for_retry(self):
         window=self.window();window.managed_lifecycle=True
-        with patch.object(window.controller,'end_console'), patch('persona_runtime.emergency.force_stop_all_elevated',side_effect=RuntimeError('permission denied')), patch.object(window,'destroy_console') as destroy:
+        with patch.object(window.controller,'shutdown',side_effect=RuntimeError('permission denied')), patch('persona_runtime.emergency.force_stop_all_elevated') as broad, patch.object(window,'destroy_console') as destroy:
             window.close_window();self.pump(window,lambda:window.shutdown_result is not None)
             window.finish_console_shutdown();destroy.assert_not_called()
             self.assertFalse(window.shutdown_started);self.assertTrue(window.winfo_exists())
             self.assertIn('permission denied',window.notice.get())
+            broad.assert_not_called()
         window.managed_lifecycle=False;window.closed=False
 
     def test_m61_buffer_controls_and_stale_read(self):

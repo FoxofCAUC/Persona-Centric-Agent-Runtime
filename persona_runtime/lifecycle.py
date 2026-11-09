@@ -11,7 +11,7 @@ import time
 from typing import Protocol
 
 from .config import ConfigStore, atomic_json
-from .deployment import NO_WINDOW, REPO, child_environment, render_components
+from .deployment import NO_WINDOW, REPO, child_environment, render_components, component_python
 from .desktop_client import LocalClient
 from .models import RuntimeErrorBase, identifier, timestamp
 from .instance import InstanceLock, current_process_identity, process_identity_alive
@@ -45,17 +45,35 @@ def ps_json(script):
 def process_info(pid):
     if type(pid) is not int or pid <= 0:
         return None
-    return ps_json("[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); "
+    result=ps_json("[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); "
                    f"Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' | "
                    "Select-Object ProcessId,ParentProcessId,ExecutablePath,CommandLine,"
                    "@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress")
+    if result:
+        from .instance import ProcessIdentityHandle
+        try:
+            handle=ProcessIdentityHandle(pid)
+            try:result['native']=handle.identity
+            finally:handle.close()
+        except RuntimeErrorBase:return None
+    return result
 
 
 def same_process(saved):
     if not saved:
         return False
-    actual = process_info(saved.get("ProcessId"))
-    return bool(actual and all(actual.get(k) == saved.get(k) for k in ("ProcessId", "Created", "ExecutablePath")))
+    from .instance import native_identity_matches
+    if saved.get('native'):return native_identity_matches(saved)
+    from .instance import ProcessIdentityHandle
+    try:
+        handle=ProcessIdentityHandle(saved.get('ProcessId'))
+        try:
+            if not handle.alive():return False
+        finally:handle.close()
+    except (OSError,ValueError,TypeError,RuntimeErrorBase):return False
+    # Old records use CIM's microsecond precision, not native 100ns FILETIME.
+    actual=process_info(saved.get('ProcessId'))
+    return bool(actual and all(actual.get(k)==saved.get(k) for k in ('ProcessId','Created','ExecutablePath')))
 
 
 def port_open(port):
@@ -109,6 +127,10 @@ class ServiceController:
         self.force_stopping = threading.Event()
         self.console_lease = None
         self.console_lock = None
+        self.app_processes = None
+        self.closing = threading.Event()
+        self.lifecycle_lock = threading.RLock()
+        self.login_health = None
         self.adapters = {role: ManagedService(self, role) for role in ("service", "astrbot", "napcat")}
 
     def start_console(self):
@@ -119,13 +141,40 @@ class ServiceController:
             previous = read_console(self.paths)
             if previous and previous.get("state") == "active" and process_identity_alive(previous.get("process")):
                 raise RuntimeErrorBase("已有 PCAR 控制窗口运行，请返回现有窗口。")
+            from .app_processes import AppProcesses
+            self.app_processes = AppProcesses()
+            persona_id = None
+            database = self.paths.home / 'data/database/runtime.sqlite3'
+            if database.exists():
+                import sqlite3
+                from contextlib import closing
+                with closing(sqlite3.connect(database.as_uri()+'?mode=ro',uri=True)) as db:
+                    row = db.execute("SELECT value FROM settings WHERE key='current_persona'").fetchone()
+                    persona_id = row[0] if row else None
+            cfg=self.config.load()
+            if cfg['runtime']['qq_persona_id']:persona_id=cfg['runtime']['qq_persona_id']
+            elif persona_id:
+                cfg['runtime']['qq_persona_id']=persona_id
+                cfg['runtime']['revision']+=1
+                atomic_json(self.config.file,cfg)
+            try:last_exit=json.loads((self.paths.home/'runtime/last-exit.json').read_text(encoding='utf-8'))
+            except (OSError,ValueError):last_exit=None
+            exit_matches=bool(previous and last_exit and last_exit.get('console_token')==previous.get('token'))
+            previous_exit_unconfirmed=bool(previous and (not exit_matches or last_exit.get('qq_was_running') and not last_exit.get('logout_confirmed')))
             lease = {"token": identifier(), "instance_id": self.config.load()["instance_id"],
                      "process": current_process_identity(), "state": "active", "at": timestamp(),
+                     "qq_persona_id": persona_id,
+                     'previous_exit_unconfirmed':previous_exit_unconfirmed,
+                     'login_confirmation_required':bool(cfg['bot_qq'] and (
+                         previous and previous.get('state')!='closed' or
+                         previous_exit_unconfirmed)),
                      "previous_stale": bool(previous and previous.get("state") != "closed")}
             atomic_json(self.paths.home / "runtime/console.json", lease)
             self.console_lease, self.console_lock = lease, lock
             return lease
         except BaseException:
+            if self.app_processes is not None:
+                self.app_processes.close();self.app_processes=None
             lock.close()
             raise
 
@@ -136,6 +185,8 @@ class ServiceController:
             if lease and current and current.get("token") == lease["token"]:
                 atomic_json(self.paths.home / "runtime/console.json", current | {"state": "closed", "closed_at": timestamp()})
         finally:
+            if self.app_processes is not None:
+                self.app_processes.close();self.app_processes=None
             if self.console_lock is not None:
                 self.console_lock.close()
             self.console_lock = self.console_lease = None
@@ -164,10 +215,9 @@ class ServiceController:
         if not saved or saved.get("instance_id") != self.config.load()["instance_id"]:
             return False
         identity = saved.get("host")
-        actual = process_info(identity.get("ProcessId")) if identity else None
-        if not actual or not same_process(identity):
+        if not identity or not same_process(identity):
             return False
-        command = actual.get("CommandLine") or ""
+        command = identity.get("CommandLine") or ""
         return "persona_runtime.host" in command and f"--role {role}" in command and saved["instance_id"] in command
 
     def health(self, role):
@@ -176,6 +226,8 @@ class ServiceController:
         owned = self.owned(role)
         listening = port_open(port)
         result = {"role": role, "owned": owned, "port": port, "state": "启动中" if owned else "已停止"}
+        if role=='napcat' and not owned and self.console_lease and self.console_lease.get('login_confirmation_required'):
+            return result|{'state':'等待登录确认','reason':'上次注销未确认；请明确点击启动服务后重新登录。'}
         if listening and not owned:
             return result | {"state": "外部程序占用", "reason": "此端口不属于本项目，不接管或停止"}
         if not listening:
@@ -202,14 +254,26 @@ class ServiceController:
                 if proof.get('error_type'):
                     return result | {"state":"等待验证", "login":None, "onebot":None,
                                      "reason":"桥接状态检查失败，QQ 登录状态未知；请查看元数据诊断日志。"}
-                return result | {"state": "运行", "login": proof["verified"], "onebot": proof["online"]}
+                return result | {"state": "运行", "login": proof["verified"], "onebot": proof["online"],
+                    "onebot_connected":proof.get('connected'),"account_online":proof['online']}
             except (OSError, ValueError, KeyError, TypeError):
                 return result | {"state":"等待验证", "login":None, "onebot":None,
                                  "reason":"桥接心跳暂不可读取，QQ 登录状态未知；请检查消息服务。"}
         else:
             saved = self.record(role)
             if saved and same_process(saved.get("qq_listener")):
-                return result | {"state": "运行", "web_ready": True}
+                detail={'account_logged_in':None,'login_required':False,'login_reason':'status_unavailable'}
+                cache_key=cfg['instance_id'],cfg['bot_qq'],saved.get('session_token'),saved.get('qq_listener',{}).get('Created')
+                now=time.monotonic()
+                if self.login_health and self.login_health[0]==cache_key and now-self.login_health[1]<5:
+                    detail=self.login_health[2]
+                else:
+                    try:
+                        from .qq_session import login_status_verified
+                        detail=login_status_verified(self.paths,saved)
+                    except Exception:pass
+                    self.login_health=cache_key,now,detail
+                return result | {"state": "运行", "web_ready": True} | detail
         return result | {"state": "等待验证"}
 
     def management_url(self, role):
@@ -280,8 +344,48 @@ class ServiceController:
         except (OSError, ValueError, KeyError, TypeError):
             return False
 
-    def start(self, role):
-        if self.force_stopping.is_set():
+    def start(self, role, *, automatic=False):
+        with self.lifecycle_lock:
+            if role=='napcat' and self.console_lease and self.console_lease.get('login_confirmation_required'):
+                if automatic:return self.health(role)
+                self.console_lease['login_confirmation_required']=False
+                atomic_json(self.paths.home/'runtime/console.json',self.console_lease)
+            if automatic and not self.config.load()['runtime']['components'].get(role):return
+            if not automatic:self.set_desired(role,True)
+            return self._start(role)
+
+    def set_desired(self,role,enabled):
+        if role not in self.adapters:raise RuntimeErrorBase('Unknown service role')
+        lock=InstanceLock(self.paths.home/'runtime/config-write.lock')
+        try:
+            cfg=self.config.load()
+            if cfg['runtime']['components'][role]!=enabled:
+                cfg['runtime']['components'][role]=enabled;cfg['runtime']['revision']+=1
+                atomic_json(self.config.file,cfg)
+        finally:lock.close()
+
+    def ensure_binding(self):
+        cfg=self.config.load()
+        if cfg['runtime']['qq_persona_id'] or not self.console_lease:return
+        database=self.paths.home/'data/database/runtime.sqlite3'
+        if not database.exists():return
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(database.as_uri()+'?mode=ro',uri=True)) as db:
+            row=db.execute("SELECT value FROM settings WHERE key='current_persona'").fetchone()
+        if not row:return
+        lock=InstanceLock(self.paths.home/'runtime/config-write.lock')
+        try:
+            cfg=self.config.load()
+            if not cfg['runtime']['qq_persona_id']:
+                cfg['runtime']['qq_persona_id']=row[0];cfg['runtime']['revision']+=1
+                atomic_json(self.config.file,cfg)
+                self.console_lease['qq_persona_id']=row[0]
+                atomic_json(self.paths.home/'runtime/console.json',self.console_lease)
+        finally:lock.close()
+
+    def _start(self, role):
+        if self.force_stopping.is_set() or self.closing.is_set():
             raise RuntimeErrorBase("强制停止正在执行，不能同时启动服务。")
         generation = self.stop_generation
         if role not in self.adapters:
@@ -305,20 +409,17 @@ class ServiceController:
             if port_open(cfg["onebot_port"]):
                 raise RuntimeErrorBase("OneBot 端口被其他程序占用。")
             render_components(self.paths)
-        python = (self.paths.home / "components/astrbot/.venv/Scripts/python.exe" if role == "astrbot"
-                  else self.paths.home / ".venv/Scripts/python.exe")
-        if not python.exists():
-            # An explicitly overridden test home still uses the installed project environment.
-            python = Path("D:/Persona-Centric Agent Runtime/.venv/Scripts/python.exe") if role == "service" else python
-        if not python.exists():
-            raise RuntimeErrorBase("独立运行环境未准备，请先准备组件。")
+        python = component_python(self.paths, role)
         self.notify("正在启动：" + role)
         if generation != self.stop_generation or self.force_stopping.is_set():
             raise RuntimeErrorBase("启动已被强制停止操作取消。")
         require_console(self.paths, console["token"])
-        self.processes[role] = subprocess.Popen([str(python), "-B", "-m", "persona_runtime.host", "--role", role,
-                          "--instance", cfg["instance_id"], "--console-token", console["token"]], cwd=REPO, env=child_environment(self.paths),
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+        if self.app_processes is None or not self.console_lease or self.console_lease['token'] != console['token']:
+            raise RuntimeErrorBase('请从拥有当前组件的工作台执行启动。')
+        env=child_environment(self.paths)
+        if console.get('qq_persona_id'):env['PCAR_QQ_PERSONA_ID']=console['qq_persona_id']
+        self.processes[role] = self.app_processes.start(role,[str(python), "-B", "-m", "persona_runtime.host", "--role", role,
+                          "--instance", cfg["instance_id"], "--console-token", console["token"]], cwd=REPO, env=env)
         deadline = time.monotonic()+60
         while time.monotonic() < deadline:
             if generation != self.stop_generation:
@@ -341,6 +442,10 @@ class ServiceController:
         return self.health("astrbot")
 
     def stop(self, role):
+        with self.lifecycle_lock:return self._stop(role)
+
+    def _stop(self, role):
+        self.set_desired(role,False)
         if not self.owned(role):
             if self.health(role)["state"] == "已停止":
                 return
@@ -350,6 +455,14 @@ class ServiceController:
             self.client.call("POST", "/v1/control/drain", {})
             self.client.call("POST", "/v1/control/stop", {}, timeout=370)
         else:
+            if role=='napcat':
+                result={'logout_confirmed':False,'logout_reason':'remote_logout_unconfirmed'}
+                try:
+                    from .qq_session import logout_verified
+                    result.update(logout_verified(self.paths,self.record(role),timeout=10))
+                except Exception as error:result['logout_reason']=type(error).__name__
+                atomic_json(self.paths.home/'runtime/last-qq-logout.json',result|{
+                    'console_token':(self.console_lease or {}).get('token'),'qq_was_running':True,'bot':self.config.load()['bot_qq']})
             (self.paths.home / "runtime" / (role + ".stop")).touch()
         deadline = time.monotonic()+30
         while time.monotonic() < deadline:
@@ -384,6 +497,62 @@ class ServiceController:
 
     def snapshot(self):
         return {role: self.health(role) for role in self.adapters}
+
+    def release_role(self,role):
+        """Only jobs held by this Workbench may be force-released."""
+        if self.app_processes is not None:self.app_processes.stop(role)
+        self.processes.pop(role,None)
+
+    def shutdown(self):
+        """Bounded close: 30s drain, 10s logout, 5s release; unknown stays unknown."""
+        if self.console_lease is None:raise RuntimeErrorBase('只有当前工作台可以结束整个应用。')
+        self.closing.set();self.stop_generation+=1
+        report={'at':timestamp(),'instance_id':self.config.load()['instance_id'],
+                'console_token':self.console_lease['token'],
+                'logout_confirmed':False,'logout_reason':'not_logged_in_or_unavailable','errors':[]}
+        def progress(phase):
+            self.shutdown_progress={'token':report['console_token'],'at':report['at'],'phase':phase,'updated_at':timestamp(),'maximum_seconds':45}
+            try:atomic_json(self.paths.home/'runtime/application-closing.json',self.shutdown_progress)
+            except OSError:
+                if 'closing_marker_write_failed' not in report['errors']:report['errors'].append('closing_marker_write_failed')
+        progress('draining')
+        report['qq_was_running']=self.owned('napcat')
+        if not report['qq_was_running']:
+            try:
+                previous=json.loads((self.paths.home/'runtime/last-qq-logout.json').read_text())
+                if previous.get('console_token')==(self.console_lease or {}).get('token') and previous.get('bot')==self.config.load()['bot_qq']:
+                    report.update({k:v for k,v in previous.items() if k!='console_token'})
+            except (OSError,ValueError):pass
+        try:
+            deadline=time.monotonic()+30
+            if self.owned('service'):
+                try:self.client.call('POST','/v1/control/drain',{'closing':True,'instance_id':report['instance_id']},timeout=2)
+                except RuntimeErrorBase:report['errors'].append('drain_unconfirmed')
+                while time.monotonic()<deadline:
+                    try:
+                        status=self.client.call('GET','/v1/health',timeout=min(2,max(.1,deadline-time.monotonic())))
+                        if not status['pending'] and not status.get('background_running') and not status.get('sending_parts'):break
+                    except RuntimeErrorBase:break
+                    time.sleep(.2)
+            # Fence the sender before logout and never launch a replacement while closing.
+            self.release_role('astrbot')
+            progress('logout')
+            if self.owned('napcat'):
+                try:
+                    from .qq_session import logout_verified
+                    report.update(logout_verified(self.paths,self.record('napcat'),timeout=10))
+                except Exception as exc:report['logout_reason']=type(exc).__name__
+        finally:
+            progress('releasing')
+            try:self.end_console()
+            except Exception as error:report['errors'].append('console_cleanup_'+type(error).__name__)
+            deadline=time.monotonic()+2
+            while self.has_resident_processes() and time.monotonic()<deadline:time.sleep(.1)
+            report['processes_released']=not self.has_resident_processes()
+            report['phase']='components_released' if report['processes_released'] else 'release_unconfirmed'
+            try:atomic_json(self.paths.home/'runtime/last-exit.json',report)
+            except OSError:report['errors'].append('exit_report_write_failed')
+        return report
 
     def force_stop_all(self):
         from .emergency import force_stop_all_elevated

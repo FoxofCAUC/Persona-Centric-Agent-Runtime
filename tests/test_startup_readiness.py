@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock,patch
 
 from persona_runtime.config import ConfigStore, atomic_json
 from persona_runtime.lifecycle import ServiceController
@@ -66,7 +66,9 @@ class StartupReadinessTests(unittest.TestCase):
     def test_new_process_returns_when_host_ready_without_waiting_for_qq(self):
         python = self.paths.home / 'components/astrbot/.venv/Scripts/python.exe'
         python.parent.mkdir(parents=True)
-        python.touch()  # Existence only; Popen is mocked.
+        python.touch()  # Existence only; the owned Job Object launch is mocked.
+        self.ctl.console_lease={'token':'console'}
+        self.ctl.app_processes=Mock()
         stopped = {'state': '已停止', 'owned': False, 'port': self.cfg['astrbot_port']}
         with patch('persona_runtime.lifecycle.require_console', return_value={'token': 'console'}), \
                 patch.object(self.ctl, 'health', side_effect=[stopped, self.waiting]), \
@@ -75,14 +77,15 @@ class StartupReadinessTests(unittest.TestCase):
                 patch('persona_runtime.lifecycle.listener', return_value=self.identity), \
                 patch('persona_runtime.lifecycle.port_open', return_value=False), \
                 patch('persona_runtime.lifecycle.render_components'), \
-                patch('persona_runtime.lifecycle.subprocess.Popen') as spawn, \
                 patch('persona_runtime.lifecycle.time.sleep'), \
                 patch('persona_runtime.lifecycle.time.monotonic', side_effect=[0, 1]):
             result = self.ctl.start('astrbot')
         self.assertEqual(result, self.waiting)
+        spawn=self.ctl.app_processes.start
         spawn.assert_called_once()
-        self.assertEqual(spawn.call_args.args[0][4], '--role')
-        self.assertIn('astrbot', spawn.call_args.args[0])
+        self.assertEqual(spawn.call_args.args[0],'astrbot')
+        self.assertEqual(spawn.call_args.args[1][4], '--role')
+        self.assertIn('astrbot', spawn.call_args.args[1])
 
     def test_healthy_bridge_and_fresh_unconnected_bridge_are_both_start_ready(self):
         self.assertTrue(self.ready())

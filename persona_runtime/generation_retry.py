@@ -86,6 +86,13 @@ def call_count(conn, table, since, *, automatic_only=False):
 
 
 async def _one(client, model, messages, timeout_code):
+    from .maintenance import require_writable_storage
+    from .paths import RuntimePaths
+    try:require_writable_storage(RuntimePaths.from_environment())
+    except (OSError,RuntimeErrorBase) as error:
+        from .chat import ModelError
+        raise ModelError(str(error) if isinstance(error,RuntimeErrorBase) else 'storage_unavailable',
+            diagnostics={'request_headers_sent':False,'dispatch_phase':'preflight'}) from None
     from .provider_compat import request_timeout
     budget=request_timeout(model)
     request=model|{'_request_deadline':time.monotonic()+budget} if budget is not None else {k:v for k,v in model.items() if k!='_request_deadline'}

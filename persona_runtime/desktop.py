@@ -5,7 +5,6 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
-import webbrowser
 
 from .config import ConfigStore, atomic_json
 from .deployment import prepare
@@ -26,8 +25,11 @@ from .desktop_archive_search import ArchiveSearchUI
 from .desktop_context import ContextUI
 from .desktop_sessions import SessionUI
 from .desktop_selector import SelectorUI
+from .desktop_runtime import RuntimeUI,connection_status_text
+from .desktop_links import open_browser
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
+APP_EXIT_TIMEOUT = 45
 DISPLAY_ERRORS = {
     'provider_connection_timeout': '连接模型接口超时（DNS/TCP/TLS阶段）；请在请求详情核对原生重试记录。',
     'chat_display_message_limit': '回复分条超过安全上限，整批未发送；原生成记录保留。',
@@ -149,12 +151,13 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
                      ("model", "模型", "build_model"), ("organization", "记忆整理", "build_organization"),
                      ('profile','人格与关系','build_profile'),
+                     ('runtime','运行与约定提醒','build_runtime'),
                      ('character','角色资料','build_character'),
                      ('batches','输入与缓冲','build_batches'),
                      ('delivery','回复投递','build_delivery'),
@@ -176,6 +179,8 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.managed_lifecycle = managed_lifecycle
         self.shutdown_started = False
         self.closed = False
+        self.tray_hidden = False
+        self.tray = None
         self.buttons = []
         self.personas = []
         self.persona_rows = None
@@ -205,6 +210,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.log_source = tk.StringVar(value="service")
         self.log_search = tk.StringVar()
         self.init_organization_vars()
+        self.init_runtime_vars()
         self.init_profile_vars()
         self.init_character_vars()
         self.init_batch_vars()
@@ -227,8 +233,19 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.after(1100,self.poll_profile)
         self.after(1200,self.poll_batches)
         self.after(1500,self.poll_deliveries)
+        if self.managed_lifecycle:
+            from .app_runtime import AppRuntime
+            self.runtime = AppRuntime(self.controller)
+            self.runtime.start()
+            try:
+                from .tray import Tray
+                self.tray=Tray(self)
+            except Exception:
+                self.notice.set('托盘暂不可用，窗口保持可见。')
+            self.after(500,self.check_wakeup)
 
     def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None, error_current=None):
+        if quiet and getattr(self,'tray_hidden',False):return None
         if self.closed and self.managed_lifecycle:
             return None
         if not urgent and any("emergency" in operation.resources for operation in self.hub.active.values()):
@@ -287,6 +304,8 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         header = ttk.Frame(self, padding=(18, 12))
         header.pack(fill="x")
         ttk.Label(header, text="Persona-Centric Agent Runtime (PCAR)", font=("Microsoft YaHei UI", 14, "bold")).pack(side="left")
+        if self.managed_lifecycle:
+            ttk.Button(header,text='收起到托盘',command=self.hide_to_tray).pack(side='right')
         shell = ttk.Frame(self)
         shell.pack(fill="both", expand=True)
         self.navigation = ScrollNavigation(shell)
@@ -328,6 +347,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
             self.read_logs()
         if key == "organization":
             self.refresh_organization()
+        if key=='runtime':self.refresh_runtime()
         if key=='profile':self.refresh_profile()
         if key=='delivery':self.refresh_deliveries()
         if key=='context':self.refresh_context_policy()
@@ -517,13 +537,18 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.run_task("启动" + LABELS[role], {"lifecycle", "config"}, lambda _: self.controller.start(role))
 
     def prepare_components(self):
-        self.run_task("准备独立组件", {"lifecycle", "config"}, lambda _: self.prepare_stopped(),
+        import os
+        source=None;root=self.paths.home/'components/napcat'
+        if not os.environ.get('PCAR_NAPCAT_SOURCE') and not all((root/name).is_dir() for name in ('native','node_modules','static','worker')):
+            source=filedialog.askdirectory(parent=self,title='选择已解压的 NapCat 组件目录')
+            if not source:return
+        self.run_task("准备独立组件", {"lifecycle", "config"}, lambda _: self.prepare_stopped(source),
                       lambda _: self.notice.set("独立组件已准备。填写连接配置后可启动。"))
 
-    def prepare_stopped(self):
+    def prepare_stopped(self,source=None):
         if any(self.controller.owned(role) for role in LABELS):
             raise ValueError("准备组件前请先停止本项目全部服务。")
-        return prepare(self.paths)
+        return prepare(self.paths,source=source)
 
     def stop_everything(self):
         if messagebox.askyesno("停止本项目 QQ", "正常停止本项目全部服务，包括 QQ 登录进程？"):
@@ -672,7 +697,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         path = filedialog.askopenfilename(initialdir=self.paths.home / "config", filetypes=[("人格 JSON", "*.json")])
         if path:
             package=json.loads(Path(path).read_text(encoding='utf-8-sig'))
-            if package.get('format_version') in (17,18):
+            if package.get('format_version') in (17,18,19):
                 if not messagebox.askyesno('导入历史','将创建新角色并保留导出中的业务历史供核对。原任务和授权不恢复，导入记忆不自动成为已确认事实，自动记忆默认关闭。继续？'):return
                 operation_id=identifier();selected=self.persona_id
                 self.run_task('导入业务历史',{'persona'},lambda _:self.client.manage('persona.import-export',package=package,expected_selected=selected,operation_id=operation_id),lambda _:self.refresh_personas())
@@ -1215,7 +1240,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         def action(_):
             url = self.controller.management_url(role)
             try:
-                opened = webbrowser.open(url)
+                opened = open_browser(url)
             except Exception:
                 raise ValueError("无法启动默认浏览器，请检查 Windows 的默认浏览器设置。") from None
             if not opened:
@@ -1243,10 +1268,7 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         def done(states):
             self.refresh_quotas()
             self.status_text.set("\n".join(LABELS[role] + "：" + value["state"] for role, value in states.items()))
-            bot = states["astrbot"]
-            self.login_text.set("QQ 账号：" + ("已核对" if bot.get("login") else "等待核对") +
-                                "　OneBot：" + ("在线" if bot.get("onebot") else "未连接" if "onebot" in bot else "状态待核对") +
-                                ("（" + bot["reason"] + "）" if bot.get("reason") else ""))
+            self.login_text.set(connection_status_text(states))
             ready = states["service"]["state"] == "运行"
             if ready and not self.last_ready:
                 self.refresh_personas()
@@ -1297,7 +1319,9 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         if self.managed_lifecycle:
             self.shutdown_started = True
             self.closed = True
-            self.notice.set('正在强制停止全部服务，完成后关闭控制台。')
+            watchdog=getattr(self,'_process_exit_watchdog',None)
+            if watchdog:watchdog()
+            self.notice.set('正在退出：结算执行、注销本次 Bot 并释放所属组件，最多约 45 秒。')
             for button, _ in self.buttons:
                 if button.winfo_exists():button.configure(state='disabled')
             for operation in self.hub.active.values():
@@ -1307,10 +1331,9 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
             self.shutdown_result = None
             def stop():
                 try:
-                    self.controller.end_console()
-                    from .emergency import force_stop_all_elevated
-                    report = force_stop_all_elevated(self.paths)
-                    self.shutdown_result = (bool(report['success']), report)
+                    if getattr(self,'runtime',None):self.runtime.stop()
+                    report=self.controller.shutdown()
+                    self.shutdown_result = (bool(report['processes_released']), report)
                 except Exception as exc:
                     self.shutdown_result = (False, str(exc))
             threading.Thread(target=stop, name='console-shutdown', daemon=True).start()
@@ -1319,6 +1342,12 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
         self.destroy_console()
 
     def finish_console_shutdown(self):
+        progress=getattr(self.controller,'shutdown_progress',None)
+        if isinstance(progress,dict):
+            phase=progress['phase'];labels={'draining':'结算已知执行','logout':'注销本次 Bot','releasing':'释放所属组件'}
+            if phase!=getattr(self,'_exit_phase_ui',None):
+                self._exit_phase_ui=phase;self.notice.set('正在退出：'+labels.get(phase,phase))
+                if self.tray:self.tray.set_tip('PCAR · 正在退出：'+labels.get(phase,phase))
         if self.shutdown_result is None:
             self.after(100, self.finish_console_shutdown)
             return
@@ -1327,20 +1356,55 @@ class Workbench(SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, Qu
             self.destroy_console()
         else:
             self.shutdown_started = False
+            self.closed=False
+            self.after(100,self.tick)
             self.notice.set('全部服务尚未停止，控制台保留。请再次关闭以重试。' +
                             (str(result.get('report_file', '')) if isinstance(result, dict) else str(result)))
 
     def destroy_console(self):
         self.closed = True
+        if getattr(self,'tray',None):self.tray.close()
         self.hub.close()
         for timer in self.tk.splitlist(self.tk.call("after", "info")):
             self.tk.call("after", "cancel", timer)
+        self.quit()
         self.destroy()
+        closed=getattr(self,'_process_exit_after_close',None)
+        if closed:closed()
+
+    def hide_to_tray(self):
+        if self.shutdown_started:return
+        if not self.tray or not self.tray.active:
+            self.notice.set('托盘不可用，窗口保持可见。');return
+        if not self.character_can_leave():return
+        self.tray_hidden=True;self.withdraw()
+        if self.controller.console_lease:
+            self.controller.console_lease['display_state']='tray'
+            atomic_json(self.paths.home/'runtime/console.json',self.controller.console_lease)
+
+    def show_from_tray(self,*,activate=True):
+        if self.closed:return
+        self.tray_hidden=False;self.deiconify()
+        if activate:self.lift();self.focus_force()
+        if self.controller.console_lease:
+            self.controller.console_lease['display_state']='visible'
+            atomic_json(self.paths.home/'runtime/console.json',self.controller.console_lease)
+
+    def check_wakeup(self):
+        if self.closed:return
+        path=self.paths.home/'runtime/wakeup.json'
+        try:
+            value=json.loads(path.read_text(encoding='utf-8'))
+            if value.get('token')==self.controller.console_lease['token'] and value.get('id')!=getattr(self,'wake_id',None):
+                    self.wake_id=value['id']
+                    if value.get('action')=='exit':self.close_window()
+                    else:self.show_from_tray()
+        except (OSError,ValueError,KeyError,TypeError):pass
+        self.after(1000,self.check_wakeup)
 
 
 def run(paths):
     import os
-    from .emergency import force_stop_all_elevated
     from .workbench_errors import report_failure
     lock = controller = window = None
     stage = 'initialize_paths'
@@ -1348,7 +1412,12 @@ def run(paths):
     try:
         paths.initialize()
         stage = 'instance_lock'
-        lock = InstanceLock(paths.home / "runtime/desktop.lock")
+        try:lock = InstanceLock(paths.home / "runtime/desktop.lock")
+        except Exception:
+            from .lifecycle import require_console
+            lease=require_console(paths)
+            atomic_json(paths.home/'runtime/wakeup.json',{'token':lease['token'],'id':identifier()})
+            return
         stage = 'console_lease'
         controller = ServiceController(paths)
         lease = controller.start_console()
@@ -1357,11 +1426,26 @@ def run(paths):
         legacy_running = controller.has_resident_processes()
         if lease.get('previous_stale') or legacy_running:
             stage = 'cleanup_legacy'
-            report = force_stop_all_elevated(paths)
-            if not report['success']:
-                raise RuntimeError('遗留服务未完全停止：' + report['report_file'])
+            import time
+            deadline=time.monotonic()+5
+            while controller.has_resident_processes() and time.monotonic()<deadline:time.sleep(.2)
+            if controller.has_resident_processes():
+                raise RuntimeError('已登记的旧组件尚未退出；不接管或强停其他程序。')
         stage = 'create_workbench'
         window = Workbench(paths, managed_lifecycle=True, controller=controller)
+        def exit_after_close():
+            # Only the standalone app owns this fallback. Widget tests and
+            # embedded Workbenches never terminate their caller's process.
+            import threading
+            timer=threading.Timer(1,lambda:os._exit(0 if window.shutdown_started else 1))
+            timer.daemon=True;timer.start()
+        window._process_exit_after_close=exit_after_close
+        def bound_process_exit():
+            if getattr(window,'_exit_deadline_started',False):return
+            window._exit_deadline_started=True
+            timer=threading.Timer(APP_EXIT_TIMEOUT,lambda:os._exit(1))
+            timer.daemon=True;timer.start()
+        window._process_exit_watchdog=bound_process_exit
         stage = 'mainloop'
         window.mainloop()
     except Exception as exc:
@@ -1371,9 +1455,8 @@ def run(paths):
     finally:
         try:
             if controller is not None:
-                controller.end_console()
-            if window is not None and not window.shutdown_started:
-                force_stop_all_elevated(paths)
+                if window is not None and not window.shutdown_started:controller.shutdown()
+                else:controller.end_console()
         except Exception as exc:
             failed = True
             report_failure(paths, exc, 'console_cleanup')

@@ -137,9 +137,9 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         from persona_runtime.portable_memory import import_export
         await self.seed();self.install_model();self.enable();await self.finish()
         exported=self.service.export_persona('portable')
-        package=json.loads(Path(exported['path']).read_text(encoding='utf-8'));self.assertEqual(package['format_version'],18)
+        package=json.loads(Path(exported['path']).read_text(encoding='utf-8'));self.assertEqual(package['format_version'],19)
         self.assertNotIn('organization_policies',package);self.assertNotIn('organization_execution',package)
-        for version in (17,18):
+        for version in (17,18,19):
             package['format_version']=version
             result=import_export(self.store,package,self.persona['id'],'import-'+str(version))
             self.assertFalse(result['automation_enabled']);self.assertFalse(result['permissions_imported'])
@@ -362,4 +362,5 @@ class MigrationTests(unittest.TestCase):
             paths=RuntimePaths(Path(folder)/'source');store=Store(paths)
             with patch('persona_runtime.storage.SCHEMA_VERSION',22):
                 store.initialize();service=RuntimeService(store);p=service.create_persona(generic_persona());service.use_persona(p['id'])
-            self.assertTrue(verify(store.path,Path(folder)/'proof')['source_unchanged'])
+            with patch('persona_runtime.storage.SCHEMA_VERSION',23):
+                self.assertTrue(verify(store.path,Path(folder)/'proof')['source_unchanged'])

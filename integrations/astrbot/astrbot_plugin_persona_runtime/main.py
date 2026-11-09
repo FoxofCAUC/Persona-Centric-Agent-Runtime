@@ -1,5 +1,6 @@
 """Minimal owner-only adapter; all model calls belong to Persona Runtime."""
 import asyncio
+import time
 from contextlib import suppress
 
 from astrbot.api import logger
@@ -12,7 +13,7 @@ from persona_runtime.paths import RuntimePaths
 from persona_runtime.qq_bridge import QQBridge
 
 
-@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.7.2")
+@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.7.3")
 class PersonaRuntimePlugin(Star):
     def __init__(self, context):
         super().__init__(context)
@@ -21,6 +22,8 @@ class PersonaRuntimePlugin(Star):
         self.bridge = QQBridge(self.paths)
         self.health_task = None
         self.delivery_task = None
+        self.delivery_wakeup = asyncio.Event()
+        self.active_until = 0
 
     async def initialize(self):
         setup(self.paths, "astrbot")
@@ -29,15 +32,18 @@ class PersonaRuntimePlugin(Star):
         self.delivery_task = asyncio.create_task(self.deliver_pending())
 
     async def deliver_pending(self):
+        delay=.5
         while True:
             try:
                 cfg = self.config.load()
                 if cfg["owner_qq"] and cfg["bot_qq"]:
+                    await self.bridge.flush_receipts()
                     await self.bridge.reconcile_inbox()
                     health = await self.bridge.request("GET", "/v1/health")
                     m63 = "reply_delivery_parts_v1" in health.get("capabilities", [])
                     pending = (await self.bridge.request("GET", "/v2/delivery/streams") if m63
                                else await self.bridge.request("GET", "/v1/qq-pending"))
+                    delay=.5 if pending or time.monotonic()<self.active_until else min(5,delay*1.5)
                     for item in pending:
                         for platform in self.context.platform_manager.platform_insts:
                             if platform.meta().name != "aiocqhttp" or platform.meta().id != "persona-onebot":
@@ -55,8 +61,10 @@ class PersonaRuntimePlugin(Star):
                                 await self.bridge.deliver(item, send)
                             break
             except Exception:
-                pass
-            await asyncio.sleep(.1)
+                delay=min(5,delay*1.5)
+            try:await asyncio.wait_for(self.delivery_wakeup.wait(),delay)
+            except asyncio.TimeoutError:pass
+            self.delivery_wakeup.clear()
 
     async def health(self):
         from persona_runtime.bridge_health import heartbeat_loop
@@ -72,6 +80,8 @@ class PersonaRuntimePlugin(Star):
                 # Await actual platform completion; no generator-yield success assumptions.
                 return await event.send(event.plain_result(text))
             await self.bridge.handle(event, send, background=True)
+            self.active_until=time.monotonic()+60
+            self.delivery_wakeup.set()
         except Exception:
             logger.error("persona_bridge_failure")
 

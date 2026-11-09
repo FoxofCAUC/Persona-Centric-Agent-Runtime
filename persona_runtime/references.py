@@ -39,10 +39,13 @@ def prepare(conn, turn):
             entry['status']='changed';raise ReferenceError('reference_source_changed',manifest)
         entry['status']='found'; entry['turn_id']=bound['turn_id']
         selections.append(reference_selection(row['event_id'],current))
-        if bound['turn_id'] not in seen:
-            seen.add(bound['turn_id']);manifest['turn_ids'].append(bound['turn_id'])
+        origin_key=('outbound',bound['outbound_id']) if bound.get('outbound_id') else ('turn',bound['turn_id'])
+        if origin_key not in seen:
+            seen.add(origin_key)
+            if bound.get('outbound_id'):manifest.setdefault('outbound_ids',[]).append(bound['outbound_id'])
+            else:manifest['turn_ids'].append(bound['turn_id'])
             groups.append(reference_group(current))
-        group=next(g for g in groups if g['turn_id']==bound['turn_id'])
+        group=next(g for g in groups if g['turn_id']==bound['turn_id'] and g.get('outbound_id')==bound.get('outbound_id'))
         if bound['target'] not in group['targets']:group['targets'].append(bound['target'])
         # Each accepted member may have a different confirmed-reply snapshot.
         # Merge only replies explicitly fixed by those bindings, never newly

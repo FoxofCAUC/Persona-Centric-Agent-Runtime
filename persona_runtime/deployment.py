@@ -13,6 +13,18 @@ from .security import protect
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 REPO = Path(__file__).resolve().parents[1]
 
+
+def component_python(paths, role):
+    """Explicit overrides or the current application environment; no fixed drive."""
+    override = os.environ.get('PCAR_ASTRBOT_PYTHON' if role == 'astrbot' else 'PCAR_PYTHON')
+    candidate = Path(override) if override else (paths.home / 'components/astrbot/.venv/Scripts/python.exe'
+        if role == 'astrbot' else paths.home / '.venv/Scripts/python.exe')
+    if not candidate.exists() and role != 'astrbot' and not override:
+        candidate = Path(sys.executable)
+    if not candidate.is_absolute() or not candidate.is_file():
+        raise RuntimeErrorBase('独立运行环境未准备，请先准备组件或设置解释器路径。')
+    return candidate
+
 # Consumer contract from the bundled NapCat TypeBox schema (rae / iae).
 NAPCAT_TIMEOUT_DEFAULTS = {"baseTimeout": 10000, "uploadSpeedKBps": 256,
                            "downloadSpeedKBps": 256, "maxTimeout": 1800000}
@@ -74,20 +86,24 @@ def child_environment(paths):
     return env
 
 
-def prepare(paths, *, install=True, source=Path("D:/QQ_Bot_2/napcat-shell")):
+def prepare(paths, *, install=True, source=None):
     config = ConfigStore(paths)
     config.initialize()
     destination = paths.home / "components/napcat"
-    if destination.resolve() == source.resolve():
+    configured=source or os.environ.get('PCAR_NAPCAT_SOURCE') or None
+    reuse=configured is None
+    source=Path(configured) if configured else destination
+    if not reuse and destination.resolve() == source.resolve():
         raise RuntimeErrorBase("Independent NapCat directory required")
     destination.mkdir(parents=True, exist_ok=True)
     for directory in ("native", "node_modules", "static", "worker"):
         if not (source / directory).is_dir():
-            raise RuntimeErrorBase("NapCat source files are incomplete")
-        shutil.copytree(source / directory, destination / directory, dirs_exist_ok=True)
-    for item in source.iterdir():
-        if item.is_file() and (item.suffix in (".js", ".mjs", ".dll", ".exe") or item.name in ("package.json", "qqnt.json")):
-            shutil.copy2(item, destination / item.name)
+            raise RuntimeErrorBase("请先选择完整的 NapCat 组件目录，或显式配置 PCAR_NAPCAT_SOURCE。")
+        if not reuse:shutil.copytree(source / directory, destination / directory, dirs_exist_ok=True)
+    if not reuse:
+        for item in source.iterdir():
+            if item.is_file() and (item.suffix in (".js", ".mjs", ".dll", ".exe") or item.name in ("package.json", "qqnt.json")):
+                shutil.copy2(item, destination / item.name)
     interpreter = paths.home / "components/astrbot/.venv/Scripts/python.exe"
     env = child_environment(paths)
     if install:
@@ -107,6 +123,8 @@ def prepare(paths, *, install=True, source=Path("D:/QQ_Bot_2/napcat-shell")):
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if result.returncode:
                 raise RuntimeErrorBase("Independent AstrBot installation failed; check network and retry prepare")
+    if not interpreter.exists() and not install:
+        interpreter=component_python(paths,'astrbot')
     if not interpreter.exists():
         raise RuntimeErrorBase("Independent AstrBot environment is not installed")
     bot = paths.home / "components/astrbot/bot"
@@ -115,8 +133,15 @@ def prepare(paths, *, install=True, source=Path("D:/QQ_Bot_2/napcat-shell")):
     for item in (REPO / "integrations/astrbot/astrbot_plugin_persona_runtime").iterdir():
         if item.is_file():
             shutil.copy2(item, plugin / item.name)
-    atomic_json(paths.home / "runtime/deployment.json", {"version": 1, "astrbot": "4.29.1", "source": str(source),
-                "plugin": "0.7.2", "independent": True})
+    manifest_file=paths.home/'runtime/deployment.json'
+    previous=json.loads(manifest_file.read_text(encoding='utf-8')) if manifest_file.exists() else {}
+    manifest={"version": 1, "astrbot": "4.29.1", "source": str(source),"plugin": "0.7.3", "independent": True}
+    # Preparing owned assets must not silently return QQ to shared user data.
+    # A changed vendor binary retains the old fingerprint and is blocked by
+    # the host until an explicit, verified component adoption updates it.
+    for key in ('qq_data_contract','napcat_release','napcat_main_sha256'):
+        if key in previous:manifest[key]=previous[key]
+    atomic_json(manifest_file,manifest)
     return {"prepared": True, "component_root": str(paths.home / "components")}
 
 
@@ -175,7 +200,7 @@ def write_component_config(paths):
 
 
 def render_components(paths):
-    python = paths.home / "components/astrbot/.venv/Scripts/python.exe"
+    python = component_python(paths,'astrbot')
     bot = paths.home / "components/astrbot/bot"
     bot.mkdir(parents=True, exist_ok=True)
     env = child_environment(paths)

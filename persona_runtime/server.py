@@ -29,10 +29,13 @@ def health_status(config, engine, organization, ingress):
     """Read-only payload shared by HTTP and stopped-instance deployment checks."""
     from .disposition_shadow import HEALTH
     from . import __version__
+    sending=0
+    if getattr(engine,'store',None):
+        with engine.store.connection() as db:sending=db.execute("SELECT count(*) FROM reply_delivery_parts WHERE state='sending'").fetchone()[0]
     return {"service": "persona-runtime", "instance_id": config.load()["instance_id"],
                               "schema_version": SCHEMA_VERSION, "draining": engine.draining,
                               "organization_contract_version":"organization-contract-v1",
-                              "pending": len(engine.tasks), "background_running": organization.running,
+                              "pending": len(engine.tasks), "background_running": organization.running,'sending_parts':sending,
                               "version": __version__, "assist_admitted": bool(getattr(engine,"assist_admission",None)), "live_admitted": bool(getattr(engine,"live_admission",None)), "decision_capsule_version":"decision-capsule-v1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["companion_selective_reply_v1","companion_im_text_v1","companion_native_text_v1","companion_prompt_light_v1","companion_context_rules_workbench_v1","companion_persona_workbench_v1","companion_c2_workbench_v1","companion_workbench_v1","companion_cancel_v1","evaluation_review_v1","disposition_live_candidate_v1","situation_observation_v1","author_relationship_mapping_v2","static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
 
 
@@ -85,6 +88,11 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             or request.path=="/v2/ingress"):
             return web.json_response({"error": "forbidden"}, status=403)
         try:
+            if request.method=='POST' and request.path in ('/v1/chat','/v2/ingress','/v1/model-test'):
+                from .lifecycle import read_console
+                console=read_console(paths);marker=paths.home/'runtime/application-closing.json'
+                if console and marker.exists() and json.loads(marker.read_text(encoding='utf-8')).get('token')==console['token']:
+                    raise RuntimeErrorBase('service_draining')
             return await handler(request)
         except web.HTTPException:
             raise
@@ -253,7 +261,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         if request.match_info["part_id"] not in {part["id"] for part in batch["parts"] if part["reply_batch_id"]==request.match_info["reply_batch_id"]}:raise web.HTTPNotFound()
         origin=delivery_origin(request)
         return web.json_response(delivery_service.claim(stream_id,request.match_info["part_id"],value["expected_revision"],
-            value["operation_id"],persona_id=value.get("persona_id"),origin=origin,actor=request["role"],capabilities=value.get("capabilities")))
+            value["operation_id"],persona_id=value.get("persona_id"),origin=origin,actor=request["role"],capabilities=value.get("capabilities"),sender=value.get('sender')))
 
     async def delivery_result(request):
         value=await body(request);origin=delivery_origin(request);batch=delivery_service.by_batch(request.match_info["reply_batch_id"])
@@ -263,7 +271,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         return web.json_response(delivery_service.result(stream_id,request.match_info["part_id"],
             value["claim_token"],value["state"],value["expected_revision"],value["operation_id"],
             platform_message_id=value.get("platform_message_id"),error=value.get("error"),persona_id=value.get("persona_id"),
-            origin=origin,actor=request["role"]))
+            origin=origin,actor=request["role"],transport_done=value.get('transport_done',False)))
 
     async def delivery_resolve(request):
         if request["role"]!="admin":raise web.HTTPForbidden()
@@ -319,6 +327,15 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             # ingress/generation/delivery event loop. Each request is bounded.
             return web.json_response(await asyncio.to_thread(search_handlers[action],**args))
         organization_handlers = {
+            'runtime.current':lambda:__import__('persona_runtime.runtime_control',fromlist=['current']).current(paths),
+            'runtime.update':lambda **kwargs:__import__('persona_runtime.runtime_control',fromlist=['update']).update(paths,**kwargs),
+            'runtime.exit':lambda **kwargs:__import__('persona_runtime.runtime_control',fromlist=['exit_application']).exit_application(paths,**kwargs),
+            'proactive.policy.current':organization.proactive.current,
+            'proactive.authorize':organization.proactive.authorize,
+            'proactive.policy.update':organization.proactive.update,
+            'proactive.rule.list':organization.proactive.rules,
+            'proactive.rule.update':organization.proactive.update_rule,
+            'proactive.occurrence.list':organization.proactive.occurrences,
             "organization.preview": organization.preview,
             "organization.submit": lambda preview, request_id: organization.submit(preview, request_id),
             "organization.list": organization.list, "organization.show": organization.show,
@@ -454,10 +471,13 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         operation = request.match_info["operation"]
         if operation not in ("drain", "stop", "resume"):
             raise web.HTTPNotFound()
-        if operation in ("drain","stop") and ingress.unresolved_count():
+        body=await request.json() if request.can_read_body else {}
+        app_closing=body.get('closing') is True and body.get('instance_id')==config.load()['instance_id']
+        if operation in ("drain","stop") and ingress.unresolved_count() and not app_closing:
             raise RuntimeErrorBase("unresolved_input_batches")
         engine.draining = operation != "resume"
         compiler.draining = operation != "resume"
+        if app_closing:organization.draining=True
         if operation == "resume":
             organization.draining = False
         if operation == "stop":
@@ -492,15 +512,28 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     app.router.add_post("/v1/manage", manage)
     app.router.add_post("/v1/control/{operation}", control)
 
+    async def delivery_housekeeping():
+        while True:
+            try:await asyncio.to_thread(delivery_service.reconcile_unknown)
+            except asyncio.CancelledError:raise
+            except Exception:
+                import logging
+                logging.getLogger('delivery').warning('delivery_reconciliation_waiting')
+            await asyncio.sleep(5)
+
     async def startup(_):
         await asyncio.to_thread(engine.cognitive.characters.notify,None)
         app["session_worker"] = asyncio.create_task(sessions.worker())
         app["organization_worker"] = asyncio.create_task(organization.worker())
         app["ingress_worker"] = asyncio.create_task(ingress.worker())
+        app['delivery_housekeeping']=asyncio.create_task(delivery_housekeeping())
     app.on_startup.append(startup)
 
     async def cleanup(_):
         engine.draining = True
+        housekeeping=app.get('delivery_housekeeping')
+        if housekeeping:
+            housekeeping.cancel();await asyncio.gather(housekeeping,return_exceptions=True)
         session_worker=app.get("session_worker")
         if session_worker:
             session_worker.cancel()

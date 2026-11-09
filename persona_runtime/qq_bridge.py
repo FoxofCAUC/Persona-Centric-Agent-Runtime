@@ -1,6 +1,8 @@
 """SDK-independent strict QQ ingress gate and durable delivery client."""
 import asyncio
 import hashlib
+import os
+import json
 from urllib.parse import quote
 
 import aiohttp
@@ -64,6 +66,79 @@ class QQBridge:
     def __init__(self, paths):
         self.config = ConfigStore(paths)
         self.journal = SubmissionJournal(paths, "qq")
+        self.receipts=paths.home/'runtime/platform-receipts'
+        self.active_sends=set()
+        self.unpersisted={}
+        self.pending_platform={}
+        self.send_timeout=30
+        from .instance import current_process_identity
+        from .lifecycle import read_console
+        lease=read_console(paths) or {}
+        self.sender={'instance_id':self.config.load()['instance_id'],'process':current_process_identity(),
+            'console_token':lease.get('token'),'generation':identifier()}
+
+    def save_receipt(self,path,entry):
+        from .config import atomic_json
+        try:atomic_json(path,entry)
+        except OSError:
+            from .maintenance import mark_write_fault
+            self.unpersisted[str(path)]=entry
+            mark_write_fault(self.config.paths,self.receipts)
+            raise
+        self.unpersisted.pop(str(path),None)
+
+    async def flush_receipts(self):
+        from .instance import process_identity_alive
+        from .config import atomic_json
+        if not self.receipts.exists():return
+        for target,entry in list(self.unpersisted.items()):self.save_receipt(__import__('pathlib').Path(target),entry)
+        for path in self.receipts.glob('*.json'):
+            entry=json.loads(path.read_text(encoding='utf-8'))
+            cfg=self.config.load()
+            if entry.get('origin') and entry['origin']!={'bot':cfg['bot_qq'],'sender':cfg['owner_qq']}:continue
+            if entry.get('kind')=='claim':
+                # Repeating a CLAIM is local ledger recovery, never another SEND.
+                claim=await self.request('POST',entry['path'],entry['body'])
+                if not claim.get('claimed'):path.unlink();continue
+                entry['kind']='result';entry['path']=entry['path'].removesuffix('/claim')+'/result'
+                entry['body']={'claim_token':claim['claim_token'],'expected_revision':claim['part_revision'],
+                    'operation_id':entry['result_operation'],'state':'uncertain','platform_message_id':None,
+                    'error':'claim_response_lost_no_send','transport_done':True}
+                self.save_receipt(path,entry)
+            if entry['body']['claim_token'] in self.active_sends:continue
+            owner=entry.get('sender',{})
+            if entry.get('phase')=='inflight' and owner.get('generation')!=self.sender['generation'] and process_identity_alive(owner.get('process')):continue
+            await self.request('POST',entry['path'],entry['body'])
+            path.unlink()
+
+    async def send_once(self,send,text,entry,path):
+        task=asyncio.create_task(send(text))
+        cancelled=False
+        try:done,_=await asyncio.wait({task},timeout=self.send_timeout)
+        except asyncio.CancelledError:done=set();cancelled=True
+        if done:return task.result()
+        task.cancel()
+        done,_=await asyncio.wait({task},timeout=1)
+        if done:
+            if cancelled:raise asyncio.CancelledError
+            if not task.cancelled():return task.result()
+            raise TimeoutError('platform_send_timeout')
+        token=entry['body']['claim_token'];self.pending_platform[token]=task
+        entry['body']['transport_done']=False
+        def finished(completed):
+            self.pending_platform.pop(token,None)
+            import copy
+            late=copy.deepcopy(entry);late['body']['operation_id']=late['result_operation']+'-late'
+            late['body']['transport_done']=True;late['body']['state']='uncertain';late['phase']='received'
+            try:
+                result=completed.result();mid=result.get('message_id') if isinstance(result,dict) else result if isinstance(result,str) else None
+                if mid and type(mid) in (str,int):late['body'].update(state='sent',platform_message_id=str(mid),error=None)
+            except BaseException:pass
+            try:self.save_receipt(path.with_name(path.stem+'-late.json'),late)
+            except OSError:pass  # The original unknown stays blocked if the journal cannot be written.
+        task.add_done_callback(finished)
+        if cancelled:raise asyncio.CancelledError
+        raise TimeoutError('platform_cancellation_unsettled')
 
     async def request(self, method, path, value=None):
         cfg = self.config.load()
@@ -115,6 +190,9 @@ class QQBridge:
         from .qq_testing import QQTesting
         try:QQTesting(self.config.paths).check_runtime(payload['sender'])
         except RuntimeErrorBase:return False  # No reply/journal/model dispatch to a forbidden test peer.
+        persona_id=os.environ.get('PCAR_QQ_PERSONA_ID') or self.config.load()['runtime']['qq_persona_id']
+        if not persona_id:raise RuntimeErrorBase('qq_persona_binding_required')
+        payload['persona_id']=persona_id
         # The SDK handler stops the normal LLM path before this first await.
         payload = self.journal.remember(payload)
         try:
@@ -219,6 +297,7 @@ class QQBridge:
         from .qq_testing import QQTesting
         QQTesting(self.config.paths).check_runtime(self.config.load()['owner_qq'])
         view = stream
+        await self.flush_receipts()
         delivered = False
         for part in view["parts"]:
             if part["state"] in ("sent", "skipped", "resolved"):
@@ -233,18 +312,32 @@ class QQBridge:
             if 'text_hash' in part and hashlib.sha256(part['text'].encode('utf-8')).hexdigest()!=part['text_hash']:
                 raise RuntimeError('delivery_text_hash_mismatch')
             try:
-                claim = await self.request("POST", f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/claim",
-                    {"expected_revision": view["revision"], "operation_id": identifier(), "capabilities":["reply_bubbles_v3","reply_batch_v2","reply_rhythm_v1","reply_display_messages_v1"]})
+                from .config import atomic_json
+                claim_path=f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/claim"
+                claim_body={"expected_revision":view['revision'],'operation_id':identifier(),'sender':self.sender,
+                    'capabilities':['reply_bubbles_v3','reply_batch_v2','reply_rhythm_v1','reply_display_messages_v1']}
+                receipt_path=self.receipts/(part['id']+'.json')
+                entry={'kind':'claim','path':claim_path,'body':claim_body,'result_operation':identifier(),'sender':self.sender,'origin':view['origin']}
+                self.save_receipt(receipt_path,entry)
+                claim=await self.request('POST',claim_path,claim_body)
             except BridgeAPIError as exc:
                 if str(exc) == "version_conflict":
+                    receipt_path.unlink(missing_ok=True)
                     return delivered
                 raise
             if not claim["claimed"]:
+                receipt_path.unlink(missing_ok=True)
                 return delivered
             state, message_id, error = "sent", None, None
             cancelled = False
+            entry.update(kind='result',phase='inflight',path=claim_path.removesuffix('/claim')+'/result',
+                body={'claim_token':claim['claim_token'],'expected_revision':claim['part_revision'],
+                    'operation_id':entry['result_operation'],'state':'uncertain','platform_message_id':None,
+                    'error':'platform_send_interrupted','transport_done':True})
+            self.save_receipt(receipt_path,entry)
+            self.active_sends.add(claim['claim_token'])
             try:
-                result = await send(part["text"])
+                result = await self.send_once(send,part['text'],entry,receipt_path)
                 if result is False:
                     state, error = "failed", "platform_send_failed"
                 elif result is None:
@@ -262,13 +355,13 @@ class QQBridge:
                 state, error, cancelled = "uncertain", "platform_send_cancelled", True
             except Exception as exc:
                 state, error = "uncertain", type(exc).__name__
+            finally:self.active_sends.discard(claim['claim_token'])
+            entry['phase']='received'
+            entry['body'].update(state=state,platform_message_id=str(message_id) if message_id is not None else None,error=error)
+            self.save_receipt(receipt_path,entry)
             try:
-                recorded = await self.request("POST", f"/v2/replies/{part['reply_batch_id']}/parts/{part['id']}/result", {
-                    "claim_token": claim["claim_token"], "expected_revision": claim["part_revision"],
-                    "operation_id": identifier(), "state": state,
-                    "platform_message_id": str(message_id) if message_id is not None else None,
-                    "error": error,
-                })
+                recorded=await self.request('POST',entry['path'],entry['body'])
+                receipt_path.unlink(missing_ok=True)
             except BaseException:
                 if cancelled:
                     raise asyncio.CancelledError
