@@ -287,7 +287,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             return web.json_response(config.public())
         value = await body(request)
         old = config.load()
-        if any(k in value and value[k] != old[k] for k in ("service_port", "astrbot_port", "onebot_port", "napcat_port", "owner_qq", "bot_qq")):
+        if any(k in value and value[k] != old[k] for k in ("service_port", "astrbot_port", "onebot_port", "napcat_port", "owner_qq", "bot_qq", "qq_backend", "snowluma_port")):
             raise RuntimeErrorBase("Stop services before changing QQ or port configuration")
         result = config.update(value)
         organization.schedule.pause_changed_models()
@@ -305,6 +305,32 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
+        if action.startswith('knowledge.'):
+            knowledge=engine.knowledge
+            handlers={'knowledge.status':knowledge.status,'knowledge.search':knowledge.search,
+                'knowledge.evidence.show':knowledge.show_evidence,
+                'knowledge.package.prepare':knowledge.prepare_package,
+                'knowledge.package.activate':knowledge.activate_package,
+                'knowledge.policy.current':knowledge.current_policy,
+                'knowledge.policy.update':knowledge.update_policy,
+                'knowledge.source.list':knowledge.sources,
+                'knowledge.source.update':knowledge.update_sources,
+                'knowledge.invalidation.update':knowledge.invalidate}
+            from .knowledge_admin import overview, rollback
+            from .knowledge_transfer import restore
+            handlers.update({'knowledge.manage.show': lambda persona_id: overview(knowledge, persona_id),
+                'knowledge.package.rollback': lambda expected_revision, operation_id: rollback(knowledge, expected_revision, operation_id),
+                'knowledge.restore.submit': lambda name, expected_revision, operation_id: restore(knowledge, name, expected_revision, operation_id),
+                'knowledge.operation.show': knowledge.operation_show})
+            maintenance=organization.knowledge
+            handlers.update({'knowledge.maintenance.policy.current':maintenance.policy,
+                'knowledge.maintenance.policy.update':maintenance.update_policy,
+                'knowledge.source.policy.current':maintenance.current_source,
+                'knowledge.source.policy.update':maintenance.update_source,
+                'knowledge.refresh.submit':maintenance.submit,
+                'knowledge.withdraw.submit':maintenance.withdraw})
+            if action not in handlers:raise RuntimeErrorBase('unknown_knowledge_action')
+            return web.json_response(await asyncio.to_thread(handlers[action],**args))
         if action.startswith('evaluation.'):
             from .evaluation import EvaluationStore
             evaluation=EvaluationStore(paths)
@@ -543,6 +569,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             ingress_worker.cancel()
             await asyncio.gather(ingress_worker,return_exceptions=True)
         await compiler.drain()
+        await asyncio.to_thread(engine.knowledge.close)
         await asyncio.to_thread(engine.cognitive.shadow.close)
         await organization.drain()
         worker = app.get("organization_worker")

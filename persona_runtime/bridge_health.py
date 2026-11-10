@@ -21,6 +21,7 @@ async def heartbeat_loop(paths, config, platforms, *, publish=atomic_json, sleep
     while True:
         cfg = None
         verified = online = connected = False
+        detail = {}
         stage = 'config'
         error_type = error_stage = None
         try:
@@ -32,11 +33,9 @@ async def heartbeat_loop(paths, config, platforms, *, publish=atomic_json, sleep
                     continue
                 stage = 'probe'
                 client = platform.get_client()
-                login = await asyncio.wait_for(client.get_login_info(), 3)
-                verified = str(login.get('user_id', '')) == cfg['bot_qq']
-                status = await asyncio.wait_for(client.get_status(), 3)
-                connected = True
-                online = verified and bool(status.get('online'))
+                from .qq_client import probe_client
+                detail = await probe_client(client, cfg)
+                verified, online, connected = (detail[key] for key in ('verified', 'online', 'connected'))
                 break
         except Exception as error:
             verified = online = False
@@ -46,9 +45,9 @@ async def heartbeat_loop(paths, config, platforms, *, publish=atomic_json, sleep
             try:
                 publish(paths.home / 'runtime/astrbot-health.json', {
                     'at':time.time(), 'pid':os.getpid(), 'instance_id':cfg['instance_id'],
-                    'verified':verified, 'online':online, 'plugin_version':'0.7.3',
+                    'verified':verified, 'online':online, 'plugin_version':'0.7.4',
                     'connected':connected,
-                    'error_type':error_type, 'error_stage':error_stage})
+                    'error_type':error_type, 'error_stage':error_stage, **detail})
             except Exception as error:
                 failure('publish', error)
         # CancelledError intentionally propagates through every await. A real

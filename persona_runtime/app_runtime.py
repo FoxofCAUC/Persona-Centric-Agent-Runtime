@@ -72,6 +72,9 @@ class AppRuntime:
         now=self.clock();self.controller.ensure_binding();cfg=self.controller.config.load();states={}
         for role,enabled in cfg['runtime']['components'].items():
             if self.finished.is_set() or self.controller.closing.is_set():return
+            if role == 'napcat' and cfg.get('qq_backend', 'napcat') == 'snowluma':
+                states[role] = self.controller.health(role)
+                continue
             if role!='service' and not (cfg['owner_qq'] and cfg['bot_qq']):enabled=False
             if role!='service' and not cfg['runtime']['qq_persona_id']:enabled=False
             if role=='napcat' and (self.controller.console_lease or {}).get('login_confirmation_required'):

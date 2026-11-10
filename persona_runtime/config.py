@@ -16,6 +16,7 @@ SELECTOR_DEFAULTS = {"enabled": False, "base_url": "", "name": "", "encrypted_ke
                      "hourly_limit": 300, "daily_limit": 2000}
 
 DEFAULTS = {
+    "qq_backend": "napcat", "snowluma_port": 5099,
     "version": 3, "character_selector": SELECTOR_DEFAULTS, "service_port": 8765, "napcat_port": 6399,
     "runtime": {"revision":1,"components":{"service":True,"astrbot":True,"napcat":True},"qq_persona_id":""},
     "astrbot_port": 6285, "onebot_port": 6299, "bot_qq": "", "owner_qq": "",
@@ -61,6 +62,8 @@ class ConfigStore:
 
     def load(self):
         value = json.loads(self.file.read_text(encoding="utf-8"))
+        value.setdefault("qq_backend", "napcat")
+        value.setdefault("snowluma_port", 5099)
         value.setdefault("interaction", copy.deepcopy(DEFAULTS["interaction"]))
         value.setdefault("organization", copy.deepcopy(DEFAULTS["organization"]))
         if value.get("version") in (1,2):
@@ -74,6 +77,10 @@ class ConfigStore:
     def validate(value):
         if value.get("version") != 3:
             raise RuntimeErrorBase("Unsupported workbench configuration version")
+        if value.get('qq_backend', 'napcat') not in ('napcat', 'snowluma'):
+            raise RuntimeErrorBase('QQ connection must be napcat or snowluma')
+        if type(value.get('snowluma_port', 5099)) is not int or not 1024 <= value.get('snowluma_port', 5099) <= 65535:
+            raise RuntimeErrorBase('Invalid SnowLuma management port')
         runtime=value.get('runtime')
         if (not isinstance(runtime,dict) or set(runtime)!=set(DEFAULTS['runtime']) or
                 type(runtime['revision']) is not int or runtime['revision']<1 or
@@ -95,6 +102,8 @@ class ConfigStore:
         ports = [value.get(key) for key in ("service_port", "napcat_port", "astrbot_port", "onebot_port")]
         if any(type(p) is not int or not 1024 <= p <= 65535 for p in ports) or len(set(ports)) != 4:
             raise RuntimeErrorBase("Ports must be distinct integers between 1024 and 65535")
+        if value.get('qq_backend', 'napcat') == 'snowluma' and value.get('snowluma_port', 5099) in ports:
+            raise RuntimeErrorBase('SnowLuma management port conflicts with a PCAR port')
         for key in ("bot_qq", "owner_qq"):
             text = value.get(key, "")
             if not isinstance(text, str) or (text and (not text.isascii() or not text.isdecimal())):
@@ -159,7 +168,7 @@ class ConfigStore:
 
     def _update(self, changes):
         value = self.load()
-        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization", "character_selector"}
+        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization", "character_selector", "qq_backend", "snowluma_port"}
         if not isinstance(changes, dict) or not set(changes) <= allowed:
             raise RuntimeErrorBase("Unknown configuration field")
         for key, change in changes.items():

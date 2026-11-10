@@ -222,6 +222,18 @@ class ServiceController:
 
     def health(self, role):
         cfg = self.config.load()
+        if role == 'napcat' and cfg['qq_backend'] == 'snowluma':
+            bridge = self.health('astrbot')
+            enabled = cfg['runtime']['components']['napcat']
+            verified = bridge.get('login')
+            reason = ('backend_mismatch' if bridge.get('backend_matches') is False else
+                      'account_mismatch' if bridge.get('account_matches') is False else 'login_required')
+            return {'role': role, 'backend': 'snowluma', 'external': True, 'owned': False,
+                    'port': cfg['onebot_port'], 'state': '已停止' if not enabled else
+                    '运行' if verified is True and bridge.get('account_online') is True else '等待外部连接',
+                    'account_logged_in': verified, 'login_required': verified is not True,
+                    'login_reason': None if verified is True else reason,
+                    'backend_matches': bridge.get('backend_matches')}
         port = cfg[{"service": "service_port", "astrbot": "astrbot_port", "napcat": "napcat_port"}[role]]
         owned = self.owned(role)
         listening = port_open(port)
@@ -251,11 +263,15 @@ class ServiceController:
                     return result | {"state":"等待验证", "login":None, "onebot":None,
                                      "heartbeat_stale":True, "heartbeat_age_seconds":max(0,round(age)),
                                      "reason":"桥接心跳已过期，QQ 登录状态未知；请检查消息服务。"}
+                if cfg['qq_backend'] == 'snowluma' and proof.get('backend') != 'snowluma':
+                    return result | {'state': '等待验证', 'login': None, 'onebot': None,
+                                     'reason': '等待当前SnowLuma连接的桥接心跳。'}
                 if proof.get('error_type'):
                     return result | {"state":"等待验证", "login":None, "onebot":None,
                                      "reason":"桥接状态检查失败，QQ 登录状态未知；请查看元数据诊断日志。"}
                 return result | {"state": "运行", "login": proof["verified"], "onebot": proof["online"],
-                    "onebot_connected":proof.get('connected'),"account_online":proof['online']}
+                    "onebot_connected":proof.get('connected'),"account_online":proof['online'],
+                    "backend_matches": proof.get('backend_matches'), "account_matches": proof.get('account_matches')}
             except (OSError, ValueError, KeyError, TypeError):
                 return result | {"state":"等待验证", "login":None, "onebot":None,
                                  "reason":"桥接心跳暂不可读取，QQ 登录状态未知；请检查消息服务。"}
@@ -280,6 +296,9 @@ class ServiceController:
         """Dashboard access does not depend on QQ/plugin heartbeat health."""
         if role not in ("astrbot", "napcat"):
             raise ValueError("此服务没有管理页面。")
+        cfg = self.config.load()
+        if role == 'napcat' and cfg['qq_backend'] == 'snowluma':
+            return f"http://127.0.0.1:{cfg['snowluma_port']}"
         if not self.owned(role):
             raise ValueError("尚未验证此页面属于本项目，请先启动对应服务。")
         cfg = self.config.load()
@@ -333,7 +352,8 @@ class ServiceController:
                     or type(proof.get('verified')) is not bool or type(proof.get('online')) is not bool):
                 return False
             error = proof.get('error_type')
-            if error is not None and (error != 'ApiNotAvailable' or proof.get('error_stage') != 'probe'):
+            expected_external_probe = cfg['qq_backend'] == 'snowluma' and proof.get('error_stage') == 'probe'
+            if error is not None and not expected_external_probe and (error != 'ApiNotAvailable' or proof.get('error_stage') != 'probe'):
                 return False
             for port in (cfg['astrbot_port'], cfg['onebot_port']):
                 actual = listener(port)
@@ -391,6 +411,12 @@ class ServiceController:
         if role not in self.adapters:
             raise RuntimeErrorBase("Unknown service role")
         console = require_console(self.paths)
+        cfg = self.config.load()
+        if role == 'napcat' and cfg['qq_backend'] == 'snowluma':
+            if not (cfg['owner_qq'] and cfg['bot_qq']):
+                raise RuntimeErrorBase('请先填写本人 QQ 与 Bot QQ。')
+            self.start('astrbot')
+            return self.health(role)
         health = self.health(role)
         if self._start_ready(role, health):
             return health
@@ -446,6 +472,11 @@ class ServiceController:
 
     def _stop(self, role):
         self.set_desired(role,False)
+        if role == 'napcat' and self.config.load()['qq_backend'] == 'snowluma':
+            self.set_desired('astrbot', False)
+            if self.owned('astrbot'):
+                self._stop('astrbot')
+            return
         if not self.owned(role):
             if self.health(role)["state"] == "已停止":
                 return
@@ -492,7 +523,7 @@ class ServiceController:
                     break
                 time.sleep(.5)
         for role in ("astrbot", "service") + (("napcat",) if include_qq else ()):
-            if self.owned(role):
+            if self.owned(role) or role == 'napcat' and self.config.load()['qq_backend'] == 'snowluma':
                 self.stop(role)
 
     def snapshot(self):
@@ -516,8 +547,13 @@ class ServiceController:
             except OSError:
                 if 'closing_marker_write_failed' not in report['errors']:report['errors'].append('closing_marker_write_failed')
         progress('draining')
-        report['qq_was_running']=self.owned('napcat')
-        if not report['qq_was_running']:
+        report['qq_backend'] = self.config.load()['qq_backend']
+        external = report['qq_backend'] == 'snowluma'
+        report['external_qq_session'] = external
+        report['qq_was_running']=not external and self.owned('napcat')
+        if external:
+            report['logout_reason'] = 'external_session_connection_only'
+        if not report['qq_was_running'] and not external:
             try:
                 previous=json.loads((self.paths.home/'runtime/last-qq-logout.json').read_text())
                 if previous.get('console_token')==(self.console_lease or {}).get('token') and previous.get('bot')==self.config.load()['bot_qq']:
@@ -537,7 +573,7 @@ class ServiceController:
             # Fence the sender before logout and never launch a replacement while closing.
             self.release_role('astrbot')
             progress('logout')
-            if self.owned('napcat'):
+            if not external and self.owned('napcat'):
                 try:
                     from .qq_session import logout_verified
                     report.update(logout_verified(self.paths,self.record('napcat'),timeout=10))

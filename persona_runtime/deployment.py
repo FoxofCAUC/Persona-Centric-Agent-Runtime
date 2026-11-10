@@ -8,7 +8,7 @@ import sys
 
 from .config import ConfigStore, atomic_json
 from .models import RuntimeErrorBase
-from .security import protect
+from .security import protect, unprotect
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 REPO = Path(__file__).resolve().parents[1]
@@ -89,21 +89,25 @@ def child_environment(paths):
 def prepare(paths, *, install=True, source=None):
     config = ConfigStore(paths)
     config.initialize()
-    destination = paths.home / "components/napcat"
-    configured=source or os.environ.get('PCAR_NAPCAT_SOURCE') or None
-    reuse=configured is None
-    source=Path(configured) if configured else destination
-    if not reuse and destination.resolve() == source.resolve():
-        raise RuntimeErrorBase("Independent NapCat directory required")
-    destination.mkdir(parents=True, exist_ok=True)
-    for directory in ("native", "node_modules", "static", "worker"):
-        if not (source / directory).is_dir():
-            raise RuntimeErrorBase("请先选择完整的 NapCat 组件目录，或显式配置 PCAR_NAPCAT_SOURCE。")
-        if not reuse:shutil.copytree(source / directory, destination / directory, dirs_exist_ok=True)
-    if not reuse:
-        for item in source.iterdir():
-            if item.is_file() and (item.suffix in (".js", ".mjs", ".dll", ".exe") or item.name in ("package.json", "qqnt.json")):
-                shutil.copy2(item, destination / item.name)
+    cfg = config.load()
+    if cfg['qq_backend'] == 'napcat':
+        destination = paths.home / "components/napcat"
+        configured=source or os.environ.get('PCAR_NAPCAT_SOURCE') or None
+        reuse=configured is None
+        source=Path(configured) if configured else destination
+        if not reuse and destination.resolve() == source.resolve():
+            raise RuntimeErrorBase("Independent NapCat directory required")
+        destination.mkdir(parents=True, exist_ok=True)
+        for directory in ("native", "node_modules", "static", "worker"):
+            if not (source / directory).is_dir():
+                raise RuntimeErrorBase("请先选择完整的 NapCat 组件目录，或显式配置 PCAR_NAPCAT_SOURCE。")
+            if not reuse:shutil.copytree(source / directory, destination / directory, dirs_exist_ok=True)
+        if not reuse:
+            for item in source.iterdir():
+                if item.is_file() and (item.suffix in (".js", ".mjs", ".dll", ".exe") or item.name in ("package.json", "qqnt.json")):
+                    shutil.copy2(item, destination / item.name)
+    else:
+        source = paths.home / 'components/astrbot'
     interpreter = paths.home / "components/astrbot/.venv/Scripts/python.exe"
     env = child_environment(paths)
     if install:
@@ -135,7 +139,7 @@ def prepare(paths, *, install=True, source=None):
             shutil.copy2(item, plugin / item.name)
     manifest_file=paths.home/'runtime/deployment.json'
     previous=json.loads(manifest_file.read_text(encoding='utf-8')) if manifest_file.exists() else {}
-    manifest={"version": 1, "astrbot": "4.29.1", "source": str(source),"plugin": "0.7.3", "independent": True}
+    manifest={"version": 1, "astrbot": "4.29.1", "source": str(source),"plugin": "0.7.4", "independent": True, "qq_backend": cfg["qq_backend"]}
     # Preparing owned assets must not silently return QQ to shared user data.
     # A changed vendor binary retains the old fingerprint and is blocked by
     # the host until an explicit, verified component adoption updates it.
@@ -143,6 +147,43 @@ def prepare(paths, *, install=True, source=None):
         if key in previous:manifest[key]=previous[key]
     atomic_json(manifest_file,manifest)
     return {"prepared": True, "component_root": str(paths.home / "components")}
+
+
+def transport_token(paths, cfg):
+    """Rotate on backend/account/routing changes and reuse across host restarts."""
+    identity = {key: cfg[key] for key in ('instance_id', 'qq_backend', 'bot_qq', 'owner_qq', 'onebot_port')}
+    file = paths.home / 'runtime/onebot-transport.dpapi.json'
+    if file.exists():
+        saved = json.loads(file.read_text(encoding='utf-8'))
+        if saved.get('identity') == identity:
+            return unprotect(saved['token'])
+    import secrets
+    token = secrets.token_urlsafe(32)
+    if not file.exists() and cfg['qq_backend'] == 'napcat':
+        old_file = paths.home / 'components/napcat/config' / f"onebot11_{cfg['bot_qq']}.json"
+        if old_file.exists():
+            old = json.loads(old_file.read_text(encoding='utf-8-sig'))
+            for client in old.get('network', {}).get('websocketClients', []):
+                if client.get('url') == f"ws://127.0.0.1:{cfg['onebot_port']}/ws" and client.get('token'):
+                    token = client['token']
+    atomic_json(file, {'identity': identity, 'token': protect(token)})
+    return token
+
+
+def snowluma_settings(paths):
+    cfg = ConfigStore(paths).load()
+    if cfg['qq_backend'] != 'snowluma':
+        raise RuntimeErrorBase('请先保存SnowLuma接入方式。')
+    file = paths.home / 'runtime/onebot-transport.dpapi.json'
+    identity = {key: cfg[key] for key in ('instance_id', 'qq_backend', 'bot_qq', 'owner_qq', 'onebot_port')}
+    saved = json.loads(file.read_text(encoding='utf-8')) if file.exists() else {}
+    if saved.get('identity') != identity:
+        raise RuntimeErrorBase('请先启动消息服务生成当前连接参数。')
+    return {'backend': 'snowluma', 'transport': 'OneBot v11 反向WebSocket客户端',
+            'url': f"ws://127.0.0.1:{cfg['onebot_port']}/ws",
+            'token': unprotect(saved['token']),
+            'message_format': 'array', 'self_id': cfg['bot_qq'],
+            'scope': '仅当前Bot与本人好友私聊，外部SnowLuma独立管理登录'}
 
 
 def write_component_config(paths):
@@ -158,14 +199,7 @@ def write_component_config(paths):
     data["provider"], data["provider_sources"] = [], []
     data["platform_settings"].update(enable_id_white_list=True, id_whitelist=["persona-onebot:FriendMessage:" + cfg["owner_qq"]] if cfg["owner_qq"] else [],
                                      id_whitelist_log=False)
-    # Transport secrets are fresh per deployment of stopped services, never copied from another bot.
-    transport = secrets.token_urlsafe(32)
-    existing_transport = paths.home / "components/napcat/config" / f"onebot11_{cfg['bot_qq']}.json"
-    if existing_transport.exists():
-        existing = json.loads(existing_transport.read_text(encoding="utf-8-sig"))
-        for client in existing.get("network", {}).get("websocketClients", []):
-            if client.get("url") == f"ws://127.0.0.1:{cfg['onebot_port']}/ws" and client.get("token"):
-                transport = client["token"]
+    transport = transport_token(paths, cfg)
     data["platform"] = [{"id": "persona-onebot", "type": "aiocqhttp", "enable": bool(cfg["owner_qq"] and cfg["bot_qq"]),
                           "ws_reverse_host": "127.0.0.1", "ws_reverse_port": cfg["onebot_port"], "ws_reverse_token": transport}]
     data["dashboard"].update(host="127.0.0.1", port=cfg["astrbot_port"], disable_access_log=True)
@@ -177,23 +211,26 @@ def write_component_config(paths):
                 data["dashboard"][key] = old["dashboard"][key]
     atomic_json(old_file, data)
     (bot / ".astrbot").touch(exist_ok=True)
-    shell = paths.home / "components/napcat"
-    atomic_json(shell / "config/napcat.json", {"fileLog": False, "consoleLog": False,
-                "fileLogLevel": "error", "consoleLogLevel": "error", "packetBackend": "auto"})
-    web_file = shell / "config/webui.json"
-    web_data = {"host": "127.0.0.1", "port": cfg["napcat_port"], "token": secrets.token_urlsafe(32),
-                "loginRate": 5, "autoLoginAccount": "", "disableWebUI": False}
-    if web_file.exists():
-        # A running, project-owned QQ login may be retained when only application services restart.
-        old = json.loads(web_file.read_text(encoding="utf-8-sig"))
-        if old.get("host") == "127.0.0.1" and old.get("port") == cfg["napcat_port"]:
-            web_data["token"] = old.get("token") or web_data["token"]
-    atomic_json(web_file, web_data)
-    if cfg["bot_qq"]:
-        atomic_json(shell / f"config/onebot11_{cfg['bot_qq']}.json", onebot_config(cfg, transport))
+    roots = [bot / 'data']
+    if cfg['qq_backend'] == 'napcat':
+        shell = paths.home / "components/napcat"
+        atomic_json(shell / "config/napcat.json", {"fileLog": False, "consoleLog": False,
+                    "fileLogLevel": "error", "consoleLogLevel": "error", "packetBackend": "auto"})
+        web_file = shell / "config/webui.json"
+        web_data = {"host": "127.0.0.1", "port": cfg["napcat_port"], "token": secrets.token_urlsafe(32),
+                    "loginRate": 5, "autoLoginAccount": "", "disableWebUI": False}
+        if web_file.exists():
+            # A running, project-owned QQ login may be retained when only application services restart.
+            old = json.loads(web_file.read_text(encoding="utf-8-sig"))
+            if old.get("host") == "127.0.0.1" and old.get("port") == cfg["napcat_port"]:
+                web_data["token"] = old.get("token") or web_data["token"]
+        atomic_json(web_file, web_data)
+        if cfg["bot_qq"]:
+            atomic_json(shell / f"config/onebot11_{cfg['bot_qq']}.json", onebot_config(cfg, transport))
+        roots.append(shell / 'config')
     # Third-party config readers require transport credentials in their native JSON format.
     # Restrict these runtime files to the current Windows user and SYSTEM.
-    for root in (bot / "data", shell / "config"):
+    for root in roots:
         subprocess.run(["icacls", str(root), "/inheritance:r", "/grant:r",
                         f"{os.environ['USERDOMAIN']}\\{os.environ['USERNAME']}:(OI)(CI)F", "SYSTEM:(OI)(CI)F"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW, check=True)

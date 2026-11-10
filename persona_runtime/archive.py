@@ -92,6 +92,8 @@ def read_exact(conn, selected_scope, target, audit=False):
     members = load_turn_input(conn, turn)
     ids = load_turn_sources(conn, turn)
     blocked = any(conn.execute('SELECT 1 FROM source_exclusions WHERE event_id=?', (i,)).fetchone() for i in ids)
+    from .knowledge_service import turn_usable
+    blocked = blocked or not turn_usable(conn, turn['id'])
     parts = [dict(r) for r in conn.execute('SELECT id,text,state,platform_message_id,part_index,sent_at FROM reply_delivery_parts WHERE turn_id=? ORDER BY part_index', (turn['id'],))]
     raw = [dict(r) for r in conn.execute('SELECT id,event_id,platform_message_id,platform_time,received_at,representation FROM raw_events WHERE event_id IN (SELECT event_id FROM input_batch_members WHERE batch_id=?) ORDER BY rowid', (turn['input_batch_id'],))] if turn['input_batch_id'] else []
     r = conn.execute('SELECT id,text FROM events WHERE id=?',(turn['reply_event_id'],)).fetchone() if turn['reply_event_id'] else None

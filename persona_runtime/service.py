@@ -254,7 +254,8 @@ class RuntimeService:
             persona = self._persona(conn)
             automatic=bool(conn.execute("SELECT 1 FROM sqlite_master WHERE name='memory_batches'").fetchone())
             app_runtime=bool(conn.execute("SELECT 1 FROM sqlite_master WHERE name='proactive_rules'").fetchone())
-            payload = {"format_version": 19 if app_runtime else 18 if automatic else 17, "exported_at": timestamp(), "persona": persona,
+            knowledge=bool(conn.execute("SELECT 1 FROM sqlite_master WHERE name='knowledge_control'").fetchone())
+            payload = {"format_version": 20 if knowledge else 19 if app_runtime else 18 if automatic else 17, "exported_at": timestamp(), "persona": persona,
                        "user": dict(conn.execute("SELECT * FROM users WHERE id=?", (LOCAL_USER_ID,)).fetchone())}
             payload['persona_lifecycle']=[dict(r) for r in conn.execute('SELECT * FROM persona_lifecycle WHERE persona_id=?',(persona['id'],))]
             payload['persona_operations']=[dict(r) for r in conn.execute("SELECT * FROM persona_operations WHERE json_extract(result_json,'$.id')=?",(persona['id'],))]
@@ -319,6 +320,9 @@ class RuntimeService:
                 records=PrivatePersonas(self.store.paths).load()['records']
                 inherited=conn.execute('SELECT 1 FROM persona_lifecycle WHERE (persona_id=? AND privacy_root IS NOT NULL) OR privacy_root=? LIMIT 1',(persona['id'],persona['id'])).fetchone()
                 payload['private_protected']=bool(inherited or any(r.get('persona_id')==persona['id'] for r in records))
+            if knowledge:
+                from .knowledge_transfer import snapshot
+                payload['knowledge'] = snapshot(conn, persona['id'])
         path = self._output_path("exports", name, ".json")
         created = False
         try:
@@ -346,6 +350,8 @@ class RuntimeService:
                         raise RuntimeErrorBase("Backup integrity check failed")
                 finally:
                     destination.close()
+            from .knowledge_transfer import backup_manifest
+            backup_manifest(path)
         except BaseException:
             path.unlink(missing_ok=True)
             raise

@@ -113,6 +113,9 @@ class CognitiveService:
             if row:
                 selection_record={'status':row['status'],'selected':json.loads(row['selected_json']) if row['selected_json'] else None,
                                   'prompt_version':json.loads(row['manifest_json']).get('prompt_version') if row['manifest_json'] else None}
+        if 'knowledge' in details:
+            manifest['knowledge']=details['knowledge']
+            manifest['evidence_refs'].extend(details['knowledge'].get('evidence',[]))
         return attach(manifest,turn,details,selection_record)
 
     def prepare(self,turn_id,character_selection=None,observation=None):
@@ -130,18 +133,22 @@ class CognitiveService:
         if decision is not None and voice:decision={**decision,'_voice_version':voice['version']}
         from .decision_capsule import capsule
         evidence=self.dialogue.evidence(turn)
+        knowledge=self.engine.knowledge.prepare_turn(turn)
         with self.store.connection() as conn:
             if evidence is not None:
                 selected=turn_scope(conn,turn)
                 if any(binding(read_exact(conn,selected,{'kind':'turn','id':i['group']['turn_id']}))!=binding(i['group']) for i in evidence['items']):
                     evidence=self.dialogue.basic_evidence(conn,turn)
             messages,details=self.dialogue.render(conn,turn,evidence,character,capsule=capsule(decision))
+            knowledge=self.engine.knowledge.recheck(conn,turn,knowledge)
+            from .knowledge_context import attach as attach_knowledge
+            messages,details=attach_knowledge(messages,details,knowledge,turn)
             decision=self.bind_decision(decision,details)
             guard=self._guard(conn,turn,details,expected=True)
             manifest=self._manifest(conn,turn,messages,details)
         manifest['_shadow_prepared']=decision
         manifest['preparation_ms']=round((time.perf_counter()-started)*1000,3)
-        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character,'accepted_policy_hash':fingerprint(turn.get('context_policy_snapshot'))}
+        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character,'knowledge_prepared':knowledge,'accepted_policy_hash':fingerprint(turn.get('context_policy_snapshot'))}
 
     @staticmethod
     def bind_decision(decision,details):
@@ -172,16 +179,19 @@ class CognitiveService:
             raise ModelError(str(exc)) from None
         decision=None if is_minimal else self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
         from .decision_capsule import capsule
-        if decision!=prepared['manifest'].get('_shadow_prepared') or character!=prepared.get('character_prepared') or prepared['guard']!=self._guard(conn,turn,prepared['details']):
+        knowledge=self.engine.knowledge.recheck(conn,turn,prepared.get('knowledge_prepared'))
+        if knowledge!=prepared.get('knowledge_prepared') or decision!=prepared['manifest'].get('_shadow_prepared') or character!=prepared.get('character_prepared') or prepared['guard']!=self._guard(conn,turn,prepared['details']):
             evidence=self.dialogue.basic_evidence(conn,turn)
             original=(prepared['details'].get('retrieval') or {}).get('degraded_reason')
             if original:evidence['retrieval']['degraded_reason']=original
             messages,details=self.dialogue.render(conn,turn,evidence,character,capsule=capsule(decision))
+            from .knowledge_context import attach as attach_knowledge
+            messages,details=attach_knowledge(messages,details,knowledge,turn)
             decision=self.bind_decision(decision,details)
             manifest=self._manifest(conn,turn,messages,details)
             manifest['preparation_ms']=prepared['manifest'].get('preparation_ms',0)
             manifest['_shadow_prepared']=decision
-            prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character}
+            prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character,'knowledge_prepared':knowledge}
         prepared['manifest']['final_verification_ms']=round((time.perf_counter()-started)*1000,3)
         prepared['manifest']['_shadow_prepared']=None if is_minimal else self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
         from .prompt_assembly import fit_manifest
@@ -265,7 +275,12 @@ class CognitiveService:
             payload=json.loads(owner['payload_json']);messages=OrganizationEngine.messages(payload)
             with self.store.connection() as conn:
                 from .session_organization import valid as source_valid
-                valid=owner['mode']=='test' or (payload.get('guard')==OrganizationEngine.guard(conn,persona_id,owner['session_id']) and source_valid(conn,payload))
+                if payload.get('external_knowledge'):
+                    from .knowledge_store import check_document
+                    try:check_document(conn,payload);valid=True
+                    except RuntimeErrorBase:valid=False
+                else:
+                    valid=owner['mode']=='test' or (payload.get('guard')==OrganizationEngine.guard(conn,persona_id,owner['session_id']) and source_valid(conn,payload))
             manifest=ReflectionBuilder.build(owner,payload,messages)|{'task_type':task_type,'persisted':False}
             if not valid:manifest['missing_data'].append('organization_source_changed')
             return {'status':'ok' if valid else 'not_ready','manifest':manifest,'creates_request':False}

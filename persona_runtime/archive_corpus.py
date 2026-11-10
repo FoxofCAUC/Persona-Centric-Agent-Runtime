@@ -50,7 +50,8 @@ def capture_connection(conn,spec,budget,*,before_order=None,prefer_session=None,
     else:
         sql += ' ORDER BY t.rowid DESC,t.id ASC LIMIT ?'
     args.append(50 if spec['window']=='recent_50' or spec['window'].startswith('dialogue_') else MAX_DOCUMENTS+1)
-    turns = [dict(r) for r in conn.execute(sql,args)]
+    from .knowledge_service import turn_usable
+    turns = [dict(r) for r in conn.execute(sql,args) if turn_usable(conn,r['id'])]
     if len(turns)>MAX_DOCUMENTS:
         raise SearchFailure('query_budget_exceeded')
     if keys_only:return {'turn_ids':[t['id'] for t in turns],'orders':{t['id']:t['creation_order'] for t in turns}}

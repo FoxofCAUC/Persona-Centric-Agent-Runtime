@@ -178,6 +178,8 @@ class ChatEngine:
             live_admission.check(store,config,persona_id)
             return 'live'
         store.new_identity_mode=new_identity_mode
+        from .knowledge_service import KnowledgeService
+        self.knowledge = KnowledgeService(store)
         from .cognitive import CognitiveService
         self.cognitive=CognitiveService(store,self)
         self.client = client or ChatCompletionsClient()
@@ -368,6 +370,11 @@ class ChatEngine:
         value['delivery_stream']=dict(delivery_stream) if delivery_stream else None
         context = conn.execute("SELECT details_json FROM context_uses WHERE turn_id=? ORDER BY rowid DESC LIMIT 1", (turn_id,)).fetchone()
         value['context'] = json.loads(context[0]) if context else None
+        if reply_batch:
+            from .knowledge_service import turn_usable
+            if not turn_usable(conn, turn_id):
+                value.update(status='failed',error_code='knowledge_evidence_changed',reply=None,
+                             display_reply=None,reply_batch=None,display_messages=[])
         value.update(progress(conn, value))
         value["queue_position"] = conn.execute(
             "SELECT count(*) FROM turns t WHERE t.persona_id IS ? AND (t.status='running' OR "
@@ -542,6 +549,8 @@ class ChatEngine:
                     presentation['planned_wait_ms']=sum(m['wait_ms'] for m in display_messages)
                 with self.store.connection(write=True) as conn:
                     details['presentation']=presentation
+                    from .knowledge_service import validate_used
+                    validate_used(conn,self.store.paths,turn['persona_id'],turn['channel'],details.get('knowledge'))
                     conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
                                  (json.dumps(details,ensure_ascii=False),attempt_id))
                     record_progress(conn, turn_id, "generated", attempt_id)

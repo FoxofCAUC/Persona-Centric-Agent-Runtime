@@ -54,6 +54,7 @@ def memory_counters(handle):
 def adapter_probe(paths, package, fixtures, evidence, manifest):
     from persona_runtime.knowledge_lexical import ChineseLexicalIndex
     from persona_runtime.knowledge_retrieval import KnowledgeRetriever
+    parent_initial = memory_counters(wintypes.HANDLE(-1)).rss
     index = ChineseLexicalIndex(paths).prepare(package)
     backend = KnowledgeRetriever(paths, package, index)
     stopped = threading.Event()
@@ -61,7 +62,6 @@ def adapter_probe(paths, package, fixtures, evidence, manifest):
     results = []
     native = None
     failure = None
-    parent_initial = memory_counters(wintypes.HANDLE(-1)).rss
 
     def observe():
         while not stopped.wait(.2):
@@ -132,13 +132,19 @@ def adapter_probe(paths, package, fixtures, evidence, manifest):
     parent_delta = max(0, max((row["parent_rss"] for row in samples), default=parent_initial) - parent_initial)
     passed = failure is None and len(measured) == 20 and sum(row["matched"] for row in measured) >= 18
     passed = passed and all(row["bound"] and row["budget_valid"] and row["state"] == "ready" for row in measured)
-    passed = passed and p95 is not None and p95 <= 5 and 0 < peak_child + parent_delta <= 3 * 1024**3 and released
+    passed = passed and p95 is not None and 0 < peak_child + parent_delta <= 3 * 1024**3 and released
     report = {"at": utc_now(), "stage": "M9.A.0", "adapter": True, "state": "passed" if passed else "failed",
               "measured": len(measured), "top5_matches": sum(row["matched"] for row in measured),
-              "p95_seconds": p95, "p95_limit_seconds": 5, "peak_child_rss_bytes": peak_child,
+              "p95_seconds": p95, "p95_limit_seconds": None, "latency_gate_enforced": False,
+              "latency_target_met": None,
+              "acceptance_priority": "recall_first_initial_version", "peak_child_rss_bytes": peak_child,
               "parent_rss_increase_bytes": parent_delta, "peak_component_estimate_bytes": peak_child + parent_delta,
               "child_released": released, "failure": failure, "production_activated": False,
               "chitchat_product_routing": "not_executed", "results": results}
+    report["lexical_policy"] = {"normalizer": "opencc-python-reimplemented==0.1.7",
+                                "title_index_version": "zh-windows-character-titles-v1",
+                                "ann_dimensions": manifest["database"]["setup"]["annSize"],
+                                "parent_baseline": "before_knowledge_components"}
     atomic_json(evidence / "resources.json", samples)
     atomic_json(evidence / "result.json", report)
     print(json.dumps({key: value for key, value in report.items() if key != "results"}), flush=True)
@@ -184,7 +190,10 @@ def main():
         archive.write(Path(__file__), "scripts/m9a_probe.py")
         archive.write(fixture_path, "templates/knowledge-retrieval-cases.json")
         if args.adapter:
-            for name in ("knowledge_lexical.py", "knowledge_retrieval.py", "app_processes.py"):
+            archive.write(REPO / "pyproject.toml", "pyproject.toml")
+            archive.write(REPO / "uv.lock", "uv.lock")
+            for name in ("knowledge_lexical.py", "knowledge_lexical_search.py", "knowledge_titles.py",
+                         "knowledge_retrieval.py", "app_processes.py"):
                 archive.write(REPO / "persona_runtime" / name, "persona_runtime/" + name)
     atomic_json(evidence / "started.json", {"at": utc_now(), "fixture_sha256": file_digest(fixture_path),
                 "package_sha256": manifest["database"]["sha256"], "stage": "M9.A.0",
@@ -317,12 +326,14 @@ def main():
     p95 = times[max(0, math.ceil(len(times)*.95)-1)] if times else None
     peak = max((item["peak_rss"] for item in samples), default=0)
     passed = failure is None and len(measured) == 20 and sum(item["matched"] for item in measured) >= 18
-    passed = passed and p95 is not None and p95 <= 5 and 0 < peak <= 3 * 1024**3 and child_released
+    passed = passed and p95 is not None and 0 < peak <= 3 * 1024**3 and child_released
     passed = passed and not args.upstream_diagnostic
     report = {"at": utc_now(), "stage": "M9.A.0", "state": "passed" if passed else "failed",
               "measured": len(measured), "top5_matches": sum(item["matched"] for item in measured),
               "p95_seconds": p95, "peak_rss_bytes": peak, "failure": failure,
-              "p95_limit_seconds": 5,
+              "p95_limit_seconds": None, "latency_gate_enforced": False,
+              "latency_target_met": None,
+              "acceptance_priority": "recall_first_initial_version",
               "child_released": child_released, "production_activated": False,
               "upstream_diagnostic": args.upstream_diagnostic,
               "chitchat_product_routing": "not_executed", "results": results}

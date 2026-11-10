@@ -27,6 +27,7 @@ from .desktop_sessions import SessionUI
 from .desktop_selector import SelectorUI
 from .desktop_runtime import RuntimeUI,connection_status_text
 from .desktop_links import open_browser
+from .desktop_knowledge import KnowledgeUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
 APP_EXIT_TIMEOUT = 45
@@ -151,13 +152,14 @@ class ScrollPage(ttk.Frame):
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(window, width=event.width))
 
 
-class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
+class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, ArchiveUI, QuotaUI, DeliveryUI, BatchUI, CharacterUI, ProfileUI, OrganizationUI, tk.Tk):
     # Extension points: add a page builder or a ServiceAdapter without replacing the shell.
     PAGE_REGISTRY = (("home", "首页", "build_home"), ("chat", "聊天", "build_chat"),
                      ("persona", "人格与记忆", "build_persona"), ("connection", "QQ 连接", "build_connection"),
                      ("model", "模型", "build_model"), ("organization", "记忆整理", "build_organization"),
                      ('profile','人格与关系','build_profile'),
                      ('runtime','运行与约定提醒','build_runtime'),
+                     ('knowledge','世界知识','build_knowledge'),
                      ('character','角色资料','build_character'),
                      ('batches','输入与缓冲','build_batches'),
                      ('delivery','回复投递','build_delivery'),
@@ -201,7 +203,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
         self.operation_text = tk.StringVar(value="没有正在执行的操作")
         self.persona_choice = tk.StringVar()
         self.memory_query = tk.StringVar()
-        self.qq_vars = {key: tk.StringVar() for key in ("bot_qq", "owner_qq", "service_port", "napcat_port", "astrbot_port", "onebot_port")}
+        self.qq_vars = {key: tk.StringVar() for key in ("bot_qq", "owner_qq", "service_port", "napcat_port", "astrbot_port", "onebot_port", "qq_backend", "snowluma_port")}
         self.model_vars = {key: tk.StringVar() for key in ("base_url", "name", "api_key", "timeout", "max_tokens", "hourly_limit", "max_input_chars")}
         self.clear_key = tk.BooleanVar(value=False)
         self.allow_queue_cancel = tk.BooleanVar(value=False)
@@ -210,6 +212,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
         self.log_source = tk.StringVar(value="service")
         self.log_search = tk.StringVar()
         self.init_organization_vars()
+        self.init_knowledge_vars()
         self.init_runtime_vars()
         self.init_profile_vars()
         self.init_character_vars()
@@ -351,6 +354,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
         if key=='profile':self.refresh_profile()
         if key=='delivery':self.refresh_deliveries()
         if key=='context':self.refresh_context_policy()
+        if key=='knowledge':self.refresh_knowledge()
 
     def build_home(self, parent):
         ttk.Label(parent, text="运行状态", style="Title.TLabel").pack(anchor="w", pady=(0, 8))
@@ -442,12 +446,21 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
 
     def build_connection(self, parent):
         self.heading(parent, "QQ 连接", "只允许你本人的好友私聊。新项目独立运行，不接管旧 TRPG 的 QQ 实例。")
+        choice = ttk.Frame(parent)
+        choice.pack(fill='x', pady=6)
+        ttk.Label(choice, text='QQ 接入方式').pack(side='left', padx=(0, 12))
+        ttk.Combobox(choice, textvariable=self.qq_vars['qq_backend'], values=('napcat', 'snowluma'),
+                     state='readonly', width=18).pack(side='left')
+        ttk.Label(parent, text='napcat 由PCAR托管。snowluma 独立运行，通过反向WebSocket接入消息服务。',
+                  wraplength=700).pack(anchor='w', pady=6)
         self.fields(parent, self.qq_vars, (("bot_qq", "Bot QQ"), ("owner_qq", "本人 QQ"), ("service_port", "人格服务端口"),
-                    ("napcat_port", "NapCat 页面端口"), ("astrbot_port", "AstrBot 页面端口"), ("onebot_port", "OneBot 端口")))
+                    ("napcat_port", "NapCat 页面端口"), ("snowluma_port", "SnowLuma 页面端口"),
+                    ("astrbot_port", "AstrBot 页面端口"), ("onebot_port", "OneBot 端口")))
         bar = self.bar(parent)
         bar.pack(fill="x", pady=10)
         self.button(bar, "保存连接设置", self.save_connection, {"config", "lifecycle"}, True)
         self.button(bar, "检查连接", lambda: self.poll(force=True), {"poll"})
+        self.button(bar, '查看SL连接参数', self.show_snowluma_settings, {'config', 'lifecycle'})
         self.button(bar, "打开 QQ 登录页", lambda: self.open_panel("napcat"))
         ttk.Label(parent, text="更改账号或端口前，请在故障排查中停止本项目全部服务，包括 QQ。所有地址绑定本机。", wraplength=700).pack(anchor="w", pady=10)
 
@@ -539,7 +552,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
     def prepare_components(self):
         import os
         source=None;root=self.paths.home/'components/napcat'
-        if not os.environ.get('PCAR_NAPCAT_SOURCE') and not all((root/name).is_dir() for name in ('native','node_modules','static','worker')):
+        if self.config.load()['qq_backend'] == 'napcat' and not os.environ.get('PCAR_NAPCAT_SOURCE') and not all((root/name).is_dir() for name in ('native','node_modules','static','worker')):
             source=filedialog.askdirectory(parent=self,title='选择已解压的 NapCat 组件目录')
             if not source:return
         self.run_task("准备独立组件", {"lifecycle", "config"}, lambda _: self.prepare_stopped(source),
@@ -551,7 +564,9 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
         return prepare(self.paths,source=source)
 
     def stop_everything(self):
-        if messagebox.askyesno("停止本项目 QQ", "正常停止本项目全部服务，包括 QQ 登录进程？"):
+        prompt = ('停止PCAR服务和SnowLuma连接？外部QQ登录由独立SnowLuma管理。'
+                  if self.config.load()['qq_backend'] == 'snowluma' else '正常停止本项目全部服务，包括 QQ 登录进程？')
+        if messagebox.askyesno("停止本项目 QQ", prompt):
             self.run_task("全部停止", {"lifecycle", "config"}, lambda _: self.controller.stop_all(True))
 
     def force_stop_everything(self):
@@ -585,7 +600,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
     def save_connection(self):
         values = {k: v.get().strip() for k, v in self.qq_vars.items()}
         try:
-            for key in ("service_port", "napcat_port", "astrbot_port", "onebot_port"):
+            for key in ("service_port", "napcat_port", "astrbot_port", "onebot_port", "snowluma_port"):
                 values[key] = int(values[key])
         except ValueError:
             self.notice.set("端口须填写整数。")
@@ -595,6 +610,11 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
                 raise ValueError("请先停止本项目全部服务，包括 QQ，再修改连接。")
             return self.config.update(values)
         self.run_task("保存连接", {"config", "lifecycle"}, action, lambda _: self.notice.set("连接设置已保存。"))
+
+    def show_snowluma_settings(self):
+        from .deployment import snowluma_settings
+        self.run_task('读取SL连接参数', {'config', 'lifecycle'}, lambda _: snowluma_settings(self.paths),
+                      lambda value: self.show_json('SnowLuma反向WebSocket连接参数', value))
 
     def save_model(self):
         values = {k: v.get().strip() for k, v in self.model_vars.items()}
@@ -697,7 +717,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
         path = filedialog.askopenfilename(initialdir=self.paths.home / "config", filetypes=[("人格 JSON", "*.json")])
         if path:
             package=json.loads(Path(path).read_text(encoding='utf-8-sig'))
-            if package.get('format_version') in (17,18,19):
+            if package.get('format_version') in (17,18,19,20):
                 if not messagebox.askyesno('导入历史','将创建新角色并保留导出中的业务历史供核对。原任务和授权不恢复，导入记忆不自动成为已确认事实，自动记忆默认关闭。继续？'):return
                 operation_id=identifier();selected=self.persona_id
                 self.run_task('导入业务历史',{'persona'},lambda _:self.client.manage('persona.import-export',package=package,expected_selected=selected,operation_id=operation_id),lambda _:self.refresh_personas())
@@ -1321,7 +1341,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
             self.closed = True
             watchdog=getattr(self,'_process_exit_watchdog',None)
             if watchdog:watchdog()
-            self.notice.set('正在退出：结算执行、注销本次 Bot 并释放所属组件，最多约 45 秒。')
+            self.notice.set('正在退出：结算执行、关闭QQ连接并释放所属组件，最多约 45 秒。')
             for button, _ in self.buttons:
                 if button.winfo_exists():button.configure(state='disabled')
             for operation in self.hub.active.values():
@@ -1344,7 +1364,7 @@ class Workbench(RuntimeUI, SelectorUI, SessionUI, ContextUI, ArchiveSearchUI, Ar
     def finish_console_shutdown(self):
         progress=getattr(self.controller,'shutdown_progress',None)
         if isinstance(progress,dict):
-            phase=progress['phase'];labels={'draining':'结算已知执行','logout':'注销本次 Bot','releasing':'释放所属组件'}
+            phase=progress['phase'];labels={'draining':'结算已知执行','logout':'关闭QQ连接','releasing':'释放所属组件'}
             if phase!=getattr(self,'_exit_phase_ui',None):
                 self._exit_phase_ui=phase;self.notice.set('正在退出：'+labels.get(phase,phase))
                 if self.tray:self.tray.set_tip('PCAR · 正在退出：'+labels.get(phase,phase))

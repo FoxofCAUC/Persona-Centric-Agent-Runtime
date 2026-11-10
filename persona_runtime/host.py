@@ -126,6 +126,8 @@ def qq_data_environment(paths,env):
 
 
 def run_napcat(paths, cfg, record, stop):
+    if cfg.get('qq_backend', 'napcat') != 'napcat':
+        raise RuntimeErrorBase('外部SnowLuma模式由消息服务管理连接。')
     root = paths.home / "components/napcat"
     config_path = root / "config" / f"onebot11_{cfg['bot_qq']}.json"
     validate_onebot_config(json.loads(config_path.read_text(encoding="utf-8-sig")))

@@ -25,10 +25,11 @@ def normalized(text):
 
 
 def eligible_turns(conn, session_id, upper=None):
+    from .knowledge_service import turn_usable
     return [dict(r) for r in conn.execute(
         "SELECT t.rowid AS ordinal,t.* FROM turns t WHERE session_id=? AND status='completed' "
         "AND (? IS NULL OR t.rowid<=?) AND NOT EXISTS (SELECT 1 FROM source_exclusions x "
-        "WHERE x.event_id IN (t.user_event_id,t.reply_event_id) OR x.event_id IN (SELECT event_id FROM input_batch_members WHERE batch_id=t.input_batch_id)) ORDER BY t.rowid", (session_id, upper, upper))]
+        "WHERE x.event_id IN (t.user_event_id,t.reply_event_id) OR x.event_id IN (SELECT event_id FROM input_batch_members WHERE batch_id=t.input_batch_id)) ORDER BY t.rowid", (session_id, upper, upper)) if turn_usable(conn, r['id'])]
 
 
 def latest_summary(conn, session_id):
@@ -190,6 +191,8 @@ class OrganizationEngine:
         self.proactive=ProactiveService(self)
         from .automatic_memory import AutomaticMemory,available
         with self.store.connection() as db:self.automatic=AutomaticMemory(self) if available(db) else None
+        from .knowledge_maintenance import KnowledgeMaintenance
+        self.knowledge=KnowledgeMaintenance(self)
 
     def model(self):
         cfg = self.config.load()
@@ -269,6 +272,9 @@ class OrganizationEngine:
 
     @staticmethod
     def messages(payload):
+        if payload.get('external_knowledge'):
+            from .knowledge_output import messages
+            return messages(payload)
         if payload.get('proactive'):return payload['proactive']['context']['messages']
         if payload.get('automatic_memory'):
             from .automatic_memory_output import messages
@@ -485,6 +491,7 @@ class OrganizationEngine:
                 self.schedule.pause_changed_models()
                 if self.automatic:self.automatic.tick()
                 self.proactive.tick()
+                await self.knowledge.tick()
                 if time.time()-self.last_scan >= 30 and not self.chat.draining:
                     self.last_scan = time.time()
                     self.schedule.daily_tick()
@@ -502,6 +509,7 @@ class OrganizationEngine:
 
     async def drain(self):
         self.draining = True
+        self.knowledge.close()
         while self.running:
             await asyncio.sleep(.05)
         self.recover()

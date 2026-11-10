@@ -1,5 +1,9 @@
 # 本人人格私聊桥接
 
+## 0.7.4 双后端
+
+qq_backend选择napcat或snowluma，统一复用persona-onebot平台与现有QQBridge账本。SL为独立客户端，输入前、投递领取前和发送前核对app_name、Bot及在线状态，私聊使用通用send_msg。工作台展示SL反向连接参数，PCAR释放所属连接，外部登录由独立SL管理。[接入手册](../../../docs/acceptance/QQ-SnowLuma-接入验收手册.md)
+
 ## 0.6.0本地精确引用
 
 本人好友的非空text可附一个reply组件。引用ID仅交由Runtime从本地同人格/入口档案解析；不信任SDK取回正文。本项目host启动前安装进程内get_reply=False包装，签名不兼容拒绝启动，不修改SDK文件。input_reference_v1能力缺失时拒绝带引用输入，不剥离降级提交。引用不可用或超预算的批次受理后零主要调用失败，需清除/更换引用后新发；原指纹、回执、失败提示和逐片投递机制保持。实际效果和验收见docs/M7.0.md。

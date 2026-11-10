@@ -62,7 +62,8 @@ class ChineseText:
                 tokens.append(word)
         return tokens
 
-    def query_words(self, text):
+    @property
+    def tagger(self):
         if self.segmenter is None:
             import jieba
             from jieba.posseg import POSTokenizer
@@ -72,10 +73,13 @@ class ChineseText:
             tokenizer = jieba.Tokenizer()
             tokenizer.tmp_dir = str(directory)
             self.segmenter = POSTokenizer(tokenizer)
+        return self.segmenter
+
+    def query_words(self, text):
         normalized = _questions.sub(" ", self.simplify(text))
         normalized = _contrast.sub(r"\1\2", normalized).replace("还是", " ")
         words = []
-        for item in self.segmenter.cut(normalized):
+        for item in self.tagger.cut(normalized):
             if (not item.word.strip() or item.word in _query_stops
                     or item.flag[0] in {"p", "r", "u", "c", "x", "e", "y"}):
                 continue
@@ -87,24 +91,14 @@ class ChineseText:
         return words
 
     def sessions(self, text):
-        normalized = self.simplify(text).strip()
-        normalized = re.sub(r"^(?:请问|请解释|解释一下|为什么)", "", normalized)
-        normalized = re.sub(r"(?:主要由什[么麽麼]决定|是什[么麽麼](?:技术|原理|东西)?|"
-                            r"叫什[么麽麼](?:名字)?|是怎么回事)[?？吗呢呀]*$", "", normalized)
-        normalized = re.sub(r"(?:的过程|的仪器)$", "", normalized)
-        parts = re.split(r"[，。？！；,!?;\n]+|(?:怎样|怎么|如何)(?:把|将)?|再|而|把", normalized)
-        parts = [part.strip(" ?？的") for part in parts if part.strip(" ?？的")]
-        # Keep contiguous wording and grammatical relationships within each query unit.
-        if len(parts) > 1 and len(parts[0]) <= 4:
-            parts[1] = parts[0] + parts[1]
-        groups = []
-        for part in parts:
-            if len(part) <= 64:
-                groups.append(part)
-            else:
-                groups.extend((part[:64], part[-64:]))
+        # Preserve script, names and grammatical relations for the embedding model.
+        # Short questions form one unit. Longer sentences use overlapping windows.
+        sentences = [part.strip() for part in re.split(r"[。？！；!?;\r\n]+", text)
+                     if part.strip()]
+        groups = [sentence[start:start + 64] for sentence in sentences
+                  for start in range(0, max(1, len(sentence) - 8), 56)]
         selected = groups if len(groups) <= 2 else [groups[0], groups[-1]]
-        return list(dict.fromkeys(selected)) or [normalized[:64] or text[:64]]
+        return list(dict.fromkeys(selected)) or [text.strip()[:64]]
 
 
 class ChineseLexicalIndex:

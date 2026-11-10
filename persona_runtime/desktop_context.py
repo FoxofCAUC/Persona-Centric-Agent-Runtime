@@ -118,6 +118,7 @@ class ContextUI:
         bar=self.bar(parent);bar.pack(fill='x',pady=4)
         self.button(bar,'预览任务上下文',lambda:self.context_request('preview'),{'context-read'})
         self.button(bar,'查看调用清单历史',lambda:self.context_request('inspect'),{'context-read'})
+        self.button(bar,'展开知识出处',self.show_knowledge_evidence,{'context-read'})
         tabs=ttk.Notebook(parent);tabs.pack(fill='both',expand=True,pady=6)
         summary=ttk.Frame(tabs);raw=ttk.Frame(tabs)
         tabs.add(summary,text='装配摘要（只读）');tabs.add(raw,text='原始 JSON')
@@ -282,12 +283,28 @@ class ContextUI:
                 text+='\n最终字段编号、填写状态及排除原因见原始 JSON。S8尚需结合语境审阅。'
         else:text+='\n该记录未采集人物资料用途信息。'
         self.set_text(self.ctx_summary,text)
-        names={'persona_expression':'人格与表达','relationship':'关系','temporary_state':'临时状态','behavior':'弱行为提示',
+        knowledge=record.get('knowledge')
+        if knowledge:
+            self.set_text(self.ctx_summary,text+'\n百科资料 '+knowledge.get('state','未知')+'，实际片段 '+str(len(knowledge.get('evidence',[]))))
+        names={'world_knowledge':'公共百科资料','persona_expression':'人格与表达','relationship':'关系','temporary_state':'临时状态','behavior':'弱行为提示',
                'presentation':'展示合同','character':'角色资料','memory_summary':'记忆与摘要','explicit_references':'明确引用',
                'reply_protocol':'回复协议','capsule':'胶囊','history':'历史消息','current_input':'当前输入'}
         for i,row in enumerate(info.get('blocks',[]),1):
             label=names.get(row['name'],row['name'])+('（未进入）' if not row.get('present') else '')
             self.ctx_blocks.insert('','end',values=(i,label,row['owner'],row['version'],row['characters'],row['content_hash']))
+
+    def show_knowledge_evidence(self):
+        if not self.persona_id or not self.ctx_turn.get():
+            self.notice.set('请先选择聊天请求。');return
+        key=(self.context_key(),self.ctx_turn.get())
+        args={'persona_id':self.persona_id,'turn_id':self.ctx_turn.get()}
+        if self.ctx_records and self.ctx_result_action=='inspect':
+            record=self.ctx_records[max(0,self.ctx_record_picker.current())]
+            if record.get('turn_id')==args['turn_id']:args['context_id']=record.get('context_id')
+        self.run_task('读取知识出处',{'context-read'},
+            lambda _:self.client.manage('knowledge.evidence.show',**args),
+            lambda value:self.set_text(self.ctx_output,json.dumps(value,ensure_ascii=False,indent=2)),
+            error_current=lambda:key==(self.context_key(),self.ctx_turn.get()))
 
     def context_key(self):
         return (self.persona_id,self.view_epoch,self.ctx_epoch,self.ctx_channel.get(),self.ctx_bot.get(),self.ctx_peer.get(),self.ctx_task.get(),self.ctx_turn.get(),self.ctx_organization.get())

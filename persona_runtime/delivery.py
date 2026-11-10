@@ -294,6 +294,15 @@ class DeliveryService:
         request_hash = _fingerprint(request)
         with self.store.connection(write=True) as conn:
             stream = self._stream(conn, stream_id); self._scope(stream, persona_id, origin)
+            from .knowledge_service import check_batch
+            knowledge_part=conn.execute('SELECT reply_batch_id FROM reply_delivery_parts WHERE id=? AND stream_id=?',(part_id,stream_id)).fetchone()
+            if knowledge_part:
+                try:check_batch(conn,self.store.paths,knowledge_part['reply_batch_id'])
+                except RuntimeErrorBase as error:
+                    if str(error)!='knowledge_evidence_changed':raise
+                    conn.execute("UPDATE reply_delivery_parts SET state='skipped',cancel_reason=?,revision=revision+1,updated_at=? WHERE reply_batch_id=? AND state='pending'",(str(error),timestamp(),knowledge_part['reply_batch_id']))
+                    stream=self._refresh(conn,stream_id)
+                    return {'claimed':False,'state':'skipped','reason':str(error),'revision':stream['revision']}
             old = self._operation(conn, operation_id, request_hash)
             if old is not None:
                 return old

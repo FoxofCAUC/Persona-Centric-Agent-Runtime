@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import threading
 import time
 import urllib.parse
@@ -17,6 +18,7 @@ from .app_processes import AppProcesses
 from .character_embedding import safe_path
 from .knowledge_lexical import ChineseLexicalIndex
 from .knowledge_package import file_digest
+from .knowledge_lexical_search import EncyclopediaLexicalSearch
 
 
 def loopback_listener_pid(port):
@@ -48,7 +50,8 @@ def article_candidates(rows, limit=10):
             continue
         seen.add(ident)
         result.append({key: row[key] for key in
-            ("article_id", "title", "section_id", "lexical_score", "word_matches", "type", "power") if key in row})
+            ("article_id", "title", "section_id", "lexical_score", "word_matches", "type", "power",
+             "origin_article_id", "origin_section_id", "origin_heading", "origin_title") if key in row})
         if len(result) == limit:
             break
     return result
@@ -76,8 +79,10 @@ class KnowledgeRetriever:
         self.lexical_database = Path(lexical_database)
         self.lexical = ChineseLexicalIndex(paths)
         self.identity = self.manifest["database"]["sha256"]
+        self.lexical_search = EncyclopediaLexicalSearch(paths, package, self.lexical)
         self.processes = AppProcesses()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pcar-knowledge")
+        self.lexical_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pcar-knowledge-lexical")
         self.lock = threading.RLock()
         self.closing = threading.Event()
         self.child = None
@@ -144,8 +149,7 @@ class KnowledgeRetriever:
     def _retrieve(self, query, allowed):
         self.start()
         started = time.monotonic()
-        lexical = self.lexical.search(self.lexical_database, query, 10)
-        lexical_seconds = time.monotonic() - started
+        lexical_future = self.lexical_executor.submit(self.lexical_search.search_views, query, self.closing)
         # Wikilite returns section hits. Fill the article candidate budget before RRF.
         sessions = self.lexical.text.sessions(query)
         semantic_views = []
@@ -155,6 +159,20 @@ class KnowledgeRetriever:
             semantic_views.append(article_candidates(self.request("search/semantic", {"query": session, "limit": 50})["results"] or []))
             session_seconds.append(time.monotonic() - step)
         semantic = reciprocal_rank(semantic_views)[:10]
+        semantic = [row for row in semantic if self.lexical_search.accepted(row, query)]
+        try:
+            lexical_details = lexical_future.result()
+            full, titles, exact, headings = lexical_details.pop("views")
+            related = self.lexical_search.related_titles(semantic, query)
+            lexical_views = [full, titles, exact, related, headings]
+            lexical = reciprocal_rank(lexical_views)[:10]
+            lexical_details.update({"state": "ready", "related_titles": related, "heading_topics": headings})
+        except sqlite3.OperationalError as error:
+            if self.closing.is_set():
+                raise RuntimeError("knowledge_stopped") from error
+            lexical = self.lexical.search(self.lexical_database, query, 10)
+            lexical_details = {"state": "fallback", "reason": type(error).__name__,
+                               "seconds": time.monotonic() - started}
         ranked = reciprocal_rank([lexical, semantic])
         accepted = [row for row in ranked if allowed(row)][0:3]
         articles = [self.request("article", {"id": row["article_id"]})["article"] for row in accepted]
@@ -163,8 +181,8 @@ class KnowledgeRetriever:
         return {"state": "ready", "package_sha256": self.identity,
                 "data_revision": self.manifest["data_revision"], "candidates": ranked,
                 "channels": {"lexical": lexical, "ann": semantic}, "evidence": evidence,
-                "sessions": sessions,
-                "timings": {"lexical_seconds": lexical_seconds, "session_seconds": session_seconds,
+                "sessions": sessions, "lexical_details": lexical_details,
+                "timings": {"lexical_seconds": lexical_details["seconds"], "session_seconds": session_seconds,
                             "evidence_seconds": time.monotonic() - before_evidence},
                 "seconds": time.monotonic() - started, "source_snapshot_at": self.manifest["source_snapshot_at"]}
 
@@ -225,7 +243,13 @@ class KnowledgeRetriever:
 
     def close(self):
         self.closing.set()
-        with self.lock:
-            self.ready = False
-            self.processes.close()
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        try:
+            with self.lock:
+                self.ready = False
+                self.processes.close()
+        finally:
+            try:
+                self.lexical_search.close()
+            finally:
+                self.executor.shutdown(wait=False, cancel_futures=True)
+                self.lexical_executor.shutdown(wait=False, cancel_futures=True)

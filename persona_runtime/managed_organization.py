@@ -88,6 +88,10 @@ class ManagedOrganization:
         return result
 
     def key(self,db,payload,request_id,trigger):
+        if payload.get('external_knowledge'):
+            knowledge=payload['external_knowledge']
+            return digest(['public_knowledge',payload['scope'],knowledge['batch_id'],knowledge['stage'],
+                           knowledge['document_sha256'],knowledge.get('proposals')])
         if payload.get('proactive'):return digest(['scheduled',payload['scope'],payload['proactive']['occurrence_id']])
         # Event IDs/text revisions normalize legacy and sealed desktop wrappers.
         evidence=sorted((e.get('kind','event'),e['id'],digest(e['text'])) for e in payload.get('events',[]))
@@ -147,6 +151,7 @@ class ManagedOrganization:
         return self.engine._view(task)
 
     def rebase(self,db,task,c,payload):
+        if payload.get('external_knowledge'):return payload
         if payload.get('proactive'):return payload
         """Serialize overlapping accepted work and trim only already completed sources."""
         if payload.get('automatic_memory'):return payload
@@ -216,6 +221,11 @@ class ManagedOrganization:
         model=json.loads(task['model_snapshot'])
         if p['provider']!=provider_identity(model) or p['provider']!=provider_identity(self.engine.model()):
             raise RuntimeErrorBase('organization_model_changed')
+        if payload.get('external_knowledge'):
+            guard_cloud_dispatch(self.store,task['persona_id'],'organization',model)
+            if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
+            self.engine.knowledge.check(db,task,contract,payload)
+            return
         selected=self.scope(db,payload)
         if selected!=contract['scope'] or selected['channel'] not in p['channels']:
             raise RuntimeErrorBase('organization_scope_mismatch')
@@ -346,8 +356,8 @@ class ManagedOrganization:
                 if t['status']=='waiting_quota' and m.get('quota_signature')!=quota_signature:m['next_epoch']=0
                 if m['next_epoch']>self.clock():continue
                 priority=0 if m['trigger'] in ('manual','sealed','probe') or self.clock()-m['created_epoch']>=600 else 1
-                p=json.loads(t['payload_json']);a=p.get('automatic_memory',{})
-                subpriority=0 if a.get('stage')=='verify' else 1 if a.get('urgency')=='correction' else 2 if a.get('purpose')=='repair' else 4 if a.get('urgency')=='backfill' else 3
+                p=json.loads(t['payload_json']);a=p.get('automatic_memory') or p.get('external_knowledge',{})
+                subpriority=0 if a.get('stage') in ('verify','review') else 1 if a.get('urgency')=='correction' else 2 if a.get('purpose')=='repair' else 4 if a.get('urgency')=='backfill' else 3
                 choices.append((priority,m['created_epoch'] if priority==0 else 0,subpriority if priority else 0,m['created_epoch'],t,c))
             if not choices:return False
             *_,task,c=min(choices,key=lambda x:x[:4]);payload=json.loads(task['payload_json'])
@@ -413,6 +423,8 @@ class ManagedOrganization:
                 c=self.contract(db,task['id']);self.check(db,task,c,payload)
                 if payload.get('proactive'):
                     e.proactive.publish(db,task,payload,reply)
+                elif payload.get('external_knowledge'):
+                    e.knowledge.published(db,task,payload,reply,audit)
                 elif task['mode']!='test':
                     summary,candidates=e.validate_output(db,payload,reply,audit)
                     e._publish(db,task,payload,summary,candidates)

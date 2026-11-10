@@ -58,9 +58,12 @@ def automatic_backup(paths,now):
         with closing(sqlite3.connect(destination)) as dst:
             src.backup(dst)
             if dst.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise RuntimeErrorBase('backup_integrity_failed')
+    from .knowledge_transfer import backup_manifest
+    backup_manifest(destination)
     entries.append({'file':name,'at':now})
     atomic_json(journal,{'entries':entries[-7:]})
     for entry in entries[:-7]:
         target=(root/entry['file']).resolve()
         if target.parent!=root.resolve() or target.suffix!='.sqlite3':raise RuntimeErrorBase('backup_path_invalid')
         target.unlink(missing_ok=True)
+        target.with_suffix(target.suffix + '.knowledge.json').unlink(missing_ok=True)

@@ -10,10 +10,11 @@ from astrbot.api.star import Star, register
 from persona_runtime.config import ConfigStore
 from persona_runtime.logging_safe import setup
 from persona_runtime.paths import RuntimePaths
-from persona_runtime.qq_bridge import QQBridge
+from persona_runtime.qq_bridge import QQBridge, allowed_message
+from persona_runtime.qq_client import require_snowluma, send_private_text
 
 
-@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.7.3")
+@register("astrbot_plugin_persona_runtime", "Persona Runtime", "本人好友私聊人格桥接", "0.7.4")
 class PersonaRuntimePlugin(Star):
     def __init__(self, context):
         super().__init__(context)
@@ -36,7 +37,8 @@ class PersonaRuntimePlugin(Star):
         while True:
             try:
                 cfg = self.config.load()
-                if cfg["owner_qq"] and cfg["bot_qq"]:
+                enabled = cfg.get('qq_backend', 'napcat') != 'snowluma' or cfg['runtime']['components']['napcat']
+                if enabled and cfg["owner_qq"] and cfg["bot_qq"]:
                     await self.bridge.flush_receipts()
                     await self.bridge.reconcile_inbox()
                     health = await self.bridge.request("GET", "/v1/health")
@@ -49,12 +51,14 @@ class PersonaRuntimePlugin(Star):
                             if platform.meta().name != "aiocqhttp" or platform.meta().id != "persona-onebot":
                                 continue
                             client = platform.get_client()
-                            login = await asyncio.wait_for(client.get_login_info(), 3)
-                            if str(login.get("user_id", "")) != cfg["bot_qq"]:
-                                continue
+                            if cfg.get('qq_backend', 'napcat') == 'snowluma':
+                                await require_snowluma(client, cfg)
+                            else:
+                                login = await asyncio.wait_for(client.get_login_info(), 3)
+                                if str(login.get("user_id", "")) != cfg["bot_qq"]:
+                                    continue
                             async def send(text):
-                                return await client.send_private_msg(user_id=int(cfg["owner_qq"]),
-                                    message=[{"type": "text", "data": {"text": text}}])
+                                return await send_private_text(client, cfg, text)
                             if m63:
                                 await self.bridge.deliver_stream(item, send)
                             else:
@@ -76,8 +80,15 @@ class PersonaRuntimePlugin(Star):
             return
         event.stop_event()
         try:
+            cfg = self.config.load()
+            if cfg.get('qq_backend', 'napcat') == 'snowluma':
+                if not allowed_message(event, cfg):
+                    return
+                await require_snowluma(event.bot, cfg)
             async def send(text):
                 # Await actual platform completion; no generator-yield success assumptions.
+                if cfg.get('qq_backend', 'napcat') == 'snowluma':
+                    return await send_private_text(event.bot, self.config.load(), text)
                 return await event.send(event.plain_result(text))
             await self.bridge.handle(event, send, background=True)
             self.active_until=time.monotonic()+60

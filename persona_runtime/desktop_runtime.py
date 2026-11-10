@@ -9,16 +9,18 @@ def connection_status_text(states):
     logged_in=native.get('account_logged_in')
     reason=native.get('login_reason')
     login=('已登录' if logged_in is True else '登录已失效，请重新登录' if reason=='session_expired'
-        else '账号不符，请核对' if reason=='account_mismatch' else '等待登录' if logged_in is False else '状态待核对')
+        else '账号不符，请核对' if reason=='account_mismatch' else '客户端类型不符' if reason=='backend_mismatch'
+        else '等待登录' if logged_in is False else '状态待核对')
     connected=bridge.get('onebot_connected')
     online=False if logged_in is False else bridge.get('account_online')
     label=lambda value,yes,no:yes if value is True else no if value is False else '状态待核对'
-    return 'QQ 登录：'+login+'　OneBot：'+label(connected,'已连接','未连接')+'　账号在线：'+label(online,'在线','离线')
+    prefix = 'SnowLuma（独立运行）　' if native.get('backend') == 'snowluma' else ''
+    return prefix+'QQ 登录：'+login+'　OneBot：'+label(connected,'已连接','未连接')+'　账号在线：'+label(online,'在线','离线')
 
 
 class RuntimeUI:
     def init_runtime_vars(self):
-        self.runtime_summary=tk.StringVar(value='收起到托盘继续运行；退出软件会注销本次 Bot 并停止所属组件。')
+        self.runtime_summary=tk.StringVar(value='收起到托盘继续运行；退出软件释放所属组件。SnowLuma模式关闭PCAR连接，外部会话独立管理。')
         self.proactive_enabled=tk.BooleanVar(value=False);self.proactive_policy=None;self.proactive_rows={}
         self.rule_kind=tk.StringVar(value='一次');self.rule_mode=tk.StringVar(value='原文')
         self.rule_at=tk.StringVar();self.rule_time=tk.StringVar(value='09:00')
@@ -61,7 +63,9 @@ class RuntimeUI:
             for row in rules:self.rule_tree.insert('', 'end',iid=row['rule_id'],values=(
                 '一次' if row['data']['kind']=='once' else '每天','原文' if row['data']['mode']=='fixed' else '模型生成','开启' if row['data']['enabled'] else '关闭'))
             disk=runtime.get('disk') or {};exit=runtime.get('last_exit') or {}
-            self.runtime_summary.set('工作台绑定运行；磁盘：'+('暂停新增调用和发送' if disk.get('blocked') else '正常')+'；上次注销：'+('已确认' if exit.get('logout_confirmed') else '未确认或尚无记录'))
+            exit_label = ('；上次连接释放：'+('已确认' if exit.get('processes_released') else '未确认或尚无记录')
+                          if exit.get('external_qq_session') else '；上次注销：'+('已确认' if exit.get('logout_confirmed') else '未确认或尚无记录'))
+            self.runtime_summary.set('工作台绑定运行；磁盘：'+('暂停新增调用和发送' if disk.get('blocked') else '正常')+exit_label)
             lines=[name+'：'+state.get('state','等待核对') for name,state in (runtime.get('health') or {}).get('states',{}).items()]
             lines.append(connection_status_text((runtime.get('health') or {}).get('states',{})))
             used=quota.get('used') or {};limits=quota['limits']

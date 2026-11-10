@@ -198,6 +198,13 @@ class ReflectionBuilder:
     """M4 organization adapter, not autonomous reflection or session sealing."""
     @staticmethod
     def build(task,payload,messages):
+        if payload.get('external_knowledge'):
+            data=payload['external_knowledge']
+            return {'purpose':'knowledge_'+data['stage'],'source_domain':'public_world',
+                'evidence_refs':[{'kind':'knowledge_document','id':data['document_id'],'hash':data['document_sha256']}],
+                'included_state_refs':[],'missing_data':[],
+                'hard_constraints':['public_identifiers_only','exact_source_quotes','independent_source_review'],
+                'soft_tendencies':[],'input_snapshot_hash':fingerprint(messages),'builder_version':BUILDER_VERSION}
         evidence=[{'kind':e.get('kind','event'),'id':e['id'],'hash':fingerprint(e['text'])} for e in payload.get('events',[])]
         previous=payload.get('previous')
         refs=([{'kind':'summary','id':previous['id'],'revision':previous['revision']}] if previous else [])

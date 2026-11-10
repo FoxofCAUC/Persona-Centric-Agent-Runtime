@@ -21,8 +21,12 @@ class ChineseLexicalTests(unittest.TestCase):
         self.assertEqual(text.tokens("声音听起来高还是低主要由什么决定", query=True),
                          ["声音", "高低"])
         sessions = text.sessions("海水蒸发形成云再下雨回到地面的过程叫什么")
-        self.assertEqual(len(sessions), 2)
-        self.assertTrue(all(session.strip() for session in sessions))
+        self.assertEqual(sessions, ["海水蒸发形成云再下雨回到地面的过程叫什么"])
+        self.assertEqual(text.sessions("再生醫學是什麼？臺灣有哪些研究？"),
+                         ["再生醫學是什麼", "臺灣有哪些研究"])
+        long_sentence = "甲" * 60 + "乙" * 30
+        long_sessions = text.sessions(long_sentence)
+        self.assertEqual(long_sessions, [long_sentence[:64], long_sentence[56:]])
         self.assertIn("第二定律", text.query_words("牛顿第二定律描述了什么"))
 
     def test_two_character_words_retrieve_original_article_and_section(self):

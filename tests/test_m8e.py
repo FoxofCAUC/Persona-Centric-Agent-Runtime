@@ -136,10 +136,10 @@ class M8ETests(unittest.IsolatedAsyncioTestCase):
             delivery.claim(view['id'],view['parts'][0]['id'],view['revision'],identifier(),sender={'process':current_process_identity()})
         self.assertEqual(delivery.get(view['id'])['parts'][0]['state'],'pending')
 
-    async def test_export_19_has_no_executable_sender_and_import_is_disabled(self):
+    async def test_export_has_no_executable_sender_and_import_is_disabled(self):
         self.prepare();self.rule(mode='fixed');self.proactive.tick(self.now)
         exported=self.service.export_persona();package=json.loads(Path(exported['path']).read_text(encoding='utf-8'))
-        self.assertEqual(package['format_version'],19);self.assertNotIn('sender_json',encoded(package));self.assertNotIn('console_token',encoded(package))
+        self.assertEqual(package['format_version'],20);self.assertNotIn('sender_json',encoded(package));self.assertNotIn('console_token',encoded(package))
         self.assertTrue(all(not json.loads(r['data_json'])['enabled'] for r in package['proactive_rules']))
 
     async def test_revocation_during_call_keeps_receipt_and_usage_without_publication(self):

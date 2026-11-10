@@ -23,6 +23,17 @@ class ContextDesktopTests(unittest.TestCase):
         self.assertTrue(all(b.master.winfo_manager()=='pack' for b in buttons))
         self.assertTrue(w.ctx_enabled.get());self.assertFalse(w.ctx_cross.get())
 
+    def test_knowledge_source_button_and_stale_turn_response(self):
+        w=self.window();w.show_page('context');w.update()
+        self.assertTrue(any(button.cget('text')=='展开知识出处' and button.master.winfo_manager()=='pack'
+                            for button,_ in w.buttons))
+        w.persona_id='persona-a';w.ctx_turn.set('turn-a');calls=[]
+        def run(name,resources,action,success=None,**kwargs):calls.append((action,success,kwargs))
+        with patch.object(w,'run_task',side_effect=run):w.show_knowledge_evidence()
+        self.assertTrue(calls[0][2]['error_current']())
+        w.ctx_turn.set('turn-b')
+        self.assertFalse(calls[0][2]['error_current']())
+
     def test_late_context_result_cannot_overwrite_different_persona_or_draft(self):
         w=self.window();w.persona_id='a';w.ctx_turn.set('turn-a');pending=[]
         def run(name,resources,action,success=None,**kwargs):pending.append((success,kwargs))

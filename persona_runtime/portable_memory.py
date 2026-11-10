@@ -5,7 +5,7 @@ from .organization import digest,encoded
 
 
 def import_export(store,package,expected_selected,operation_id):
-    if not isinstance(package,dict) or package.get('format_version') not in (17,18,19) or not isinstance(operation_id,str) or not operation_id:
+    if not isinstance(package,dict) or package.get('format_version') not in (17,18,19,20) or not isinstance(operation_id,str) or not operation_id:
         raise RuntimeErrorBase('invalid_business_export')
     def secrets(v):
         if isinstance(v,dict):return any(k in ('encrypted_key','admin_token','bridge_token','claim_token','model_snapshot','sender_json','console_token','session_token') or secrets(x) for k,x in v.items())
@@ -30,6 +30,11 @@ def import_export(store,package,expected_selected,operation_id):
         for s in package.get('source_exclusions',[]):
             if s['event_id'] not in eids or s['persona_id']!=source_pid:raise ValueError()
     except (KeyError,TypeError,ValueError):raise RuntimeErrorBase('invalid_business_export') from None
+    if package['format_version'] == 20:
+        from .knowledge_transfer import validate
+        validate(package.get('knowledge'))
+        if any(row['owner_persona'] != source_pid for row in package['knowledge']['tables']['knowledge_batches']):
+            raise RuntimeErrorBase('invalid_business_export')
     fp=digest([package,expected_selected])
     with store.connection(write=True) as db:
         old=db.execute('SELECT * FROM memory_operations WHERE id=?',(operation_id,)).fetchone()
@@ -74,13 +79,16 @@ def import_export(store,package,expected_selected,operation_id):
                 remaining.remove(m);progressed=True
             if not progressed:raise RuntimeErrorBase('portable_memory_cycle')
         for s in package.get('memory_sources',[]):db.execute('INSERT INTO memory_sources VALUES(?,?,?)',(mapping[s['memory_id']],mapping[s['event_id']],s['quote']))
-        if package['format_version']==19:
+        if package['format_version']>=19:
             latest={}
             for r in package.get('proactive_rules',[]):
                 if r['rule_id'] not in latest or r['revision']>latest[r['rule_id']]['revision']:latest[r['rule_id']]=r
             for rule in latest.values():
                 data=json.loads(rule['data_json']);data['enabled']=False
                 db.execute('INSERT INTO proactive_rules VALUES(?,?,?,?,?,?)',(identifier(),identifier(),pid,1,encoded(data),now))
-        result={'id':pid,'format_version':package['format_version'],'history_imported':True,'memory_review_required':True,'automation_enabled':False,'permissions_imported':False}
+        if package['format_version'] == 20:
+            from .knowledge_transfer import merge_snapshot
+            merge_snapshot(db, package['knowledge'], imported_persona=pid)
+        result={'knowledge_review_required':package['format_version']==20,'id':pid,'format_version':package['format_version'],'history_imported':True,'memory_review_required':True,'automation_enabled':False,'permissions_imported':False}
         db.execute('INSERT INTO memory_operations VALUES(?,?,?,?,?,?)',(operation_id,pid,LOCAL_USER_ID,fp,encoded(result),now))
     return result
