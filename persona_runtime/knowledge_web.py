@@ -15,7 +15,7 @@ from .models import RuntimeErrorBase
 from .private_personas import provider_identity
 
 DEFAULT={'enabled':False,'domains':['zh.wikipedia.org','www.wikidata.org'],
-         'topics':{},'freshness_seconds':86400,'wikimedia_fallback':True}
+         'topics':{},'freshness_seconds':86400,'wikimedia_fallback':True,'discover_public_pages':False}
 
 
 def primary_model(engine):
@@ -148,13 +148,14 @@ class WebKnowledge:
         with self.store.connection() as db:return read(db,'web.policy.'+persona_id,DEFAULT)
 
     def update_policy(self,persona_id,data,expected_revision,operation_id):
-        if (not isinstance(data,dict) or set(data) not in (set(DEFAULT),set(DEFAULT)-{'wikimedia_fallback'}) or type(data['enabled']) is not bool or type(data.get('wikimedia_fallback',False)) is not bool
+        if (not isinstance(data,dict) or set(data)-{'wikimedia_fallback','discover_public_pages'}!=set(DEFAULT)-{'wikimedia_fallback','discover_public_pages'} or not set(data)<=set(DEFAULT) or type(data['enabled']) is not bool or type(data.get('wikimedia_fallback',False)) is not bool or type(data.get('discover_public_pages',False)) is not bool
                 or not isinstance(data['domains'],list) or not data['domains'] or len(data['domains'])>30
                 or len(set(data['domains']))!=len(data['domains'])
                 or not isinstance(data['topics'],dict) or len(data['topics'])>100
                 or type(data['freshness_seconds']) is not int or not 60<=data['freshness_seconds']<=2592000):
             raise RuntimeErrorBase('web_policy_invalid')
-        if data['enabled'] and not data['topics']:raise RuntimeErrorBase('web_public_topic_required')
+        if data['enabled'] and not data['topics'] and not data.get('discover_public_pages',False):raise RuntimeErrorBase('web_public_topic_required')
+        if data.get('discover_public_pages') and (not data.get('wikimedia_fallback') or 'zh.wikipedia.org' not in data['domains']):raise RuntimeErrorBase('web_discovery_requires_wikipedia')
         for domain in data['domains']:
             if host(domain)!=domain:raise RuntimeErrorBase('web_domain_invalid')
         for key,query in data['topics'].items():
@@ -206,10 +207,18 @@ class WebKnowledge:
         return bool(policy['data'].get('wikimedia_fallback',False) and 'zh.wikipedia.org' in policy['data']['domains']
             and source_allowed(db,turn['persona_id'],turn['channel'],'https://zh.wikipedia.org/') and source_policy(db,'wikipedia_zh')['store_body'])
 
+    def discovery_allowed(self,db,turn,policy):
+        return bool(policy['data'].get('discover_public_pages',False) and self.wiki_allowed(db,turn,policy))
+
     def check(self,db,turn,data):
         grant=read(db,'web.policy.'+turn['persona_id'],DEFAULT)
         self.check_inputs(db,turn,data['input'])
         if data['stage'] in ('wiki_search','wiki_fetch') and not self.wiki_allowed(db,turn,grant):raise RuntimeErrorBase('wiki_source_not_authorized')
+        if data['stage'] in ('public_page_plan','public_page_review') or 'public_discovery' in data['input']:
+            if not self.discovery_allowed(db,turn,grant):raise RuntimeErrorBase('web_discovery_not_authorized')
+            from .knowledge_public_pages import check_review,check_fetch
+            if data['stage']=='public_page_review':check_review(db,turn,grant,data['input'])
+            if 'public_discovery' in data['input']:check_fetch(db,turn,grant,data['input'])
         model=primary_model(self.engine)
         origin=urlsplit(model['base_url'])
         if origin.scheme!='https' or origin.hostname!='api.deepseek.com' or origin.username or origin.password or origin.port not in (None,443):
@@ -257,6 +266,7 @@ class WebKnowledge:
                     if not article_title(url):continue
                 results.append(dict(row,id=fingerprint([url,index]),url=url))
             return {'results':results,'reason':'source_policy_filtered' if output['results'] and not results else 'no_results' if not results else None}
+        if data['stage']=='wiki_fetch' and output.get('not_found'):return {'not_found':True}
         body=output['content'];url=public_url(data['input']['url'],policy['domains'])
         digest=hashlib.sha256(body.encode()).hexdigest();ident=fingerprint([pid,url,digest,data['input'].get('published_at')])
         row={'id':ident,'owner_persona':pid,'domain':urlsplit(url).hostname,'url':url,
@@ -292,7 +302,7 @@ class WebKnowledge:
         with self.store.connection() as db:
             source_signature=self.signature(db);wiki_allowed=self.wiki_allowed(db,turn,policy)
         common={'web_policy':policy,'source_signature':source_signature}
-        selected,_=processor._call(turn,'web_plan',dict(common,question=question,goal=goal,topics=policy['data']['topics']))
+        selected,_=processor._call(turn,'web_plan',dict(common,question=question,goal=goal,topics=policy['data']['topics'])) if policy['data']['topics'] else ({'topic_ids':[]},None)
         epoch={'bucket':int(time.time()//policy['data']['freshness_seconds']),'current_turn':turn['id'] if goal.get('freshness')=='current' else None}
         candidates=[]
         for topic_id in selected['topic_ids']:
@@ -304,7 +314,9 @@ class WebKnowledge:
         with self.store.connection() as db:
             candidates=[r for r in candidates if source_allowed(db,turn['persona_id'],turn['channel'],r['url'])]
         candidates=list({r['url']:r for r in candidates}.values())
-        if not candidates:return []
+        if not candidates:
+            from .knowledge_public_pages import discover
+            return discover(self,processor,turn,question,goal,common,epoch)
         sources=[{k:r.get(k) for k in ('id','title','url','summary','snippet','date')} for r in candidates]
         chosen,_=processor._call(turn,'web_fetch_plan',dict(common,question=question,goal=goal,sources=sources))
         documents=[]
@@ -317,7 +329,7 @@ class WebKnowledge:
                 except RuntimeErrorBase as error:
                     if str(error) not in ('web_http_403','web_http_404') or not wiki_allowed or not article_title(row['url']):raise
                     result,_=processor._call(turn,'wiki_fetch',inputs)
-            documents.append(result)
+            if not result.get('not_found'):documents.append(result)
         return self.materials(turn['persona_id'],turn['channel'],documents)
 
     def materials(self,persona_id,channel,documents):

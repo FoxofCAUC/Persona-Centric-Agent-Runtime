@@ -24,7 +24,7 @@ def inputs(data):
                 if ref.get('material_id') in aliases:ref['material_id']=aliases[ref['material_id']]
     # Public permission/version snapshots are enforced by the program; the
     # model sees permitted choices and material, not execution contracts.
-    for key in ('web_policy','source_signature','routing_policy'):value.pop(key,None)
+    for key in ('web_policy','source_signature','routing_policy','public_pipeline','plan_task_id','plan_result_hash'):value.pop(key,None)
     question=value.pop('question',None)
     if question is not None:value['question']=question
     return value

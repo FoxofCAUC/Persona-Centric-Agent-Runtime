@@ -176,7 +176,7 @@ class KnowledgeProcessing:
                 or fingerprint(self.context(db,dict(turn)))!=data['context_guard']):
             raise RuntimeErrorBase('knowledge_processing_request_inactive')
         self._grant(db,dict(turn),data['policy'],data['input'])
-        if data['stage'] in ('search','fetch','wiki_search','wiki_fetch','web_plan','web_fetch_plan'):
+        if data['stage'] in ('search','fetch','wiki_search','wiki_fetch','web_plan','web_fetch_plan','public_page_plan','public_page_review'):
             self.engine.web.check(db,dict(turn),data)
 
     def published(self, db, task, payload, response, audit):
@@ -376,4 +376,4 @@ def turn_scope_value(turn):
 def phase_for(stage):
     return {'route':'knowledge_routing','route_retry':'knowledge_routing','goal':'knowledge_goal','select':'knowledge_selection','translate':'knowledge_translation',
         'compose':'knowledge_translation','verify':'knowledge_review','web_plan':'knowledge_web_plan',
-        'web_fetch_plan':'knowledge_web_plan','search':'knowledge_search_web','fetch':'knowledge_fetch_web','wiki_search':'knowledge_search_web','wiki_fetch':'knowledge_fetch_web'}[stage]
+        'web_fetch_plan':'knowledge_web_plan','public_page_plan':'knowledge_web_plan','public_page_review':'knowledge_review','search':'knowledge_search_web','fetch':'knowledge_fetch_web','wiki_search':'knowledge_search_web','wiki_fetch':'knowledge_fetch_web'}[stage]

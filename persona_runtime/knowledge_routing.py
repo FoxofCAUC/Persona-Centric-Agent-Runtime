@@ -86,7 +86,7 @@ class KnowledgeRouting:
         registry=read(db,'registry',REGISTRY)['data']
         local_allowed=read(db,'routing.'+persona_id,DEFAULT)['data']['variant']=='local_web'
         return {'local':bool(local_allowed and reader['enabled'] and registry['active']),
-                'web':bool(reader['enabled'] and web['data']['enabled'] and web['data']['topics']),
+                'web':bool(reader['enabled'] and web['data']['enabled'] and (web['data']['topics'] or web['data'].get('discover_public_pages',False))),
                 'package_sha256':registry['active'] if local_allowed else None,'web_policy_revision':web['revision']}
 
     def grant(self,db,turn,inputs):
@@ -135,7 +135,7 @@ class KnowledgeRouting:
             capabilities=self.capabilities(db,turn['persona_id'])
         policy=self.policy(turn['persona_id'])
         options=['none','local','web'] if policy['data']['variant']=='local_web' else ['none','web']
-        inputs={'processing_profile':processor.policy(turn['persona_id'])['data'].get('prompt_profile','legacy_v1'),'request_model':self.model()['name'],'options':options,'routing_policy':policy,'state':{'current':question,'recent_context':context['recent_context'],
+        inputs={'routing_prompt_revision':2,'processing_profile':processor.policy(turn['persona_id'])['data'].get('prompt_profile','legacy_v1'),'request_model':self.model()['name'],'options':options,'routing_policy':policy,'state':{'current':question,'recent_context':context['recent_context'],
             'capabilities':capabilities,'reusable_evidence':{'available':bool(previous and previous.get('evidence')),
                 'sources':[{k:e.get(k) for k in ('article_title','source_snapshot_at','url')} for e in (previous or {}).get('evidence',[])]}}}
         focused=processor.policy(turn['persona_id'])['data'].get('prompt_profile') in ('question_focused_v3','question_focused_v4','question_focused_v5','question_focused_v6')

@@ -1,7 +1,7 @@
 {
   "version": "deepseek-tools-v1",
   "verified_at": "2026-11-11",
-  "candidate": "0.9.0.dev12",
+  "candidate": "0.9.0.dev17",
   "configuration_source": "main",
   "separate_key": false,
   "origin": "https://api.deepseek.com",
@@ -77,5 +77,16 @@
     "web_snapshot_version": 2,
     "portable_export_version": 22,
     "source_requests_accounted_separately": true
+  },
+  "public_page_discovery": {
+    "policy_field": "discover_public_pages",
+    "default": false,
+    "version": "reviewed-public-pages-v1",
+    "source": "zh.wikipedia.org main namespace only",
+    "propose_and_independent_review": "main model; separate managed receipts",
+    "max_titles": 3,
+    "raw_question_sent_to_source": false,
+    "query_proof": "owner/channel/scope/policies/result hashes/exact URL",
+    "missingtitle": "known no match; not a fabricated document"
   }
 }

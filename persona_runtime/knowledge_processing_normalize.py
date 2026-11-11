@@ -2,6 +2,36 @@
 import json
 import re
 
+def strict_pairs(pairs):
+    result={}
+    for key,value in pairs:
+        if key in result:raise ValueError('duplicate_json_key')
+        result[key]=value
+    return result
+
+def opening_key_quotes(response,stage):
+    allowed={
+        'goal':{'format_version','queries','freshness'},'select':{'format_version','section_ids'},
+        'translate':{'format_version','units','text','kind','refs','material_id','quote'},
+        'compose':{'format_version','units','text','kind','refs','material_id','quote'},
+        'verify':{'format_version','decisions','index','supported','temporal_ok','version_ok','note'},
+        'web_plan':{'format_version','topic_ids'},'web_fetch_plan':{'format_version','fetch_ids'},
+        'public_page_plan':{'format_version','candidates','title','kind'},
+        'public_page_review':{'format_version','decisions','id','public','relevant','private_detail','note'}}.get(stage,set())
+    current=response;keys=[];positions=[]
+    for _ in range(13):
+        try:
+            result=json.loads(current,object_pairs_hook=strict_pairs)
+            return result,[{'kind':'inserted_opening_key_quotes','keys':keys,'positions':positions,'values_unchanged':True}] if keys else []
+        except json.JSONDecodeError as error:
+            if len(keys)>=12 or error.msg!='Expecting property name enclosed in double quotes':break
+            match=re.match(r'([a-z_]+)"\s*:',current[error.pos:])
+            if not match or match[1] not in allowed:break
+            keys.append(match[1]);positions.append(error.pos)
+            current=current[:error.pos]+'"'+current[error.pos:]
+        except (TypeError,ValueError):break
+    return None,[]
+
 def review_annotations(response,error_position):
     # Restrict recovery to the annotation at the end of a typed decision.
     # Truth flags and indexes are parsed as unchanged tokens, never inferred.

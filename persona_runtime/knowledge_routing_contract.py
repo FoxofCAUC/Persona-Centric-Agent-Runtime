@@ -18,6 +18,12 @@ def request(model,inputs):
     criteria={key:CRITERIA[key] for key in options}
     if 'local' not in options:criteria['web']='需要公共百科知识、概念、事实、最新信息或在线核实，现有证据不足。该方案只使用联网资料。'
     instruction=INSTRUCTIONS
+    if inputs.get('routing_prompt_revision')==2:
+        instruction+='路径是公共百科知识获取。仅询问私人经历中的普通人的住址、联系资料、私人记录或内部资料，而没有公共知识目标时选none，交给主回复在已有授权资料范围内回应未知，不把私人信息查询转成百科搜索。含私人叙述但真正询问公共概念的，仍按公共目标选择。'
+        criteria['none']+='仅有私人身份、住址、联系方式或内部信息请求且没有公共知识目标时也选none。'
+        if inputs['state'].get('clarified_goal',{}).get('queries')==[]:
+            instruction+='clarified_goal.queries为空表示没有可外发的公共知识检索目标，本次应选none；这不授权外发私人资料。'
+
     if inputs.get('processing_profile') in ('question_focused_v4','question_focused_v5','question_focused_v6'):
         instruction+='先判断当前用户的交流意图。童年回忆、表达感受、表示理解、比喻、告别没有新事实请求时选none；近期科普话题不能覆盖当前闲聊意图。代词事实追问应依据近期用户问题消解主体，前次失败不代表该话题消失。'
         criteria['none']+='童年叙述、对先前解释表示理解、生活联想和告别，无新事实请求时也选此项。'

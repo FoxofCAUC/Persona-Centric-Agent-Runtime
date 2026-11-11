@@ -24,6 +24,7 @@ class KnowledgeUI:
         self.knowledge_route_status = tk.StringVar(value='Jev尚未读取')
         self.knowledge_web = tk.BooleanVar(value=False)
         self.knowledge_wiki_fallback = tk.BooleanVar(value=True)
+        self.knowledge_discovery = tk.BooleanVar(value=False)
         self.knowledge_web_domains = tk.StringVar(value='zh.wikipedia.org,www.wikidata.org')
         self.knowledge_web_topic = tk.StringVar()
         self.knowledge_web_query = tk.StringVar()
@@ -76,6 +77,7 @@ class KnowledgeUI:
         ttk.Checkbutton(line,text='允许联网查询，按请求计费',variable=self.knowledge_web).pack(side='left')
         self.button(line,'保存联网设置',self.save_knowledge_web,{'knowledge-write'})
         ttk.Checkbutton(web,text='维基正文不可用时，使用同一获准来源的原站API',variable=self.knowledge_wiki_fallback).pack(anchor='w')
+        ttk.Checkbutton(web,text='自动定位未登记公共话题（提出与复核分别调用主模型）',variable=self.knowledge_discovery).pack(anchor='w')
         line=ttk.Frame(web);line.pack(fill='x')
         ttk.Label(line,text='允许的网站，逗号分隔').pack(side='left')
         ttk.Entry(line,textvariable=self.knowledge_web_domains).pack(side='left',fill='x',expand=True)
@@ -84,7 +86,7 @@ class KnowledgeUI:
         ttk.Entry(line,textvariable=self.knowledge_web_topic,width=14).pack(side='left')
         ttk.Label(line,text='登记的公开查询词').pack(side='left')
         ttk.Entry(line,textvariable=self.knowledge_web_query).pack(side='left',fill='x',expand=True)
-        ttk.Label(web,text='只外发登记主题和获准页面。启用后沿主模型配置处理知识。',wraplength=700).pack(anchor='w')
+        ttk.Label(web,text='外发登记主题或经独立复核的百科标题；不向来源站点发送原问题和私人经历。',wraplength=700).pack(anchor='w')
         line=ttk.Frame(web);line.pack(fill='x')
         self.knowledge_web_pages=ttk.Combobox(line,textvariable=self.knowledge_web_document,state='readonly')
         self.knowledge_web_pages.pack(side='left',fill='x',expand=True)
@@ -154,6 +156,7 @@ class KnowledgeUI:
                 self.knowledge_web_document.set('')
             self.knowledge_web.set(web.get('enabled',False))
             self.knowledge_wiki_fallback.set(web.get('wikimedia_fallback',False))
+            self.knowledge_discovery.set(web.get('discover_public_pages',False))
             self.knowledge_web_domains.set(','.join(web.get('domains',[])))
             self.knowledge_data = data
             self.knowledge_loaded_key = key
@@ -200,7 +203,7 @@ class KnowledgeUI:
         for key,query in data.get('web_policy',{}).get('data',{}).get('topics',{}).items():lines.append(key+' · '+query)
         lines.extend(['', '知识整理'])
         for row in data.get('processing_tasks',[]):
-            stage={'goal':'目标理解','select':'资料选择','translate':'知识翻译','compose':'知识合并','verify':'独立复核'}.get(row['stage'],row['stage'])
+            stage={'goal':'目标理解','select':'资料选择','translate':'知识翻译','compose':'知识合并','verify':'独立复核','public_page_plan':'公共页面定位','public_page_review':'查询内容复核'}.get(row['stage'],row['stage'])
             lines.append(stage+' · '+states.get(row['status'],row['status'])+' · '+(row['error_code'] or '无错误'))
         lines.extend(['', '最近使用页面'])
         for row in data['pages']:
@@ -339,7 +342,7 @@ class KnowledgeUI:
         data=dict(policy['data']);data['topics']=dict(data['topics'])
         key,query=self.knowledge_web_topic.get().strip(),self.knowledge_web_query.get().strip()
         if key and query:data['topics'][key]=query
-        data.update(enabled=self.knowledge_web.get(),domains=[s.strip() for s in self.knowledge_web_domains.get().split(',') if s.strip()],wikimedia_fallback=self.knowledge_wiki_fallback.get())
+        data.update(enabled=self.knowledge_web.get(),domains=[s.strip() for s in self.knowledge_web_domains.get().split(',') if s.strip()],wikimedia_fallback=self.knowledge_wiki_fallback.get(),discover_public_pages=self.knowledge_discovery.get())
         self.knowledge_write('knowledge.web.policy.update',{'persona_id':self.persona_id,'data':data,'expected_revision':policy['revision']})
 
     def withdraw_web_knowledge(self):

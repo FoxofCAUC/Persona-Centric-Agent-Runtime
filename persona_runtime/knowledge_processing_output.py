@@ -42,6 +42,9 @@ PROMPTS.update({
     'wiki_fetch':BASE+'程序读取选定Wikipedia公开页面的实际修订正文，不发送模型密钥。'})
 
 
+from .knowledge_public_pages import PLAN as PUBLIC_PLAN, REVIEW as PUBLIC_REVIEW
+PROMPTS.update({'public_page_plan':BASE+PUBLIC_PLAN,'public_page_review':BASE+PUBLIC_REVIEW})
+
 def messages(payload):
     data = payload['knowledge_processing']
     if data['stage'] in ('route','route_retry'):
@@ -96,15 +99,19 @@ def text(value, limit):
 def parse(payload, response):
     data = payload['knowledge_processing'];normalizations=[]
     try:
-        out = json.loads(response)
+        from .knowledge_processing_normalize import strict_pairs
+        out = json.loads(response,object_pairs_hook=strict_pairs)
     except json.JSONDecodeError as error:
-        from .knowledge_processing_normalize import review_annotations
-        out=review_annotations(response,error.pos) if data['stage']=='verify' else None
-        if out is None:invalid('json')
-        normalizations.append({'kind':'review_annotation_json_quoting_only','truth_flags_unchanged':True})
+        from .knowledge_processing_normalize import review_annotations,opening_key_quotes
+        out,changes=opening_key_quotes(response,data['stage']) if data.get('policy',{}).get('data',{}).get('prompt_profile')=='question_focused_v6' else (None,[])
+        if out is not None:normalizations.extend(changes)
+        else:
+            out=review_annotations(response,error.pos) if data['stage']=='verify' else None
+            if out is None:invalid('json')
+            normalizations.append({'kind':'review_annotation_json_quoting_only','truth_flags_unchanged':True})
     except (TypeError, ValueError):
         invalid('json')
-    expected_fields={'goal':{'queries','freshness'},'select':{'section_ids'},'translate':{'units'},'compose':{'units'},'verify':{'decisions'},'web_plan':{'topic_ids'},'web_fetch_plan':{'fetch_ids'}}
+    expected_fields={'goal':{'queries','freshness'},'select':{'section_ids'},'translate':{'units'},'compose':{'units'},'verify':{'decisions'},'web_plan':{'topic_ids'},'web_fetch_plan':{'fetch_ids'},'public_page_plan':{'candidates'},'public_page_review':{'decisions'}}
     if isinstance(out,dict) and 'format_version' not in out and set(out)==expected_fields.get(data['stage']):
         out['format_version']=1
         normalizations.append({'kind':'registered_stage_schema_header','version':1,'data_fields_unchanged':True})
@@ -115,7 +122,10 @@ def parse(payload, response):
     if focused:
         from .knowledge_model_view import restore
         out=restore(data,out)
-    if stage in ('web_plan','web_fetch_plan'):
+    if stage in ('public_page_plan','public_page_review'):
+        from .knowledge_public_pages import parse as parse_public
+        out=parse_public(stage,source,out)
+    elif stage in ('web_plan','web_fetch_plan'):
         key='topic_ids' if stage=='web_plan' else 'fetch_ids'
         known=set(source['topics']) if stage=='web_plan' else {s['id'] for s in source['sources']}
         if (set(out)!={'format_version',key} or not isinstance(out[key],list) or len(out[key])>3

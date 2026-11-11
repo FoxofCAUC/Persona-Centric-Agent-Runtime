@@ -1,6 +1,6 @@
 {
   "version": "jev-knowledge-routing-v1",
-  "candidate": "0.9.0.dev16",
+  "candidate": "0.9.0.dev17",
   "model": "jev-1.13",
   "base_url": "https://e-flowcode.cc/v1",
   "resource": "systemone",
@@ -44,5 +44,6 @@
     "https://api.typesafe.ai/redoc"
   ],
   "default_variant": "web_only",
-  "selection_record": "docs/M9.A-5-完整20题AB择优结算.md"
+  "selection_record": "docs/M9.A-5-完整20题AB择优结算.md",
+  "prompt_revision": 2
 }

@@ -134,6 +134,7 @@ def parse(stage,text):
                 if not article_title(url):continue
                 results.append({'title':row['title'],'url':url,'summary':plain(row.get('snippet','')),'snippet':plain(row.get('snippet','')),'content':'','date':row.get('timestamp'),'provider':'wikimedia_api'})
             return {'results':results}
+        if len(responses)==1 and data.get('error',{}).get('code')=='missingtitle':return {'not_found':True}
         parsed=data['parse'];info=json.loads(responses[1]['body'])['query'];pages=info['pages']
         if len(pages)!=1 or pages[0].get('missing') or pages[0]['ns']!=0 or pages[0]['pageid']!=parsed['pageid']:raise ValueError()
         revision=pages[0]['revisions'][0]
