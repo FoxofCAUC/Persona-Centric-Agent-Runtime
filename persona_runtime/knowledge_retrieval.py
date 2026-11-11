@@ -91,7 +91,7 @@ class KnowledgeRetriever:
         self.cache = {}
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def request(self, action, args, timeout=30):
+    def request(self, action, args, timeout=None):
         if self.closing.is_set():
             raise RuntimeError("knowledge_stopped")
         url = self.url + action + "?" + urllib.parse.urlencode(args)
@@ -134,7 +134,7 @@ class KnowledgeRetriever:
             raise TimeoutError("knowledge_native_startup_timeout")
         if loopback_listener_pid(port) != self.child.pid:
             raise RuntimeError("knowledge_native_port_owner_mismatch")
-        self.request("search/semantic", {"query": "月球", "limit": 1}, timeout=60)
+        self.request("search/semantic", {"query": "月球", "limit": 1})
         self.ready = True
 
     def _search(self, query, allowed):
@@ -209,7 +209,7 @@ class KnowledgeRetriever:
                     "source_snapshot_at": self.manifest["source_snapshot_at"], "validity": "package_snapshot"})
         return result
 
-    def search(self, query, *, scope_key="public", allowed=lambda row: True, timeout=5):
+    def search(self, query, *, scope_key="public", allowed=lambda row: True, timeout=None):
         if not isinstance(query, str) or not query.strip() or len(query) > 500:
             raise ValueError("knowledge_query_invalid")
         key = (self.identity, scope_key, hashlib.sha256(query.encode("utf-8")).hexdigest())
@@ -218,7 +218,7 @@ class KnowledgeRetriever:
                 return {"state": "stopped"}
             now = time.monotonic()
             entry = self.cache.get(key)
-            if entry is None or now - entry[0] > 24 * 3600:
+            if entry is None or (entry[1].done() and (entry[1].cancelled() or entry[1].exception() is not None or now - entry[0] > 24 * 3600)):
                 if sum(not future.done() for _, future in self.cache.values()) >= 10:
                     return {"state": "busy"}
                 if len(self.cache) >= 128:

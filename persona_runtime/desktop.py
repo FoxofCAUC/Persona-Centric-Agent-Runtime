@@ -69,7 +69,7 @@ ERRORS.update({
     'provider_aborted':'供应商终止了本次生成，原调用记录保留。',
     'provider_tool_call_not_supported':'供应商返回了本入口不支持的工具调用，未执行或展示为回复。',
 })
-PHASES = {"character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
+PHASES = {"knowledge_goal":"正在理解检索目标","knowledge_selection":"正在选择相关资料","knowledge_translation":"正在整理知识","knowledge_review":"正在核对整理结果","knowledge_waiting_quota":"知识复核等待额度恢复", "knowledge_search":"正在检索世界知识", "knowledge_refresh":"正在核对最新资料", "knowledge_ready":"知识已就绪，准备回复", "knowledge_no_matches":"未找到匹配资料", "knowledge_unavailable":"知识来源不可用", "character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
 

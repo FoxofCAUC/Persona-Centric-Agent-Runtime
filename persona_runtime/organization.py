@@ -193,6 +193,8 @@ class OrganizationEngine:
         with self.store.connection() as db:self.automatic=AutomaticMemory(self) if available(db) else None
         from .knowledge_maintenance import KnowledgeMaintenance
         self.knowledge=KnowledgeMaintenance(self)
+        from .knowledge_processing import KnowledgeProcessing
+        self.processing=KnowledgeProcessing(self)
 
     def model(self):
         cfg = self.config.load()
@@ -272,6 +274,9 @@ class OrganizationEngine:
 
     @staticmethod
     def messages(payload):
+        if payload.get('knowledge_processing'):
+            from .knowledge_processing_output import messages
+            return messages(payload)
         if payload.get('external_knowledge'):
             from .knowledge_output import messages
             return messages(payload)

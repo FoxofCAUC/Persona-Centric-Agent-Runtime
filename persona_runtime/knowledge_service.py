@@ -4,6 +4,7 @@ from contextlib import closing
 import copy
 import hashlib
 import json
+import math
 import re
 import sqlite3
 import threading
@@ -63,6 +64,9 @@ def evidence_permitted(conn, persona_id, channel, item):
 
 
 def validate_used(conn, paths, persona_id, channel, knowledge):
+    if (knowledge or {}).get('processing'):
+        from .knowledge_processing import record_used
+        record_used(conn,paths,persona_id,channel,knowledge['processing'])
     for item in (knowledge or {}).get("evidence", []):
         if item.get('kind') == 'knowledge_claim':
             if not evidence_permitted(conn, persona_id, channel, item):
@@ -90,8 +94,18 @@ def turn_usable(conn, turn_id):
         (turn_id,)).fetchone()
     if not row:
         return True
-    return all(evidence_permitted(conn, row["persona_id"], row["channel"], item)
-               for item in json.loads(row["details_json"]).get("knowledge", {}).get("evidence", []))
+    knowledge=json.loads(row['details_json']).get('knowledge',{})
+    if knowledge.get('processing'):
+        try:
+            # Path ownership is checked by the normal caller's Store. These
+            # readonly metadata checks use the connection's current authority.
+            record=read(conn,'processing.record.'+knowledge['processing']['record_id'],{})['data']
+            policy=read(conn,'processing.'+row['persona_id'],{})
+            if (not record or record['persona_id']!=row['persona_id'] or record['channel']!=row['channel']
+                    or record['policy']!=policy or not policy['data'].get('enabled')
+                    or fingerprint(record['result'])!=knowledge['processing']['result_hash']):return False
+        except (KeyError,ValueError):return False
+    return all(evidence_permitted(conn,row['persona_id'],row['channel'],item) for item in knowledge.get('evidence',[]))
 
 
 def should_retrieve(text):
@@ -113,6 +127,7 @@ class KnowledgeService:
         self.backend = None
         self.readers = 0
         self.maintenance = None
+        self.processing = None
         self.closed = threading.Event()
 
     def _update(self, key, data, expected_revision, operation_id, *, request=None, apply=None):
@@ -278,16 +293,16 @@ class KnowledgeService:
                 "installation": installation, "network_refresh": self.maintenance.status() if self.maintenance else None,
                 "p95_target_seconds": None}
 
-    def search(self, persona_id, query, channel="desktop", timeout=5):
+    def search(self, persona_id, query, channel="desktop", timeout=None, package_sha256=None):
         if not isinstance(query, str) or not query.strip() or len(query) > 500:
             raise RuntimeErrorBase("knowledge_query_invalid")
-        if type(timeout) not in (int, float) or not 0 <= timeout <= 60:
+        if timeout is not None and (type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 <= timeout <= 60):
             raise RuntimeErrorBase("knowledge_timeout_invalid")
         with self.store.connection() as conn:
             from .knowledge_store import search as search_overlay, merge
             overlay = search_overlay(conn, persona_id, channel, query)
             registry = read(conn, "registry", REGISTRY)["data"]
-            identity = registry["active"]
+            identity = package_sha256 or registry["active"]
             if not identity or not permitted(conn, persona_id, channel, identity, -1):
                 return merge({"state": "disabled", "evidence": []}, overlay)
             record = registry["packages"][identity]
@@ -304,7 +319,7 @@ class KnowledgeService:
             if self.backend and self.backend.identity != identity:
                 with self.backend.lock:
                     if self.readers or any(not future.done() for _, future in self.backend.cache.values()):
-                        return {"state": "pending", "reason": "package_switch_wait", "evidence": []}
+                        return {"state": "pending", "reason": "package_switch_wait", "package_sha256": identity, "evidence": []}
                 self.backend.close()
                 self.backend = None
             if self.backend is None:
@@ -324,6 +339,7 @@ class KnowledgeService:
         finally:
             with self.lock:
                 self.readers -= 1
+        result.setdefault("package_sha256", identity)
         with self.store.connection() as conn:
             result = self.recheck(conn, {"persona_id": persona_id, "channel": channel}, result)
             return merge(result, search_overlay(conn, persona_id, channel, query))
@@ -369,6 +385,8 @@ class KnowledgeService:
             source_request = re.fullmatch(r'(?:给我|給我|发我|發我|给我看下|給我看看|看看)?(?:出处|出處|来源|來源)(?:是哪里|在哪|在哪裡|是什么|是什麼)?[呢吗嗎？?。！!\s]*',query)
             if followup and last["data"].get("query"):
                 query = last["data"]["query"]
+        if self.processing and self.processing.enabled(turn):
+            return self.processing.prepare(turn,query,last['data'].get('turn_id') if (followup or source_request) else None)
         if source_request and last['data'].get('turn_id'):
             try:
                 shown = self.show_evidence(turn['persona_id'],last['data']['turn_id'])
@@ -380,10 +398,13 @@ class KnowledgeService:
         if not should_retrieve(query):
             return {"state": "not_triggered", "evidence": []}
         try:
-            result = self.search(turn["persona_id"], query, turn["channel"])
+            from .knowledge_wait import search_turn, refresh_turn
+            result = search_turn(self, turn, query)
             if self.maintenance:
                 latest = bool(re.search(r'最新|目前|现在|現在|今天|今日|刚刚|剛剛|查证|查證|核实|核實', query))
                 refresh = self.maintenance.on_result(turn, result, latest)
+                if latest and refresh.get('job_ids'):
+                    refresh = refresh_turn(self, turn, refresh)
                 if latest:
                     from .knowledge_store import search as search_overlay, merge
                     with self.store.connection() as conn:
@@ -401,6 +422,8 @@ class KnowledgeService:
                                  ("knowledge." + key, json.dumps(value)))
             return {key: result[key] for key in ("state", "package_sha256", "request_key", "evidence",
                     "source_snapshot_at", "reason") if key in result}
+        except RuntimeErrorBase:
+            raise
         except (ValueError, OSError, sqlite3.Error, ImportError) as error:
             return {"state": "unavailable", "reason": type(error).__name__, "evidence": []}
 

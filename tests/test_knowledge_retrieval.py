@@ -62,6 +62,38 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(backend.search("public fixture", timeout=1)["state"], "ready")
         self.assertEqual(calls, ["public fixture"])
 
+    def test_default_wait_keeps_same_future_beyond_its_cache_ttl(self):
+        import time
+        gate = threading.Event()
+        calls = []
+        def retrieve(query, allowed):
+            calls.append(query)
+            gate.wait(2)
+            return {'state': 'ready'}
+        backend = self.future_backend(retrieve)
+        self.addCleanup(gate.set)
+        self.assertEqual(backend.search('public fixture', timeout=0)['state'], 'pending')
+        key = next(iter(backend.cache))
+        original = backend.cache[key][1]
+        backend.cache[key] = (time.monotonic() - 25 * 3600, original)
+        self.assertEqual(backend.search('public fixture', timeout=0)['state'], 'pending')
+        self.assertIs(backend.cache[key][1], original)
+        backend.cache[key] = (time.monotonic(), original)
+        gate.set()
+        self.assertEqual(backend.search('public fixture')['state'], 'ready')
+        self.assertEqual(len(calls), 1)
+
+    def test_failed_free_retrieval_can_be_explicitly_retried(self):
+        calls = []
+        def retrieve(query, allowed):
+            calls.append(query)
+            if len(calls) == 1: raise OSError('fixture')
+            return {'state': 'ready'}
+        backend = self.future_backend(retrieve)
+        self.assertEqual(backend.search('public fixture')['state'], 'failed')
+        self.assertEqual(backend.search('public fixture')['state'], 'ready')
+        self.assertEqual(len(calls), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

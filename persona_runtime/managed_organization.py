@@ -88,6 +88,7 @@ class ManagedOrganization:
         return result
 
     def key(self,db,payload,request_id,trigger):
+        if payload.get('knowledge_processing'):return digest(['knowledge_processing',payload['scope'],payload['knowledge_processing']])
         if payload.get('external_knowledge'):
             knowledge=payload['external_knowledge']
             return digest(['public_knowledge',payload['scope'],knowledge['batch_id'],knowledge['stage'],
@@ -151,6 +152,7 @@ class ManagedOrganization:
         return self.engine._view(task)
 
     def rebase(self,db,task,c,payload):
+        if payload.get('knowledge_processing'):return payload
         if payload.get('external_knowledge'):return payload
         if payload.get('proactive'):return payload
         """Serialize overlapping accepted work and trim only already completed sources."""
@@ -221,6 +223,16 @@ class ManagedOrganization:
         model=json.loads(task['model_snapshot'])
         if p['provider']!=provider_identity(model) or p['provider']!=provider_identity(self.engine.model()):
             raise RuntimeErrorBase('organization_model_changed')
+        if payload.get('knowledge_processing'):
+            selected=self.scope(db,payload)
+            if selected!=contract['scope'] or selected['channel'] not in p['channels']:
+                raise RuntimeErrorBase('organization_scope_mismatch')
+            if selected['channel']=='qq' and (selected['bot'],selected['peer'])!=(p['qq']['bot'],p['qq']['peer']):
+                raise RuntimeErrorBase('organization_scope_mismatch')
+            guard_cloud_dispatch(self.store,task['persona_id'],'organization',model)
+            if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
+            self.engine.processing.check(db,task,contract,payload)
+            return
         if payload.get('external_knowledge'):
             guard_cloud_dispatch(self.store,task['persona_id'],'organization',model)
             if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
@@ -344,11 +356,16 @@ class ManagedOrganization:
         self.recover()
         task=None;aid=None;generation=None;received=None
         with self.store.connection(write=True) as db:
-            if db.execute("SELECT 1 FROM turns WHERE status IN ('queued','running') LIMIT 1").fetchone() or db.execute("SELECT 1 FROM input_batches WHERE state IN ('collecting','sealed_waiting_capacity') LIMIT 1").fetchone():return False
+            foreground = bool(db.execute("SELECT 1 FROM turns WHERE status IN ('queued','running') LIMIT 1").fetchone()
+                or db.execute("SELECT 1 FROM input_batches WHERE state IN ('collecting','sealed_waiting_capacity') LIMIT 1").fetchone())
+            from .knowledge_wait import required_tasks
+            required = required_tasks(db) if foreground else set()
+            if foreground and (not required or db.execute("SELECT 1 FROM turns WHERE status='running' LIMIT 1").fetchone()):return False
             slot=db.execute("SELECT * FROM organization_execution WHERE id='singleton'").fetchone()
             if slot['task_id']:return False
             choices=[]
             for row in db.execute("SELECT * FROM organization_tasks WHERE status IN ('queued','waiting_quota') ORDER BY rowid"):
+                if foreground and row['id'] not in required:continue
                 t=dict(row);c=self.contract(db,t['id']);m=c['data']
                 cfg=e.config.load();quota_signature=digest([cfg['model']['hourly_limit'],cfg['organization']['hourly_limit'],cfg['organization']['daily_limit']])
                 from .generation_retry import automatic_organization
@@ -423,6 +440,8 @@ class ManagedOrganization:
                 c=self.contract(db,task['id']);self.check(db,task,c,payload)
                 if payload.get('proactive'):
                     e.proactive.publish(db,task,payload,reply)
+                elif payload.get('knowledge_processing'):
+                    e.processing.published(db,task,payload,reply,audit)
                 elif payload.get('external_knowledge'):
                     e.knowledge.published(db,task,payload,reply,audit)
                 elif task['mode']!='test':

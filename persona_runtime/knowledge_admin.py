@@ -18,6 +18,7 @@ def overview(service, persona_id):
     service.current_policy(persona_id)
     result = service.status()
     result['dependencies'] = dependencies()
+    if service.processing:result['processing_policy']=service.processing.policy(persona_id)
     with service.store.connection() as db:
         result['policy'] = read(db, 'policy.' + persona_id, POLICY)
         result['maintenance_policy'] = read(db, 'maintenance.' + persona_id, service.maintenance.defaults())
@@ -40,6 +41,7 @@ def overview(service, persona_id):
             'WHERE j.owner_persona=? ORDER BY t.last_used DESC LIMIT 100', (persona_id,))]
         result['fetch_jobs'] = [dict(row) for row in db.execute('SELECT id,target_id,state,attempts,ready_after,error '
             'FROM knowledge_fetch_jobs WHERE owner_persona=? ORDER BY created_epoch DESC LIMIT 100', (persona_id,))]
+        result['processing_tasks']=[dict(r) for r in db.execute("SELECT id,status,error_code,json_extract(payload_json,'$.knowledge_processing.stage') AS stage FROM organization_tasks WHERE persona_id=? AND json_type(payload_json,'$.knowledge_processing')='object' ORDER BY rowid DESC LIMIT 100",(persona_id,))]
         result['batches'] = []
         for row in db.execute('SELECT b.*,e.error_code AS extract_error,r.error_code AS review_error '
                 'FROM knowledge_batches b LEFT JOIN organization_tasks e ON e.id=b.extract_task_id '
@@ -52,7 +54,7 @@ def overview(service, persona_id):
             result['batches'].append(item)
         result['cost'] = {'calls': 0, 'tokens_known': 0, 'usage_unknown': 0, 'amount': None}
         for row in db.execute('SELECT a.usage_json FROM organization_attempts a JOIN organization_tasks t ON t.id=a.task_id '
-                "WHERE t.persona_id=? AND json_type(t.payload_json,'$.external_knowledge')='object'", (persona_id,)):
+                "WHERE t.persona_id=? AND (json_type(t.payload_json,'$.external_knowledge')='object' OR json_type(t.payload_json,'$.knowledge_processing')='object')", (persona_id,)):
             result['cost']['calls'] += 1
             usage = json.loads(row['usage_json']) if row['usage_json'] else None
             if usage is None or type(usage.get('total_tokens')) is not int:

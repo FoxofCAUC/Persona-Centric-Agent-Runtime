@@ -189,6 +189,7 @@ class ChatEngine:
         self.observer=SituationObservationService(self)
         self.service = RuntimeService(store)
         self.tasks = {}
+        self.preparations = set()
         self.locks = defaultdict(asyncio.Lock)
         self.draining = False
 
@@ -425,6 +426,17 @@ class ChatEngine:
         turn["_context_details"] = {k:v for k,v in details.items() if k!='prompt_assembly'}
         return messages
 
+    async def _prepare_context(self, *args):
+        # Cancelling an asyncio waiter cannot stop its worker thread. Keep its
+        # lifetime owned until it observes cancellation and releases the DB.
+        task = asyncio.create_task(asyncio.to_thread(self.cognitive.prepare, *args))
+        self.preparations.add(task)
+        def settled(done):
+            self.preparations.discard(done)
+            if not done.cancelled():done.exception()
+        task.add_done_callback(settled)
+        return await asyncio.shield(task)
+
     async def _run(self, turn_id):
         initial = self.get(turn_id)
         if initial['status']!='queued' or initial.get('cancelled_at'):return
@@ -444,11 +456,11 @@ class ChatEngine:
                 if self.dialogue_pipeline is not None:
                     prepared=await self.dialogue_pipeline.prepare(self,turn_id)
                 elif companion and companion['mode']=='minimal':
-                    prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id)
+                    prepared=await self._prepare_context(turn_id)
                 else:
                     selection=await self.selector.prepare(turn_id)
                     observation=await self.observer.prepare(turn_id)
-                    prepared=await asyncio.to_thread(self.cognitive.prepare,turn_id,selection,observation)
+                    prepared=await self._prepare_context(turn_id,selection,observation)
                 with self.store.connection(write=True) as conn:
                     turn = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
                     if turn["status"] != "queued" or turn["cancelled_at"] or turn["execution_revision"]!=initial["execution_revision"]:
@@ -574,14 +586,14 @@ class ChatEngine:
                     conn.execute("UPDATE attempts SET status='completed',usage_json=? WHERE id=?", (encoded, attempt_id))
                     record_progress(conn, turn_id, "persisted", attempt_id)
             except BaseException as error:
-                interrupted = isinstance(error, asyncio.CancelledError)
+                interrupted = isinstance(error, asyncio.CancelledError) or str(error) == 'knowledge_stopped'
                 if getattr(error,'usage',None) is not None:usage=error.usage
                 from .reply_batch import ReplySchemaError
                 from .references import ReferenceError,record_check
                 code = str(error) if isinstance(error, (RuntimeErrorBase,ModelError,ReplySchemaError,ReferenceError)) else ("request_interrupted" if interrupted else "request_failed")
                 with self.store.connection(write=True) as conn:
                     cancelled=conn.execute('SELECT cancelled_at FROM turns WHERE id=?',(turn_id,)).fetchone()
-                    if cancelled and cancelled[0] and companion is not None:
+                    if cancelled and cancelled[0]:
                         interrupted=True;code='cancelled_by_user'
                     if attempt_id and not conn.execute("SELECT 1 FROM attempts WHERE id=?", (attempt_id,)).fetchone():
                         attempt_id = None
@@ -735,5 +747,5 @@ class ChatEngine:
             return {"state": action}
 
     async def wait(self):
-        if self.tasks:
-            await asyncio.gather(*list(self.tasks.values()), return_exceptions=True)
+        while self.tasks or self.preparations:
+            await asyncio.gather(*list(self.tasks.values()), *list(self.preparations), return_exceptions=True)

@@ -18,6 +18,7 @@ class KnowledgeUI:
         self.knowledge_data = None
         self.knowledge_serial = 0
         self.knowledge_read = tk.BooleanVar(value=False)
+        self.knowledge_process = tk.BooleanVar(value=False)
         self.knowledge_learn = tk.BooleanVar(value=False)
         self.knowledge_daily = tk.BooleanVar(value=True)
         self.knowledge_channels = {channel: tk.BooleanVar(value=True) for channel in ('desktop', 'qq')}
@@ -46,6 +47,9 @@ class KnowledgeUI:
         for channel, label in (('desktop', '桌面'), ('qq', 'QQ')):
             ttk.Checkbutton(line, text=label, variable=self.knowledge_channels[channel]).pack(side='left')
         self.button(line, '保存角色开关', self.save_knowledge_reader, {'knowledge-write'})
+        line = ttk.Frame(parent); line.pack(fill='x')
+        ttk.Checkbutton(line, text='整理知识后回答（使用整理模型）', variable=self.knowledge_process).pack(side='left')
+        self.button(line, '保存知识整理', self.save_knowledge_processing, {'knowledge-write'})
         line = ttk.Frame(parent); line.pack(fill='x')
         ttk.Checkbutton(line, text='允许公共来源学习', variable=self.knowledge_learn).pack(side='left')
         ttk.Checkbutton(line, text='每日协调', variable=self.knowledge_daily).pack(side='left')
@@ -101,6 +105,7 @@ class KnowledgeUI:
         def done(data):
             if key != self.knowledge_key() or serial != self.knowledge_serial:
                 return
+            self.knowledge_process.set(data.get('processing_policy',{}).get('data',{}).get('enabled',False))
             self.knowledge_data = data
             self.knowledge_loaded_key = key
             self.knowledge_read.set(data['policy']['data']['enabled'])
@@ -112,7 +117,7 @@ class KnowledgeUI:
             cost = data['cost']
             phase = (data.get('installation') or {}).get('phase', '尚无安装记录')
             self.knowledge_summary.set(f"安装进度 {phase}，模型{'就绪' if data['model_ready'] else '未预热'}。"
-                f"维护尝试 {cost['calls']} 次，已知 {cost['tokens_known']} tokens，未知用量 {cost['usage_unknown']} 次。金额按供应商账单核对。")
+                f"知识处理尝试 {cost['calls']} 次，已知 {cost['tokens_known']} tokens，未知用量 {cost['usage_unknown']} 次。金额按供应商账单核对。")
             self.set_text(self.knowledge_output, self.knowledge_report(data))
         self.run_task('读取世界知识', {'knowledge-read'}, lambda _: self.client.manage('knowledge.manage.show', persona_id=key[0]),
                       done, error_current=lambda: key == self.knowledge_key() and serial == self.knowledge_serial)
@@ -136,6 +141,10 @@ class KnowledgeUI:
             policy = data['source_policies'][source_id]['data']
             available = policy['enabled'] and data['sources']['data'][source_id]['enabled']
             lines.append(f"{name} {'可用' if available else '已停用'}，新鲜度 {policy['freshness_seconds']} 秒")
+        lines.extend(['', '知识整理'])
+        for row in data.get('processing_tasks',[]):
+            stage={'goal':'目标理解','select':'资料选择','translate':'知识翻译','compose':'知识合并','verify':'独立复核'}.get(row['stage'],row['stage'])
+            lines.append(stage+' · '+states.get(row['status'],row['status'])+' · '+(row['error_code'] or '无错误'))
         lines.extend(['', '最近使用页面'])
         for row in data['pages']:
             freshness = '新鲜' if row['freshness'] == 'fresh' else '本地快照'
@@ -260,6 +269,12 @@ class KnowledgeUI:
                 'data': {'enabled': self.knowledge_read.get(), 'channels': [k for k, v in self.knowledge_channels.items() if v.get()]},
                 'expected_revision': self.knowledge_data['policy']['revision']})
 
+    def save_knowledge_processing(self):
+        if self.knowledge_ready() and self.knowledge_data.get('processing_policy'):
+            policy=self.knowledge_data['processing_policy']
+            self.knowledge_write('knowledge.processing.policy.update',{'persona_id':self.persona_id,
+                'data':policy['data']|{'enabled':self.knowledge_process.get()},'expected_revision':policy['revision']})
+
     def save_knowledge_maintenance(self, stop=False):
         if self.knowledge_ready():
             data = self.knowledge_data['maintenance_policy']['data'] | {
@@ -328,8 +343,19 @@ class KnowledgeUI:
         if not self.persona_id:
             return
         key, query = self.knowledge_key(), self.knowledge_query.get().strip()
+        self.knowledge_preview_version = getattr(self, 'knowledge_preview_version', 0) + 1
+        self.poll_knowledge_search(key, query, self.knowledge_preview_version)
+
+    def poll_knowledge_search(self, key, query, version):
+        def current():
+            return (version == self.knowledge_preview_version and key == self.knowledge_key()
+                    and query == self.knowledge_query.get().strip())
+        if not current():
+            return
         def done(value):
-            if key == self.knowledge_key() and query == self.knowledge_query.get().strip():
+            if current():
                 self.set_text(self.knowledge_output, json.dumps(value, ensure_ascii=False, indent=2))
+                if value.get("state") in ("pending", "busy"):
+                    self.after(500, lambda: self.poll_knowledge_search(key, query, version))
         self.run_task('预览知识检索', {'knowledge-read'}, lambda _: self.client.manage('knowledge.search',
-            persona_id=key[0], query=query, channel='desktop'), done, error_current=lambda: key == self.knowledge_key())
+            persona_id=key[0], query=query, channel='desktop', timeout=0), done, error_current=current)

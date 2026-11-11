@@ -16,6 +16,9 @@ HEADER += 'source_origin为controlled_http_fixture的是虚构验收公告，只
 
 
 def attach(messages, details, result, turn):
+    if result.get('processing') or 'translation' in result:
+        from .knowledge_processing_context import attach as processed
+        return processed(messages,details,result,turn)
     if result.get("state") == "disabled":
         return messages, details
     selected = []

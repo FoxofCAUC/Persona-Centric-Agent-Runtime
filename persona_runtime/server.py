@@ -196,7 +196,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 row=conn.execute('SELECT * FROM turns WHERE id=?', (request.match_info['id'],)).fetchone()
                 if row is None:raise RuntimeErrorBase('Request not found')
                 accepted=dict(row)
-            if companion_read(accepted) is None:
+            from .knowledge_wait import is_waiting
+            if companion_read(accepted) is None and not is_waiting(store, accepted):
                 raise RuntimeErrorBase("queue_cancellation_disabled")
         return web.json_response(await engine.cancel(request.match_info["id"]))
 
@@ -322,6 +323,9 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 'knowledge.package.rollback': lambda expected_revision, operation_id: rollback(knowledge, expected_revision, operation_id),
                 'knowledge.restore.submit': lambda name, expected_revision, operation_id: restore(knowledge, name, expected_revision, operation_id),
                 'knowledge.operation.show': knowledge.operation_show})
+            handlers.update({'knowledge.processing.policy.current':organization.processing.policy,
+                'knowledge.processing.policy.update':organization.processing.update_policy,
+                'knowledge.processing.show':organization.processing.show})
             maintenance=organization.knowledge
             handlers.update({'knowledge.maintenance.policy.current':maintenance.policy,
                 'knowledge.maintenance.policy.update':maintenance.update_policy,
@@ -330,6 +334,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 'knowledge.refresh.submit':maintenance.submit,
                 'knowledge.withdraw.submit':maintenance.withdraw})
             if action not in handlers:raise RuntimeErrorBase('unknown_knowledge_action')
+            # Management polling never bounds the underlying retrieval task.
+            if action == 'knowledge.search':args.setdefault('timeout', 0)
             return web.json_response(await asyncio.to_thread(handlers[action],**args))
         if action.startswith('evaluation.'):
             from .evaluation import EvaluationStore

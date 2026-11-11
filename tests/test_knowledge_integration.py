@@ -177,9 +177,16 @@ class KnowledgeIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.enable()
         self.knowledge.search(self.persona['id'], '月球是什么')
         self.knowledge.backend.pending = True
-        first = await self.ask()
-        self.assertEqual(first['context']['knowledge']['state'], 'pending')
+        import asyncio
+        first = await self.chat.submit('desktop', '地球的天然卫星叫什么', 'original-pending')
+        for _ in range(100):
+            if self.chat.get(first['id'])['phase'] == 'knowledge_search':
+                break
+            await asyncio.sleep(.01)
+        self.assertEqual(self.chat.get(first['id'])['phase'], 'knowledge_search')
+        self.assertEqual(self.capture.calls, [])
         self.knowledge.backend.pending = False
+        await self.chat.wait()
         result = await self.ask('查到了吗', session_id=first['session_id'])
         self.assertEqual(result['context']['knowledge']['state'], 'ready')
         self.assertEqual(self.knowledge.backend.calls[-1], '地球的天然卫星叫什么')

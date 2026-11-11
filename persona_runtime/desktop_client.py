@@ -74,6 +74,8 @@ class LocalClient:
             companion = None
         if turn.get('status') not in ('queued', 'running'):
             raise RuntimeErrorBase('only_queued_can_cancel')
+        if turn.get('phase') in ('knowledge_search', 'knowledge_refresh', 'knowledge_waiting_quota','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review'):
+            return self.call('POST', f"/v1/requests/{turn['id']}/cancel", {})
         if companion:
             self.require_capability('companion_cancel_v1')
         elif turn.get('status') != 'queued':

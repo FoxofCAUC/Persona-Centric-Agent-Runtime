@@ -1,7 +1,7 @@
 """Persisted metadata-only state transitions and measured, non-estimated durations."""
 import time
 
-EVENTS = {"character_local", "character_selection", "character_fallback", "character_selected","accepted", "queued", "retry_queued", "provider_started", "first_output", "generated",
+EVENTS = {"knowledge_goal","knowledge_selection","knowledge_translation","knowledge_review","knowledge_search", "knowledge_refresh", "knowledge_waiting_quota", "knowledge_ready", "knowledge_no_matches", "knowledge_unavailable", "knowledge_failed", "character_local", "character_selection", "character_fallback", "character_selected","accepted", "queued", "retry_queued", "provider_started", "first_output", "generated",
           "persisted", "failed", "interrupted", "cancelled", "delivery_started", "delivery_confirmed",
           "delivery_uncertain", "delivery_failed"}
 
@@ -30,11 +30,14 @@ def progress(conn, turn):
     elif phase == "completed" and turn.get("delivery"):
         phase = {"pending": "awaiting_delivery", "sending": "delivering", "sent": "completed",
                  "uncertain": "delivery_uncertain", "failed": "delivery_failed"}[turn["delivery"]]
-    if phase=='queued' and rows and rows[-1]['event'] in ('character_local','character_selection','character_fallback'):
+    if phase=='queued' and rows and rows[-1]['event'] in ('character_local','character_selection','character_fallback','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review','knowledge_search','knowledge_refresh','knowledge_waiting_quota','knowledge_ready','knowledge_no_matches','knowledge_unavailable'):
         phase=rows[-1]['event']
     queued = latest.get("retry_queued", latest.get("queued"))
+    knowledge_done = max((r["at_epoch"] for r in rows[start:] if r["event"] in
+        ("knowledge_ready", "knowledge_no_matches", "knowledge_unavailable", "knowledge_failed")), default=None)
     return {"phase": phase, "events": rows, "timings": {
         "queue_seconds": duration(queued, latest.get("provider_started")),
+        "knowledge_seconds": duration(latest.get("knowledge_search"), knowledge_done),
         "first_output_seconds": duration(latest.get("provider_started"), latest.get("first_output")),
         "provider_seconds": duration(latest.get("provider_started"), latest.get("generated", latest.get("failed"))),
         "persist_seconds": duration(latest.get("generated"), latest.get("persisted")),
@@ -44,6 +47,10 @@ def progress(conn, turn):
 
 
 def recovery(phase, error=None):
+    if phase == "knowledge_waiting_quota":
+        return "知识复核正在等待额度恢复；原任务保留，可以继续观察或取消。"
+    if phase in ("knowledge_search", "knowledge_refresh","knowledge_goal","knowledge_selection","knowledge_translation","knowledge_review"):
+        return "任务仍在处理；可继续观察原请求或取消。重新连接不会重复提交。"
     if phase == "cancelled":
         return "已取消排队；不会开始主回复。此前已发出的候选选择调用仍保留用量记录。需要时可显式重试。"
     if phase == "delivery_uncertain":

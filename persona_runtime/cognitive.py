@@ -251,7 +251,7 @@ class CognitiveService:
             if not row or row['channel']!=channel and not (row['mode']=='test' and channel=='desktop'):raise RuntimeErrorBase('context_unavailable')
             if channel=='qq':
                 payload=json.loads(row['payload_json']);events=payload.get('events',[])
-                if payload.get('proactive'):
+                if payload.get('proactive') or payload.get('knowledge_processing'):
                     if payload['scope']!=selected:raise RuntimeErrorBase('context_unavailable')
                 elif not events or any(read_exact(conn,selected,{'kind':e.get('kind','event'),'id':e['id']})['status']!='found' for e in events):raise RuntimeErrorBase('context_unavailable')
         return dict(row)
@@ -275,7 +275,12 @@ class CognitiveService:
             payload=json.loads(owner['payload_json']);messages=OrganizationEngine.messages(payload)
             with self.store.connection() as conn:
                 from .session_organization import valid as source_valid
-                if payload.get('external_knowledge'):
+                if payload.get('knowledge_processing'):
+                    try:
+                        c=self.engine.knowledge.processing.engine.managed.contract(conn,owner['id'])
+                        self.engine.knowledge.processing.check(conn,owner,c,payload);valid=True
+                    except RuntimeErrorBase:valid=False
+                elif payload.get('external_knowledge'):
                     from .knowledge_store import check_document
                     try:check_document(conn,payload);valid=True
                     except RuntimeErrorBase:valid=False

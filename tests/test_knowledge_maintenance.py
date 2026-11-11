@@ -280,9 +280,17 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view['context']['knowledge']['evidence'])
         self.source.put(value='红色',revision=2);self.now+=2
         result=await self.chat.submit('desktop','测试行星最新颜色是什么','new-current-source')
+        import asyncio
+        for _ in range(200):
+            if self.chat.get(result['id'])['phase'] == 'knowledge_refresh':
+                break
+            await asyncio.sleep(.01)
+        self.assertEqual(self.chat.get(result['id'])['phase'], 'knowledge_refresh')
+        await self.process()
         await self.chat.wait();view=self.chat.get(result['id'])
-        self.assertEqual(view['context']['knowledge']['state'],'refresh_pending')
-        self.assertEqual(view['context']['knowledge']['evidence'],[])
+        self.assertEqual(view['context']['knowledge']['state'],'ready')
+        self.assertTrue(view['context']['knowledge']['evidence'])
+        self.assertIn('红色', view['context']['knowledge']['evidence'][0]['claim_text'])
 
     async def test_dated_queries_keep_nonoverlapping_versions_and_source_followup(self):
         self.enable();self.source.put(body='1950年到1955年颜色是蓝色。1955年起颜色是红色。')
