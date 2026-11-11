@@ -32,6 +32,7 @@ def attach(messages, details, result, turn):
     details=copy.deepcopy(details)
     details['knowledge']={'state':result['state'],'processing':copy.deepcopy(result['processing']),
                           'evidence':[{k:v for k,v in item.items() if k!='quote'} for item in evidence]}
+    if result.get('routing'):details['knowledge']['routing']=copy.deepcopy(result['routing'])
     assembly=details.get('prompt_assembly')
     if assembly:
         blocks=assembly.get('blocks',[])

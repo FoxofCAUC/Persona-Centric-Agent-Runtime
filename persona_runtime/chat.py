@@ -749,3 +749,9 @@ class ChatEngine:
     async def wait(self):
         while self.tasks or self.preparations:
             await asyncio.gather(*list(self.tasks.values()), *list(self.preparations), return_exceptions=True)
+            # gather() can return synchronously for finished children before
+            # their scheduled cleanup callbacks run. Drain them here as well.
+            for turn_id, task in list(self.tasks.items()):
+                if task.done() and self.tasks.get(turn_id) is task:
+                    self.tasks.pop(turn_id, None)
+            self.preparations.difference_update(task for task in list(self.preparations) if task.done())

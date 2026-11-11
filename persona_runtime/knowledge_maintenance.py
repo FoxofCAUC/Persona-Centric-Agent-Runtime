@@ -28,6 +28,7 @@ class KnowledgeMaintenance:
         self.clock = time.time
         self.process = current_process_identity()
         self.stopped = threading.Event()
+        self.pending_io = set()
         self.fetcher = fetcher or WikimediaFetcher(self.stopped)
 
     def defaults(self):
@@ -437,8 +438,18 @@ class KnowledgeMaintenance:
     async def tick(self):
         if self.stopped.is_set() or self.engine.draining or self.engine.chat.draining:
             return
-        await asyncio.to_thread(self.advance)
-        await asyncio.to_thread(self.fetch_one)
+        for operation in (self.advance,self.fetch_one):
+            if self.stopped.is_set():return
+            task=asyncio.create_task(asyncio.to_thread(operation))
+            self.pending_io.add(task)
+            def settled(done):
+                self.pending_io.discard(done)
+                if not done.cancelled():done.exception()
+            task.add_done_callback(settled)
+            await asyncio.shield(task)
+
+    async def drain(self):
+        while self.pending_io:await asyncio.gather(*list(self.pending_io),return_exceptions=True)
 
     def on_result(self, turn, result, latest):
         jobs = []

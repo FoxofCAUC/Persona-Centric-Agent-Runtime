@@ -326,6 +326,11 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             handlers.update({'knowledge.processing.policy.current':organization.processing.policy,
                 'knowledge.processing.policy.update':organization.processing.update_policy,
                 'knowledge.processing.show':organization.processing.show})
+            handlers.update({'knowledge.routing.policy.current':organization.routing.policy,
+                'knowledge.routing.policy.update':organization.routing.update_policy,
+                'knowledge.routing.configuration.current':organization.routing.configuration})
+            handlers.update({'knowledge.web.policy.current':organization.web.policy,
+                'knowledge.web.policy.update':organization.web.update_policy,'knowledge.web.withdraw':organization.web.invalidate})
             maintenance=organization.knowledge
             handlers.update({'knowledge.maintenance.policy.current':maintenance.policy,
                 'knowledge.maintenance.policy.update':maintenance.update_policy,
@@ -451,6 +456,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             'quota.update': lambda limits: QuotaService(store, config).update(limits),
             'quota.acceptance.begin': lambda: QuotaService(store, config).begin_acceptance(),
             'quota.acceptance.end': lambda: QuotaService(store, config).end_acceptance(),
+            'quota.development.begin': lambda: QuotaService(store, config).begin_development(),
+            'quota.development.end': lambda: QuotaService(store, config).end_acceptance(),
             **{'disposition.'+name:getattr(dispositions,name.replace('-','_')) for name in ('current','history','show','compare','sources','draft-update','confirm','restore','withdraw')},
             'disposition.preview':engine.cognitive.shadow.preview,'disposition.inspect':engine.cognitive.shadow.inspect,
             'disposition.status':compiler.status,'disposition.compile':compiler.compile,

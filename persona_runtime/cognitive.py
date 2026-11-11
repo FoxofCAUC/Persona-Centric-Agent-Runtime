@@ -234,6 +234,18 @@ class CognitiveService:
             manifest['hard_constraints']=['explicit_appointment','frozen_scope','private_proactive_authorization','automatic_quota']
             manifest['scope']=payload['scope']
             manifest['proactive']={k:v for k,v in payload['proactive'].items() if k not in ('content','context')}
+        if payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry'):
+            from .knowledge_routing_contract import request,VERSION
+            body=request(json.loads(task['model_snapshot']),payload['knowledge_processing']['input'])
+            manifest['provider_request_contract']={'version':VERSION,'kind':'choice_and_reuse_noul','configuration_source':'explicit_jev','endpoint':'systemone'}
+            manifest['native_request_hash']=fingerprint(body)
+            return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
+        if payload.get('knowledge_processing',{}).get('stage') in ('wiki_search','wiki_fetch'):
+            manifest['provider_request_contract']={'version':'wikimedia-source-v1','kind':payload['knowledge_processing']['stage'],'configuration_source':'registered_public_source','credentials_sent':False,'billing_unit':'none'}
+            return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
+        if payload.get('knowledge_processing',{}).get('stage') in ('search','fetch'):
+            manifest['provider_request_contract']={'version':'deepseek-tools-v1','kind':payload['knowledge_processing']['stage'],'configuration_source':'main','billing_unit':'successful_request'}
+            return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
         manifest['provider_request_contract']=describe_request(json.loads(task['model_snapshot'])|{'_json_output':task['mode'] not in ('test','proactive')})
         return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
 

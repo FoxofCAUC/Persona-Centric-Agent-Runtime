@@ -71,6 +71,13 @@ class ConfigStore:
             value.setdefault('runtime',copy.deepcopy(DEFAULTS['runtime']))
         value.setdefault("character_selector", copy.deepcopy(SELECTOR_DEFAULTS))
         self.validate(value)
+        journal=self.paths.home/'runtime/acceptance-quotas.json'
+        if journal.exists():
+            record=json.loads(journal.read_text(encoding='utf-8'))
+            if record.get('status')=='active' and record.get('purpose')=='development' and record.get('instance_id',value['instance_id'])==value['instance_id']:
+                value['model']['hourly_limit']=0
+                value['organization']['hourly_limit']=value['organization']['daily_limit']=0
+                value['character_selector']['hourly_limit']=value['character_selector']['daily_limit']=0
         return value
 
     @staticmethod

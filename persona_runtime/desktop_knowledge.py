@@ -19,6 +19,16 @@ class KnowledgeUI:
         self.knowledge_serial = 0
         self.knowledge_read = tk.BooleanVar(value=False)
         self.knowledge_process = tk.BooleanVar(value=False)
+        self.knowledge_route = tk.BooleanVar(value=False)
+        self.knowledge_route_variant = tk.StringVar(value='仅联网')
+        self.knowledge_route_status = tk.StringVar(value='Jev尚未读取')
+        self.knowledge_web = tk.BooleanVar(value=False)
+        self.knowledge_wiki_fallback = tk.BooleanVar(value=True)
+        self.knowledge_web_domains = tk.StringVar(value='zh.wikipedia.org,www.wikidata.org')
+        self.knowledge_web_topic = tk.StringVar()
+        self.knowledge_web_query = tk.StringVar()
+        self.knowledge_web_document = tk.StringVar()
+        self.knowledge_web_documents = {}
         self.knowledge_learn = tk.BooleanVar(value=False)
         self.knowledge_daily = tk.BooleanVar(value=True)
         self.knowledge_channels = {channel: tk.BooleanVar(value=True) for channel in ('desktop', 'qq')}
@@ -35,7 +45,7 @@ class KnowledgeUI:
         self.knowledge_source.trace_add('write', lambda *_: self.load_knowledge_source())
 
     def build_knowledge(self, parent):
-        self.heading(parent, '世界知识', '本地百科与公共来源维护。角色读取与学习分别开启，维护提取和复核会使用整理模型。')
+        self.heading(parent, '世界知识', '公共资料查询与知识维护。角色读取与学习分别开启，新角色默认选择仅联网路径。')
         ttk.Label(parent, textvariable=self.knowledge_summary, wraplength=720).pack(anchor='w', pady=8)
         line = ttk.Frame(parent); line.pack(fill='x')
         self.button(line, '读取知识状态', self.refresh_knowledge, {'knowledge-read'})
@@ -55,6 +65,30 @@ class KnowledgeUI:
         ttk.Checkbutton(line, text='每日协调', variable=self.knowledge_daily).pack(side='left')
         self.button(line, '保存维护授权', self.save_knowledge_maintenance, {'knowledge-write'})
         self.button(line, '停止学习', lambda: self.save_knowledge_maintenance(stop=True), {'knowledge-stop'})
+        routing=ttk.LabelFrame(parent,text='Jev知识路径',padding=8);routing.pack(fill='x',pady=6)
+        line=ttk.Frame(routing);line.pack(fill='x')
+        ttk.Checkbutton(line,text='使用Jev判断本轮是否需要知识',variable=self.knowledge_route).pack(side='left')
+        ttk.Combobox(line,textvariable=self.knowledge_route_variant,values=('仅联网','本地与联网'),state='readonly',width=12).pack(side='left')
+        self.button(line,'保存决策设置',self.save_knowledge_routing,{'knowledge-write'})
+        ttk.Label(routing,textvariable=self.knowledge_route_status,wraplength=700).pack(anchor='w')
+        web = ttk.LabelFrame(parent,text='联网公开资料（复用主模型配置）',padding=8);web.pack(fill='x',pady=6)
+        line=ttk.Frame(web);line.pack(fill='x')
+        ttk.Checkbutton(line,text='允许联网查询，按请求计费',variable=self.knowledge_web).pack(side='left')
+        self.button(line,'保存联网设置',self.save_knowledge_web,{'knowledge-write'})
+        ttk.Checkbutton(web,text='维基正文不可用时，使用同一获准来源的原站API',variable=self.knowledge_wiki_fallback).pack(anchor='w')
+        line=ttk.Frame(web);line.pack(fill='x')
+        ttk.Label(line,text='允许的网站，逗号分隔').pack(side='left')
+        ttk.Entry(line,textvariable=self.knowledge_web_domains).pack(side='left',fill='x',expand=True)
+        line=ttk.Frame(web);line.pack(fill='x')
+        ttk.Label(line,text='公开主题代号').pack(side='left')
+        ttk.Entry(line,textvariable=self.knowledge_web_topic,width=14).pack(side='left')
+        ttk.Label(line,text='登记的公开查询词').pack(side='left')
+        ttk.Entry(line,textvariable=self.knowledge_web_query).pack(side='left',fill='x',expand=True)
+        ttk.Label(web,text='只外发登记主题和获准页面。启用后沿主模型配置处理知识。',wraplength=700).pack(anchor='w')
+        line=ttk.Frame(web);line.pack(fill='x')
+        self.knowledge_web_pages=ttk.Combobox(line,textvariable=self.knowledge_web_document,state='readonly')
+        self.knowledge_web_pages.pack(side='left',fill='x',expand=True)
+        self.button(line,'撤回所选网页',self.withdraw_web_knowledge,{'knowledge-write'})
         source = ttk.LabelFrame(parent, text='来源与公共页面', padding=8); source.pack(fill='x', pady=6)
         line = ttk.Frame(source); line.pack(fill='x')
         ttk.Combobox(line, textvariable=self.knowledge_source, values=tuple(SOURCES), state='readonly', width=20).pack(side='left')
@@ -72,7 +106,7 @@ class KnowledgeUI:
         ttk.Entry(line, textvariable=self.knowledge_public_id, width=1).pack(side='left', fill='x', expand=True)
         self.button(line, '刷新公共页面（可能计费）', self.refresh_public_knowledge, {'knowledge-write'})
         self.button(line, '撤回该页面', self.withdraw_public_knowledge, {'knowledge-write'})
-        package = ttk.LabelFrame(parent, text='百科包及恢复', padding=8); package.pack(fill='x', pady=6)
+        package = ttk.LabelFrame(parent, text='可选本地百科包及恢复', padding=8); package.pack(fill='x', pady=6)
         line = ttk.Frame(package); line.pack(fill='x')
         self.button(line, '准备固定中文包', self.prepare_knowledge_package, {'knowledge-write'})
         ttk.Entry(line, textvariable=self.knowledge_directory, width=1).pack(side='left', fill='x', expand=True)
@@ -106,6 +140,21 @@ class KnowledgeUI:
             if key != self.knowledge_key() or serial != self.knowledge_serial:
                 return
             self.knowledge_process.set(data.get('processing_policy',{}).get('data',{}).get('enabled',False))
+            routing=data.get('routing_policy',{}).get('data',{})
+            self.knowledge_route.set(routing.get('enabled',False))
+            self.knowledge_route_variant.set('仅联网' if routing.get('variant')=='web_only' else '本地与联网')
+            configured=data.get('routing_configuration',{});cost=data.get('routing_cost',{})
+            self.knowledge_route_status.set(f"模型 {configured.get('name') or '未配置'}，十轮预检{'已通过' if configured.get('gate_passed') else '未通过'}；本角色决策 {cost.get('calls',0)} 次、已知 {cost.get('tokens_known',0)} tokens。费用包含在知识模型账目中。")
+            web=data.get('web_policy',{}).get('data',{})
+            if getattr(self,'knowledge_loaded_key',None)!=key:
+                self.knowledge_web_topic.set('');self.knowledge_web_query.set('')
+            self.knowledge_web_documents={f"{row['title']}（{row['id'][:8]}，{row['validity']}）":row['id'] for row in data.get('web_documents',[])}
+            self.knowledge_web_pages.configure(values=tuple(self.knowledge_web_documents))
+            if getattr(self,'knowledge_loaded_key',None)!=key or self.knowledge_web_document.get() not in self.knowledge_web_documents:
+                self.knowledge_web_document.set('')
+            self.knowledge_web.set(web.get('enabled',False))
+            self.knowledge_wiki_fallback.set(web.get('wikimedia_fallback',False))
+            self.knowledge_web_domains.set(','.join(web.get('domains',[])))
             self.knowledge_data = data
             self.knowledge_loaded_key = key
             self.knowledge_read.set(data['policy']['data']['enabled'])
@@ -116,7 +165,10 @@ class KnowledgeUI:
             self.load_knowledge_source()
             cost = data['cost']
             phase = (data.get('installation') or {}).get('phase', '尚无安装记录')
-            self.knowledge_summary.set(f"安装进度 {phase}，模型{'就绪' if data['model_ready'] else '未预热'}。"
+            route=data.get('routing_policy',{}).get('data',{}).get('variant')
+            package_status=("仅联网路径：无需安装或预热本地百科。" if route=='web_only' else
+                f"本地百科安装进度 {phase}，模型{'就绪' if data['model_ready'] else '未预热'}。")
+            self.knowledge_summary.set(package_status+
                 f"知识处理尝试 {cost['calls']} 次，已知 {cost['tokens_known']} tokens，未知用量 {cost['usage_unknown']} 次。金额按供应商账单核对。")
             self.set_text(self.knowledge_output, self.knowledge_report(data))
         self.run_task('读取世界知识', {'knowledge-read'}, lambda _: self.client.manage('knowledge.manage.show', persona_id=key[0]),
@@ -136,11 +188,16 @@ class KnowledgeUI:
         lines = ['本地百科包', '当前包 ' + str(registry['active'] or '尚未激活'),
                  '可回退包 ' + str(registry['previous'] or '尚无'),
                  '自动维护额度 每小时' + hourly + '，滚动24小时' + daily, '', '来源政策']
-        lines.insert(1, '本地依赖 ' + ('就绪' if data['dependencies']['ready'] else '缺少 ' + '、'.join(data['dependencies']['missing'])))
+        if data.get('routing_policy',{}).get('data',{}).get('variant')=='web_only':lines.insert(0,'当前选择仅联网，本地百科仅用于已保存的旧证据或显式切换。')
+        lines.insert(1, '可选本地依赖 ' + ('就绪' if data['dependencies']['ready'] else '缺少 ' + '、'.join(data['dependencies']['missing'])))
         for name, source_id in SOURCES.items():
             policy = data['source_policies'][source_id]['data']
             available = policy['enabled'] and data['sources']['data'][source_id]['enabled']
             lines.append(f"{name} {'可用' if available else '已停用'}，新鲜度 {policy['freshness_seconds']} 秒")
+        tool=data.get('tool_cost',{})
+        lines.extend(['',f"联网工具尝试 {tool.get('calls',0)}，计费成功 {tool.get('billable_calls',0)}，按文档估算 ${tool.get('known_amount_usd','0')}，未知 {tool.get('unknown_effect',0)}"])
+        lines.extend(['', '已登记公开主题'])
+        for key,query in data.get('web_policy',{}).get('data',{}).get('topics',{}).items():lines.append(key+' · '+query)
         lines.extend(['', '知识整理'])
         for row in data.get('processing_tasks',[]):
             stage={'goal':'目标理解','select':'资料选择','translate':'知识翻译','compose':'知识合并','verify':'独立复核'}.get(row['stage'],row['stage'])
@@ -268,6 +325,30 @@ class KnowledgeUI:
             self.knowledge_write('knowledge.policy.update', {'persona_id': self.persona_id,
                 'data': {'enabled': self.knowledge_read.get(), 'channels': [k for k, v in self.knowledge_channels.items() if v.get()]},
                 'expected_revision': self.knowledge_data['policy']['revision']})
+
+    def save_knowledge_routing(self):
+        if not self.knowledge_ready():return
+        policy=self.knowledge_data['routing_policy']
+        self.knowledge_write('knowledge.routing.policy.update',{'persona_id':self.persona_id,
+            'data':policy['data']|{'enabled':self.knowledge_route.get(),'variant':'web_only' if self.knowledge_route_variant.get()=='仅联网' else 'local_web'},
+            'expected_revision':policy['revision']})
+
+    def save_knowledge_web(self):
+        if not self.knowledge_ready() or not self.knowledge_data.get('web_policy'):return
+        policy=self.knowledge_data['web_policy']
+        data=dict(policy['data']);data['topics']=dict(data['topics'])
+        key,query=self.knowledge_web_topic.get().strip(),self.knowledge_web_query.get().strip()
+        if key and query:data['topics'][key]=query
+        data.update(enabled=self.knowledge_web.get(),domains=[s.strip() for s in self.knowledge_web_domains.get().split(',') if s.strip()],wikimedia_fallback=self.knowledge_wiki_fallback.get())
+        self.knowledge_write('knowledge.web.policy.update',{'persona_id':self.persona_id,'data':data,'expected_revision':policy['revision']})
+
+    def withdraw_web_knowledge(self):
+        if not self.knowledge_ready():return
+        document_id=self.knowledge_web_documents.get(self.knowledge_web_document.get())
+        if not document_id:
+            self.notice.set('请先选择已经获取的网页。');return
+        self.knowledge_write('knowledge.web.withdraw',{'persona_id':self.persona_id,'document_id':document_id,
+            'reason':'用户在工作台撤回网页','expected_revision':self.knowledge_data['web_invalidations']['revision']})
 
     def save_knowledge_processing(self):
         if self.knowledge_ready() and self.knowledge_data.get('processing_policy'):

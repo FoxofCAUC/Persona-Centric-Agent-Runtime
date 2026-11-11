@@ -16,7 +16,7 @@ def is_waiting(store, turn):
     with store.connection() as db:
         row = db.execute('SELECT event FROM request_activity WHERE turn_id=? ORDER BY seq DESC LIMIT 1',
                          (turn['id'],)).fetchone()
-    return bool(row and row[0] in ('knowledge_search', 'knowledge_refresh', 'knowledge_waiting_quota','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review'))
+    return bool(row and row[0] in ('knowledge_search', 'knowledge_refresh', 'knowledge_waiting_quota','knowledge_routing','knowledge_web_plan','knowledge_search_web','knowledge_fetch_web','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review'))
 
 
 def check(service, turn):
@@ -136,7 +136,7 @@ def required_tasks(db):
                 tasks.update(task for task in row if task)
     for turn in db.execute("SELECT id,persona_id,execution_revision FROM turns WHERE status='queued' AND cancelled_at IS NULL"):
         event=db.execute('SELECT event FROM request_activity WHERE turn_id=? ORDER BY seq DESC LIMIT 1',(turn['id'],)).fetchone()
-        if not event or event[0] not in ('knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review','knowledge_waiting_quota'):continue
+        if not event or event[0] not in ('knowledge_routing','knowledge_web_plan','knowledge_search_web','knowledge_fetch_web','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review','knowledge_waiting_quota'):continue
         saved=db.execute('SELECT value FROM knowledge_control WHERE key=?',('knowledge.processing.wait.'+turn['id'],)).fetchone()
         value=json.loads(saved[0])['data'] if saved else {}
         if value.get('execution_revision')!=turn['execution_revision']:continue

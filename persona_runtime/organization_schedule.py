@@ -53,7 +53,7 @@ class OrganizationSchedule:
                     boundary = conn.execute("SELECT coalesce(max(rowid),0) FROM turns WHERE session_id=?", (row[0],)).fetchone()[0]
                     conn.execute("INSERT INTO organization_progress VALUES (?,?,?,?,?,NULL) ON CONFLICT(session_id) DO UPDATE SET boundary=excluded.boundary,cursor=excluded.cursor,blocked_task=NULL", (row[0], persona_id, LOCAL_USER_ID, boundary, boundary))
             else:
-                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='automation_disabled' WHERE persona_id=? AND automatic=1 AND status IN ('queued','waiting_quota')", (persona_id,))
+                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='automation_disabled' WHERE persona_id=? AND automatic=1 AND status IN ('queued','waiting_quota') AND coalesce(json_extract(payload_json,'$.knowledge_processing.policy.data.model_source'),'organization')!='main'", (persona_id,))
         return self.status()
 
     def pause_changed_models(self):
@@ -62,7 +62,7 @@ class OrganizationSchedule:
             changed = [r[0] for r in conn.execute("SELECT persona_id FROM automation WHERE enabled=1 AND model_fingerprint!=?", (fingerprint,))]
             for persona_id in changed:
                 conn.execute("UPDATE automation SET enabled=0 WHERE persona_id=?", (persona_id,))
-                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='model_changed' WHERE persona_id=? AND automatic=1 AND status IN ('queued','waiting_quota')", (persona_id,))
+                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='model_changed' WHERE persona_id=? AND automatic=1 AND status IN ('queued','waiting_quota') AND coalesce(json_extract(payload_json,'$.knowledge_processing.policy.data.model_source'),'organization')!='main'", (persona_id,))
             # Daily work freezes the configured model. Changing it pauses the
             # cycle until an explicit resume; the next due time remains visible.
             row = conn.execute("SELECT * FROM daily_updates WHERE id='daily'").fetchone()

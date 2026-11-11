@@ -44,7 +44,7 @@ ERRORS = {"reply_schema_invalid":"模型回复结构不合规，未发送正文�
           "provider_http_429": "模型提供商限流，请稍后手动重试。", "queue_full": "等待队列已满，请稍后再试。",
           "provider_network_error": "模型网络连接失败。", "context_limit_exceeded": "人格、关系与消息超过输入长度限制。",
           "service_restarted": "请求因服务重启而中断，未自动重试。"}
-ERRORS.update({"session_sealed":"此会话已封存。草稿保留，请在会话与主题页新建接续会话后明确发送。", "session_has_pending_work":"会话还有未决输入或投递，请先处置。", "session_version_conflict":"会话版本已变化，请重新读取后操作。", "organization_session_busy":"此会话已有整理任务，请等待或处置后继续。","reference_not_found":"引用目标未找到，本批未调用模型；请更换或清除引用。", "reference_unavailable":"引用来源不可用，本批未调用模型。", "reference_ambiguous":"引用目标不唯一，本批未调用模型。", "reference_budget_exceeded":"完整引用超出预算，本批未调用模型。", "reference_source_changed":"引用来源已变化，本批未调用模型。", "buffer_full":"输入缓冲已满，本条未受理；请先处理已有批次。", "unresolved_input_batches":"仍有未处理输入，请到输入与缓冲页继续或取消后再停止。", "runtime_upgrade_required":"人格服务版本不兼容，请先升级服务。", "only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
+ERRORS.update({'web_main_key_missing':'请先在模型页配置主模型密钥。','web_requires_official_main_configuration':'官方搜索需要主模型使用DeepSeek官方地址。','web_public_topic_required':'请先登记允许外发的公开查询主题。','web_policy_changed':'联网授权已变化，请读取当前设置后继续。',"session_sealed":"此会话已封存。草稿保留，请在会话与主题页新建接续会话后明确发送。", "session_has_pending_work":"会话还有未决输入或投递，请先处置。", "session_version_conflict":"会话版本已变化，请重新读取后操作。", "organization_session_busy":"此会话已有整理任务，请等待或处置后继续。","reference_not_found":"引用目标未找到，本批未调用模型；请更换或清除引用。", "reference_unavailable":"引用来源不可用，本批未调用模型。", "reference_ambiguous":"引用目标不唯一，本批未调用模型。", "reference_budget_exceeded":"完整引用超出预算，本批未调用模型。", "reference_source_changed":"引用来源已变化，本批未调用模型。", "buffer_full":"输入缓冲已满，本条未受理；请先处理已有批次。", "unresolved_input_batches":"仍有未处理输入，请到输入与缓冲页继续或取消后再停止。", "runtime_upgrade_required":"人格服务版本不兼容，请先升级服务。", "only_queued_can_cancel": "只能取消尚未开始生成的排队消息。", "cancelled_by_user": "排队消息已取消。",
                "queue_cancellation_disabled": "排队取消尚未开启，可在模型页的私聊交互设置中显式开启。",
                "submission_conflict": "此请求标识已用于其他内容；请先找回原消息，不能覆盖。",
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
@@ -69,7 +69,7 @@ ERRORS.update({
     'provider_aborted':'供应商终止了本次生成，原调用记录保留。',
     'provider_tool_call_not_supported':'供应商返回了本入口不支持的工具调用，未执行或展示为回复。',
 })
-PHASES = {"knowledge_goal":"正在理解检索目标","knowledge_selection":"正在选择相关资料","knowledge_translation":"正在整理知识","knowledge_review":"正在核对整理结果","knowledge_waiting_quota":"知识复核等待额度恢复", "knowledge_search":"正在检索世界知识", "knowledge_refresh":"正在核对最新资料", "knowledge_ready":"知识已就绪，准备回复", "knowledge_no_matches":"未找到匹配资料", "knowledge_unavailable":"知识来源不可用", "character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
+PHASES = {"knowledge_routing":"正在判断知识路径","knowledge_web_plan":"正在规划公开资料查询","knowledge_search_web":"正在搜索公开资料","knowledge_fetch_web":"正在读取公开网页","knowledge_goal":"正在理解检索目标","knowledge_selection":"正在选择相关资料","knowledge_translation":"正在整理知识","knowledge_review":"正在核对整理结果","knowledge_waiting_quota":"知识复核等待额度恢复", "knowledge_search":"正在检索世界知识", "knowledge_refresh":"正在核对最新资料", "knowledge_ready":"知识已就绪，准备回复", "knowledge_no_matches":"未找到匹配资料", "knowledge_unavailable":"知识来源不可用", "character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
 

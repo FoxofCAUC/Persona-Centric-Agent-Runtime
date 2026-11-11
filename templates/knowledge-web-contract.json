@@ -1,0 +1,81 @@
+{
+  "version": "deepseek-tools-v1",
+  "verified_at": "2026-11-11",
+  "candidate": "0.9.0.dev12",
+  "configuration_source": "main",
+  "separate_key": false,
+  "origin": "https://api.deepseek.com",
+  "search": {
+    "method": "POST",
+    "path": "/v1/tools/search",
+    "query_source": "registered_public_topic",
+    "count": 5,
+    "need_content": false,
+    "ori_question": "omitted"
+  },
+  "fetch": {
+    "method": "POST",
+    "path": "/v1/tools/fetch",
+    "url_source": "selected_id_from_allowed_search_results"
+  },
+  "selection": {
+    "max_topics": 3,
+    "max_fetches": 3,
+    "exact_domain_allowlist": true,
+    "default_freshness_seconds": 86400
+  },
+  "processing": {
+    "model_source": "main",
+    "executor": "ManagedOrganization",
+    "pipeline": "knowledge-processing-v1",
+    "source_claim_only": true
+  },
+  "recovery": {
+    "retryable_statuses": [
+      408,
+      429,
+      500,
+      502,
+      503,
+      504
+    ],
+    "max_physical_attempts": 4,
+    "backoff_seconds": [
+      1,
+      2,
+      4
+    ],
+    "unknown_effect": "preserve_do_not_replay",
+    "received_response": "reuse_without_dispatch"
+  },
+  "billing": {
+    "currency": "USD",
+    "successful_request_documentation_estimate": "0.00075",
+    "amount_is_estimate": true,
+    "actual_billed_amount": null,
+    "model_tokens_accounted_separately": true
+  },
+  "source_gaps": {
+    "unknown_published_at": null,
+    "unknown_license": null,
+    "redirect_verification": "provider_does_not_report_final_url"
+  },
+  "official_sources": [
+    "https://api-docs.deepseek.com/guides/search/",
+    "https://api-docs.deepseek.com/api/search/",
+    "https://api-docs.deepseek.com/api/fetch/"
+  ],
+  "wikimedia_fallback": {
+    "new_policy_default": true,
+    "legacy_missing_flag": false,
+    "same_registered_source_only": true,
+    "endpoint": "https://zh.wikipedia.org/w/api.php",
+    "namespace": 0,
+    "query_source": "registered_public_topic",
+    "body_version": "parse revision and metadata by the same revision ID",
+    "rights": "actual rightsinfo; unknown stays unknown",
+    "web_snapshot_version": 2,
+    "portable_export_version": 22,
+    "source_requests_accounted_separately": true
+  }
+}

@@ -44,10 +44,14 @@ def attach(messages, details, result, turn):
     details = copy.deepcopy(details)
     details["knowledge"] = {key: result[key] for key in
         ("state", "package_sha256", "request_key", "reason") if key in result}
+    if result.get('routing'):details['knowledge']['routing']=copy.deepcopy(result['routing'])
     details["knowledge"]["evidence"] = [
         {key: value for key, value in item.items() if key != "quote"} for item in selected]
     if result.get("evidence") and not selected:
         details["knowledge"].update(state="budget_excluded", reason="input_budget")
+    if not body and result.get('reason') in ('no_matches','no_relevant_sources','no_supported_knowledge'):
+        note='\n本次检索没有取得可用的参考资料。不要编造出处或宣称查询成功；需要来源核实时，直接说明这次尚无法核实。\n'
+        if len(note)<=remaining and messages and messages[0]['role']=='system':body=note
     if not body and result.get('state') in ('refresh_pending','refresh_unavailable'):
         note = ('\n该次回答的知识出处当前不可用，按来源状态说明。\n'
                 if result.get('reason') == 'referenced_evidence_changed' else

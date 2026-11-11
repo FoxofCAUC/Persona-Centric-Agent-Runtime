@@ -19,7 +19,8 @@ class QuotaUI:
         ttk.Label(group, textvariable=self.quota_status, wraplength=720).pack(anchor='w')
         bar = self.bar(group); bar.pack(fill='x')
         self.button(bar, '修改调用额度', self.edit_quotas, {'config'})
-        self.button(bar, '恢复验收前额度', self.restore_acceptance_quotas, {'config'})
+        self.button(bar, '开发阶段不限次数', self.begin_development_quotas, {'config'})
+        self.button(bar, '恢复原调用额度', self.restore_acceptance_quotas, {'config'})
         self.refresh_quotas()
 
     def refresh_quotas(self):
@@ -34,7 +35,9 @@ class QuotaUI:
                 lines.append('人工调用不限次数；小时内已记账 '+str(value['used'].get('manual_hourly',0))+' 次（聊天、手动整理、模型测试及编译）。')
                 lines.append('其中理解：小时 '+str(value['used'].get('understanding_hourly',0))+' / 日 '+str(value['used'].get('understanding_daily',0)))
                 lines.append(f"主回复已调用：{value['used']['primary_hourly']}；未消费的回复预留：{value['used']['reserved']}")
-            if value['acceptance_active']:
+            if value.get('development_unlimited'):
+                lines.append('开发阶段：自动调用不设次数上限，调用和用量继续逐笔记录。')
+            elif value['acceptance_active']:
                 lines.append('机器验收临时不限额；结束后恢复保存的额度。')
             self.quota_status.set('\n'.join(lines))
         self.run_task('读取调用额度', {'quota-read'}, lambda _: self.quota_service().current(), done, quiet=True)
@@ -47,7 +50,7 @@ class QuotaUI:
         for row, (key, label) in enumerate(LABELS.items()):
             ttk.Label(body, text=label).grid(row=row, column=0, sticky='w', pady=6)
             ttk.Entry(body, textvariable=variables[key], width=12).grid(row=row, column=1, sticky='ew', padx=10)
-        hint = tk.StringVar(value='0 表示不限额；范围 0–10000。' + (' 验收中保存的值将在结束验收时恢复。' if value['acceptance_active'] else ''))
+        hint = tk.StringVar(value='0 表示不限额；范围 0–10000。' + (' 开发或验收模式中保存的值将在恢复原额度时生效。' if value['acceptance_active'] else ''))
         ttk.Label(body, textvariable=hint, wraplength=490).grid(row=len(LABELS), column=0, columnspan=2, sticky='w', pady=8)
         def save():
             try:
@@ -62,6 +65,10 @@ class QuotaUI:
         ttk.Button(footer, text='取消', command=dialog.destroy).grid(row=0, column=0, padx=5)
         ttk.Button(footer, text='保存额度', command=save).grid(row=0, column=1)
 
+    def begin_development_quotas(self):
+        self.run_task('启用开发调用模式',{'config'},lambda _:self.quota_service().begin_development(),
+                      lambda _:(self.load_config_fields(),self.refresh_quotas()))
+
     def restore_acceptance_quotas(self):
-        self.run_task('恢复验收前额度', {'config'}, lambda _: self.quota_service().end_acceptance(),
+        self.run_task('恢复原调用额度', {'config'}, lambda _: self.quota_service().end_acceptance(),
                       lambda _: (self.load_config_fields(), self.refresh_quotas()))

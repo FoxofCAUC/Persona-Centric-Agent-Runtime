@@ -195,6 +195,10 @@ class OrganizationEngine:
         self.knowledge=KnowledgeMaintenance(self)
         from .knowledge_processing import KnowledgeProcessing
         self.processing=KnowledgeProcessing(self)
+        from .knowledge_web import WebKnowledge
+        self.web=WebKnowledge(self)
+        from .knowledge_routing import KnowledgeRouting
+        self.routing = KnowledgeRouting(self)
 
     def model(self):
         cfg = self.config.load()
@@ -515,6 +519,7 @@ class OrganizationEngine:
     async def drain(self):
         self.draining = True
         self.knowledge.close()
+        await self.knowledge.drain()
         while self.running:
             await asyncio.sleep(.05)
         self.recover()

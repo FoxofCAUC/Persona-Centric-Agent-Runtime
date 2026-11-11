@@ -64,7 +64,7 @@ class ProcessingTests(unittest.IsolatedAsyncioTestCase):
         self.processing=self.org.processing=KnowledgeProcessing(self.org)
         self.processor=self.org.client=Processor()
         policy=self.processing.policy(self.persona['id'])
-        self.processing.update_policy(self.persona['id'],policy['data']|{'enabled':True},0,'processing-on')
+        self.processing.update_policy(self.persona['id'],policy['data']|{'enabled':True,'prompt_profile':'question_focused_v3'},0,'processing-on')
         self.worker=asyncio.create_task(self.org.worker())
 
     async def asyncTearDown(self):

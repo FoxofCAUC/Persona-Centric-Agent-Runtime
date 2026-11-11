@@ -47,13 +47,20 @@ def snapshot(db, persona_id=None):
                 row['extract_task_id'] = row['review_task_id'] = None
         data[table] = rows
     registry = read(db, 'registry', REGISTRY)['data'] if 'knowledge_control' in available else REGISTRY
-    return {'version': 1, 'tables': data,
+    web={}
+    if 'knowledge_control' in available:
+        from .knowledge_web import snapshot as web_snapshot
+        web=web_snapshot(db,persona_id)
+    return {**({'web':web} if web.get('documents') else {}),'version': 1, 'tables': data,
             'required_packages': [{'sha256': key, 'manifest': record['manifest']}
                 for key, record in registry['packages'].items()],
             'invalidations': read(db, 'invalidations', {})['data'] if 'knowledge_control' in available else {}}
 
 
 def validate(data):
+    if isinstance(data,dict) and 'web' in data:
+        from .knowledge_web import validate_snapshot
+        validate_snapshot(data['web'])
     try:
         if data['version'] != 1 or set(data['tables']) != set(TABLES):
             raise ValueError()
@@ -144,6 +151,9 @@ def validate(data):
 def merge_snapshot(db, data, *, imported_persona=None):
     """Existing evidence, policies and execution records win over recovered data."""
     validate(data)
+    if 'web' in data:
+        from .knowledge_web import merge_snapshot as merge_web
+        merge_web(db,data['web'],imported_persona)
     tables = data['tables']
     mapping = {}
     def insert(table, row):

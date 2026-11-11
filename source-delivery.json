@@ -1,8 +1,12 @@
 {
   "version": 1,
-  "release": "0.8.0.dev3",
+  "release": "0.9.0.dev16",
   "mode": "source",
-  "roots": ["persona_runtime", "integrations/astrbot/astrbot_plugin_persona_runtime", "integrations/napcat"],
+  "roots": [
+    "persona_runtime",
+    "integrations/astrbot/astrbot_plugin_persona_runtime",
+    "integrations/napcat"
+  ],
   "excluded_modules": [
     "persona_runtime/dialogue_frame.py",
     "persona_runtime/communication_spec.py",
@@ -10,7 +14,16 @@
     "persona_runtime/dialogue_pipeline.py",
     "persona_runtime/dialogue_communication_pipeline.py"
   ],
-  "development_only": ["experiments", "plugins", "tests", "scripts/dialogue_*.py"],
-  "configuration": ["pyproject.toml", "requirements-astrbot.lock"],
-  "note": "Source inventory only. Historical decoders and policy restore modules remain included. The Workbench owns all resident components; tray visibility never creates a detached host. Automatic memory and scheduled generation share the managed worker. No system startup registration or installer. Development plugins require explicit invocation."
+  "development_only": [
+    "experiments",
+    "plugins",
+    "tests",
+    "scripts/dialogue_*.py"
+  ],
+  "configuration": [
+    "pyproject.toml",
+    "requirements-astrbot.lock"
+  ],
+  "note": "Source inventory only. Historical decoders and policy restore modules remain included. The Workbench owns all resident components; tray visibility never creates a detached host. Automatic memory and scheduled generation share the managed worker. No system startup registration or installer. Development plugins require explicit invocation.",
+  "knowledge_option": "B web_only; opt-in per persona; no bundled local encyclopedia assets"
 }

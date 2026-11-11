@@ -18,7 +18,11 @@ def overview(service, persona_id):
     service.current_policy(persona_id)
     result = service.status()
     result['dependencies'] = dependencies()
-    if service.processing:result['processing_policy']=service.processing.policy(persona_id)
+    if service.processing:
+        result['processing_policy']=service.processing.policy(persona_id)
+        result['routing_policy']=service.processing.engine.routing.policy(persona_id)
+        result['routing_configuration']=service.processing.engine.routing.configuration()
+        result['dependencies']['required_for_selected_route']=result['routing_policy']['data']['variant']=='local_web'
     with service.store.connection() as db:
         result['policy'] = read(db, 'policy.' + persona_id, POLICY)
         result['maintenance_policy'] = read(db, 'maintenance.' + persona_id, service.maintenance.defaults())
@@ -52,15 +56,43 @@ def overview(service, persona_id):
             item['coverage'] = data.get('coverage')
             item['isolated'] = (data.get('proposals') or {}).get('quarantined', [])
             result['batches'].append(item)
+        from .knowledge_web import DEFAULT as WEB_DEFAULT
+        result['web_policy']=read(db,'web.policy.'+persona_id,WEB_DEFAULT)
+        from .knowledge_web import snapshot as web_snapshot
+        web_data=web_snapshot(db,persona_id)
+        result['web_invalidations']=read(db,'web.invalidations',{})|{'data':web_data['invalidations']}
+        result['web_documents']=[{k:v for k,v in row.items() if k!='body'}|{'validity':web_data['invalidations'].get(row['id'],{}).get('state','active')}
+            for row in sorted(web_data['documents'],key=lambda row:row['fetched_epoch'],reverse=True)]
+        result['tool_cost']={'calls':0,'billable_calls':0,'known_amount_usd':'0','unknown_effect':0,'amount_is_estimate':True,'actual_billed_amount_usd':None}
+        from decimal import Decimal
+        tool_amount=Decimal('0')
         result['cost'] = {'calls': 0, 'tokens_known': 0, 'usage_unknown': 0, 'amount': None}
-        for row in db.execute('SELECT a.usage_json FROM organization_attempts a JOIN organization_tasks t ON t.id=a.task_id '
+        result['routing_cost']={'calls':0,'tokens_known':0,'usage_unknown':0,'amount':None,'included_in_model_cost':True}
+        result['source_requests']={'tasks':0,'completed_http_requests':0,'model_provider_tool_amount_usd':'0'}
+        for row in db.execute("SELECT a.usage_json,json_extract(t.payload_json,'$.knowledge_processing.stage') AS tool_stage FROM organization_attempts a JOIN organization_tasks t ON t.id=a.task_id "
                 "WHERE t.persona_id=? AND (json_type(t.payload_json,'$.external_knowledge')='object' OR json_type(t.payload_json,'$.knowledge_processing')='object')", (persona_id,)):
-            result['cost']['calls'] += 1
             usage = json.loads(row['usage_json']) if row['usage_json'] else None
+            if row['tool_stage'] in ('wiki_search','wiki_fetch'):
+                result['source_requests']['tasks']+=1
+                result['source_requests']['completed_http_requests']+=(usage or {}).get('source_network_requests',0)
+                continue
+            if row['tool_stage'] in ('search','fetch') or usage and usage.get('tool'):
+                result['tool_cost']['calls']+=1
+                usage=usage or {}
+                result['tool_cost']['billable_calls']+=int(usage.get('billable') is True)
+                if usage.get('amount_usd') is not None:tool_amount+=Decimal(usage['amount_usd'])
+                else:result['tool_cost']['unknown_effect']+=1
+                continue
+            if row['tool_stage'] in ('route','route_retry'):
+                result['routing_cost']['calls']+=1
+                if usage is None or type(usage.get('total_tokens')) is not int:result['routing_cost']['usage_unknown']+=1
+                else:result['routing_cost']['tokens_known']+=usage['total_tokens']
+            result['cost']['calls'] += 1
             if usage is None or type(usage.get('total_tokens')) is not int:
                 result['cost']['usage_unknown'] += 1
             else:
                 result['cost']['tokens_known'] += usage['total_tokens']
+        result['tool_cost']['known_amount_usd']=str(tool_amount)
         result['restore'] = read(db, 'restore', {})
     return result
 

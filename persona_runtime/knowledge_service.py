@@ -57,6 +57,10 @@ def permitted(conn, persona_id, channel, package_sha256, article_id):
 
 
 def evidence_permitted(conn, persona_id, channel, item):
+    if item.get('kind')=='web_document':
+        from .knowledge_web import document
+        try:document(conn,persona_id,channel,item);return True
+        except RuntimeErrorBase:return False
     if item.get('kind') == 'knowledge_claim':
         from .knowledge_store import evidence_usable
         return evidence_usable(conn, persona_id, channel, item)
@@ -64,10 +68,16 @@ def evidence_permitted(conn, persona_id, channel, item):
 
 
 def validate_used(conn, paths, persona_id, channel, knowledge):
+    if (knowledge or {}).get('routing'):
+        from .knowledge_routing import validate_used as validate_route
+        validate_route(conn,paths,persona_id,channel,knowledge['routing'])
     if (knowledge or {}).get('processing'):
         from .knowledge_processing import record_used
         record_used(conn,paths,persona_id,channel,knowledge['processing'])
     for item in (knowledge or {}).get("evidence", []):
+        if item.get("kind")=="web_document":
+            if not evidence_permitted(conn,persona_id,channel,item):raise RuntimeErrorBase("knowledge_evidence_changed")
+            continue
         if item.get('kind') == 'knowledge_claim':
             if not evidence_permitted(conn, persona_id, channel, item):
                 raise RuntimeErrorBase('knowledge_evidence_changed')
@@ -95,6 +105,10 @@ def turn_usable(conn, turn_id):
     if not row:
         return True
     knowledge=json.loads(row['details_json']).get('knowledge',{})
+    if knowledge.get('routing'):
+        from .knowledge_routing import validate_used as validate_route
+        try:validate_route(conn,None,row['persona_id'],row['channel'],knowledge['routing'])
+        except RuntimeErrorBase:return False
     if knowledge.get('processing'):
         try:
             # Path ownership is checked by the normal caller's Store. These
@@ -348,6 +362,9 @@ class KnowledgeService:
         if result is None:
             return {"state": "disabled", "evidence": []}
         result = copy.deepcopy(result)
+        if result.get('routing'):
+            from .knowledge_routing import validate_used as validate_route
+            validate_route(conn,self.paths,turn['persona_id'],turn['channel'],result['routing'])
         identity = result.get("package_sha256")
         evidence = result.get("evidence", [])
         result["evidence"] = [item for item in evidence if evidence_permitted(conn, turn["persona_id"],
@@ -373,6 +390,15 @@ class KnowledgeService:
         if turn["channel"] not in ("desktop", "qq"):
             return {"state": "disabled", "evidence": []}
         from .turn_input import load_turn_input
+        if self.processing and self.processing.engine.routing.enabled(turn):
+            with self.store.connection() as conn:
+                policy=read(conn,'policy.'+turn['persona_id'],POLICY)['data']
+                if not policy['enabled'] or turn['channel'] not in policy['channels']:
+                    return {'state':'disabled','evidence':[]}
+                question='\n'.join(item['text'] for item in load_turn_input(conn,turn))
+                last=read(conn,'last.'+fingerprint([turn['persona_id'],turn['channel'],turn['session_id']]),{})['data']
+            if not self.processing.enabled(turn):raise RuntimeErrorBase('knowledge_routing_processing_required')
+            return self.processing.engine.routing.prepare(self.processing,turn,question,last.get('turn_id'))
         with self.store.connection() as conn:
             policy = read(conn, "policy." + turn["persona_id"], POLICY)["data"]
             if not policy["enabled"] or turn["channel"] not in policy["channels"]:
@@ -385,6 +411,8 @@ class KnowledgeService:
             source_request = re.fullmatch(r'(?:给我|給我|发我|發我|给我看下|給我看看|看看)?(?:出处|出處|来源|來源)(?:是哪里|在哪|在哪裡|是什么|是什麼)?[呢吗嗎？?。！!\s]*',query)
             if followup and last["data"].get("query"):
                 query = last["data"]["query"]
+        if self.processing and self.processing.engine.web.policy(turn['persona_id'])['data']['enabled'] and not self.processing.enabled(turn):
+            raise RuntimeErrorBase('web_processing_required')
         if self.processing and self.processing.enabled(turn):
             return self.processing.prepare(turn,query,last['data'].get('turn_id') if (followup or source_request) else None)
         if source_request and last['data'].get('turn_id'):
@@ -444,6 +472,11 @@ class KnowledgeService:
             registry = read(conn, "registry", REGISTRY)["data"]
             evidence = []
             for item in knowledge.get("evidence", []):
+                if item.get("kind")=="web_document":
+                    from .knowledge_web import document
+                    value=document(conn,persona_id,turn["channel"],item)
+                    evidence.append({**item,"quote":value["body"][item["start"]:item["end"]]})
+                    continue
                 if item.get('kind') == 'knowledge_claim':
                     document = conn.execute('SELECT body FROM knowledge_documents WHERE id=?',
                                             (item['document_id'],)).fetchone()

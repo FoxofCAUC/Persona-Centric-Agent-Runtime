@@ -78,6 +78,8 @@ class QuotaService:
             pass  # Settings remain editable before storage is initialized/upgraded.
         active = record.get('status') == 'active'
         return {'limits': limits, 'used': used, 'acceptance_active': active,
+                'development_unlimited':active and record.get('purpose')=='development',
+                'override_purpose':record.get('purpose','acceptance') if active else None,
                 'manual_unlimited':True,'quota_scope':'automatic_calls_only',
                 'restore_limits': (limits | record.get('restore_limits',{})) if active else None,
                 'acceptance_started_at': record.get('started_at') if active else None}
@@ -104,6 +106,12 @@ class QuotaService:
         return self.current()
 
     def begin_acceptance(self):
+        return self._begin_unlimited('acceptance')
+
+    def begin_development(self):
+        return self._begin_unlimited('development')
+
+    def _begin_unlimited(self,purpose):
         from .private_personas import PrivatePersonas
         with self.store.connection() as db:pid=self.store.current(db,required=False)
         PrivatePersonas(self.store.paths).assert_acceptance(pid)
@@ -113,7 +121,10 @@ class QuotaService:
             if record.get('status') != 'active':
                 # Save recovery data before changing limits. A process restart must
                 # neither lose the original values nor restore during a crash test.
-                atomic_json(self.journal, {'status': 'active', 'started_at': timestamp(), 'restore_limits': self._limits()})
+                record={'status':'active','started_at':timestamp(),'restore_limits':self._limits()}
+            if record.get('purpose')!='development':record['purpose']=purpose
+            record['instance_id']=self.config.load()['instance_id']
+            atomic_json(self.journal,record)
             self._write(dict.fromkeys(FIELDS, 0))
         finally:
             lock.close()

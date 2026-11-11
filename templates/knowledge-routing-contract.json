@@ -1,0 +1,48 @@
+{
+  "version": "jev-knowledge-routing-v1",
+  "candidate": "0.9.0.dev16",
+  "model": "jev-1.13",
+  "base_url": "https://e-flowcode.cc/v1",
+  "resource": "systemone",
+  "method": "POST",
+  "credential_source": "dedicated_user_supplied_DPAPI",
+  "applicable_other_settings": "main timeout and input budget",
+  "activation_gate": {
+    "real_rounds": 10,
+    "strict_success_rate_gt": 0.8,
+    "minimum_correct_rounds": 9,
+    "response_validity_and_expected_choice_required": true,
+    "actual_preflight_correct": 10,
+    "successful_positions_replayed": false
+  },
+  "choices": {
+    "local_web": [
+      "none",
+      "local",
+      "web"
+    ],
+    "web_only": [
+      "none",
+      "web"
+    ]
+  },
+  "reuse_question_type": "noul",
+  "minimum_choice_probability": 0.6,
+  "confidence_is_success_rate": false,
+  "old_semantic_regex_fallback": false,
+  "default_persona_enabled": false,
+  "executor": "ManagedOrganization",
+  "automatic_limits": {
+    "hour": 60,
+    "rolling_24_hours": 240,
+    "development": "unlimited; explicit development mode; all five effective caps zero"
+  },
+  "export_includes_credentials_or_grants": false,
+  "actual_gateway_price": null,
+  "documentation": [
+    "https://e-flowcode.cc/docs/setup/jev-api",
+    "https://api.typesafe.ai/redoc"
+  ],
+  "default_variant": "web_only",
+  "selection_record": "docs/M9.A-5-完整20题AB择优结算.md"
+}

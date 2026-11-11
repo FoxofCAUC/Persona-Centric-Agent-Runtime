@@ -33,10 +33,52 @@ PROMPTS = {
         '"supported":true,"temporal_ok":true,"version_ok":true,"note":"原文核对理由"}]}。')}
 
 
+PROMPTS.update({
+    'web_plan':BASE+'从topics中选择与question相符的已登记公开主题ID，最多3项；不得自造主题或外发原问题。只输出JSON {"format_version":1,"topic_ids":["id"]}，没有合适主题则空数组。',
+    'web_fetch_plan':BASE+'从sources中选择要读取正文的id，最多3项。摘要只用于选材，不能当事实证据。不得生成URL或读取名单之外的页面。只输出JSON {"format_version":1,"fetch_ids":["id"]}。',
+    'search':BASE+'程序执行已授权的只读公开主题Search请求，不调用聊天模型。',
+    'fetch':BASE+'程序执行已授权的只读公开页面Fetch请求，不调用聊天模型。',
+    'wiki_search':BASE+'程序从已登记公开主题查询获准Wikipedia原站API，不调用聊天模型。',
+    'wiki_fetch':BASE+'程序读取选定Wikipedia公开页面的实际修订正文，不发送模型密钥。'})
+
+
 def messages(payload):
     data = payload['knowledge_processing']
-    return [{'role': 'system', 'content': PROMPTS[data['stage']]},
-            {'role': 'user', 'content': json.dumps(data['input'], ensure_ascii=False)}]
+    if data['stage'] in ('route','route_retry'):
+        from .knowledge_routing_contract import request
+        body=request({'name':data['input']['request_model']},data['input'])
+        return [{'role':'user','content':json.dumps(body,ensure_ascii=False)}]
+    instruction=PROMPTS[data['stage']]
+    if data.get('policy',{}).get('data',{}).get('prompt_profile') in ('question_focused_v2','question_focused_v3','question_focused_v4','question_focused_v5','question_focused_v6'):
+        if data['stage'] in ('translate','compose'):
+            instruction+='最高优先级是只提供足以回答本次question的最少必需知识。不要写整篇百科摘要，不必填满6点；与所问无直接关系的词源、分类史、费用、参数、占比、人物生平应省略。每点最多3条refs，每条quote最多500字符且逐字来自材料；不要补齐原文明显缺字的名称。优先保留直接回答本题的内容及确有必要的限制。'
+        if data['stage']=='verify':
+            instruction+='允许不改变事实的繁简和同义表达；明确“某物又称某名”可支持两者是同一对象的直接等价，但仅相关或同类不能推断同一。布尔判断和note要一致，note内引号必须正确JSON转义。'
+        if data['stage']=='goal':
+            instruction+='recent_context中failed或interrupted的用户输入仅用于理解指代，不能视作已回答或已查证，也不包含可用的失败模型输出。'
+    focused=data.get('policy',{}).get('data',{}).get('prompt_profile') in ('question_focused_v4','question_focused_v5','question_focused_v6')
+    if focused and data['stage'] in ('translate','compose'):
+        instruction=BASE+'任务：只提取足够回答输入末尾question的最少知识。通常1至3点即可，不要概述全文，不要加入无关历史、词源、参数和统计。每点text最多700字符，总计最多3000字符，kind只能为fact/source_claim/unresolved；source_claim不能升为fact，冲突保留为unresolved。每点refs最多3条，material_id使用所给短ID，每条quote最多500字符且逐字复制原文，覆盖该点全部数字和必要条件。允许units为空。只输出{"format_version":1,"units":[{"text":"直接答案","kind":"fact","refs":[{"material_id":"M1","quote":"逐字原文"}]}]}。最多6点；不得补造原文缺字或凭参数知识补足证据。'
+    if data.get('policy',{}).get('data',{}).get('prompt_profile') in ('question_focused_v5','question_focused_v6') and data['stage']=='select' and data['input'].get('full_windows'):
+        instruction=BASE+'sources的lead是完整原文窗口。按末尾question选能直接回答的最少窗口，常为1至3个，最多6个且来自最多3篇文章；保留回答所需的条件和否定。不能因同一主题就选无关统计、历史或重复解释。用sources短ID输出{"format_version":1,"section_ids":["S1"]}，没有相关正文则空数组。'
+    if data.get('policy',{}).get('data',{}).get('prompt_profile') in ('question_focused_v5','question_focused_v6') and data['stage']=='goal':
+        instruction+='已有资料的事实、出处或查询结果追问也属于知识请求，必须生成其公开主体的查询。空queries仅表示无需知识资料的交流，不表示复用旧资料。'
+    if data.get('policy',{}).get('data',{}).get('prompt_profile')=='question_focused_v6' and data['stage']=='translate':
+        instruction=BASE+'只提取足够回答末尾question的最少知识，通常1至3点，不要概述材料。每点text最多700字符，总共最多3000字符，最多6点；kind为fact/source_claim/unresolved，来源声称不升格、冲突不抹平。refs仅选支持该点的materials短ID，每点最多3个。不要抄写quote：程序会填入该窗口的逐字原文并独立核对。不要引入所选窗口没有支持的数字、主体、否定或条件。只输出{"format_version":1,"units":[{"text":"直接答案","kind":"fact","refs":[{"material_id":"M1"}]}]}。无支持材料则units为空。'
+    if focused and data['stage']=='goal':instruction+='仅当当前用户提出新的公共知识请求才生成查询。童年回忆、感受、表示理解、比喻、告别等闲聊返回queries=[]；不要把提到科学名词当作事实询问。'
+    if data['stage'] in ('translate','compose','verify') and any(m.get('evidence',{}).get('kind')=='web_document' for m in data['input'].get('materials',[])):
+        instruction+='本轮网页资料均属于来源声称，输出unit.kind必须为source_claim（有冲突则unresolved），不能写fact。保留未知发布日期及来源条件。'
+    value=data['input']
+    if focused:
+        from .knowledge_model_view import inputs
+        value=inputs(data)
+    return [{'role':'system','content':instruction},{'role':'user','content':json.dumps(value,ensure_ascii=False)}]
+
+
+def numeric_tokens(value):
+    value=unicodedata.normalize('NFKC',value)
+    value=re.sub(r'(?<![\d,])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d,])',lambda m:m[0].replace(',',''),value)
+    return set(re.findall(r'\d+(?:[.,:/-]\d+)*',value))
 
 
 def invalid(reason):
@@ -52,18 +94,37 @@ def text(value, limit):
 
 
 def parse(payload, response):
-    data = payload['knowledge_processing']
+    data = payload['knowledge_processing'];normalizations=[]
     try:
         out = json.loads(response)
+    except json.JSONDecodeError as error:
+        from .knowledge_processing_normalize import review_annotations
+        out=review_annotations(response,error.pos) if data['stage']=='verify' else None
+        if out is None:invalid('json')
+        normalizations.append({'kind':'review_annotation_json_quoting_only','truth_flags_unchanged':True})
     except (TypeError, ValueError):
         invalid('json')
+    expected_fields={'goal':{'queries','freshness'},'select':{'section_ids'},'translate':{'units'},'compose':{'units'},'verify':{'decisions'},'web_plan':{'topic_ids'},'web_fetch_plan':{'fetch_ids'}}
+    if isinstance(out,dict) and 'format_version' not in out and set(out)==expected_fields.get(data['stage']):
+        out['format_version']=1
+        normalizations.append({'kind':'registered_stage_schema_header','version':1,'data_fields_unchanged':True})
     if not isinstance(out, dict) or type(out.get('format_version')) is not int or out['format_version'] != 1:
         invalid('version')
     stage, source = data['stage'], data['input']
-    if stage == 'goal':
+    focused=data.get('policy',{}).get('data',{}).get('prompt_profile') in ('question_focused_v4','question_focused_v5','question_focused_v6')
+    if focused:
+        from .knowledge_model_view import restore
+        out=restore(data,out)
+    if stage in ('web_plan','web_fetch_plan'):
+        key='topic_ids' if stage=='web_plan' else 'fetch_ids'
+        known=set(source['topics']) if stage=='web_plan' else {s['id'] for s in source['sources']}
+        if (set(out)!={'format_version',key} or not isinstance(out[key],list) or len(out[key])>3
+                or any(not isinstance(i,str) or i not in known for i in out[key]) or len(set(out[key]))!=len(out[key])):
+            invalid('unregistered_tool_target')
+    elif stage == 'goal':
         if set(out) != {'format_version', 'queries', 'freshness'} or out['freshness'] not in ('snapshot', 'current'):
             invalid('goal_shape')
-        if not isinstance(out['queries'], list) or not 1 <= len(out['queries']) <= 3:
+        if not isinstance(out['queries'], list) or not (0 if focused else 1) <= len(out['queries']) <= 3:
             invalid('queries')
         out['queries'] = list(dict.fromkeys(text(q, 128) for q in out['queries']))
     elif stage == 'select':
@@ -89,8 +150,20 @@ def parse(payload, response):
             if not isinstance(unit, dict) or set(unit) != {'text', 'kind', 'refs'} or unit['kind'] not in KINDS:
                 invalid('unit_shape')
             text(unit['text'], 700)
-            if not isinstance(unit['refs'], list) or not 1 <= len(unit['refs']) <= 3:
+            if not isinstance(unit['refs'], list) or not 1 <= len(unit['refs']) <= 36:
                 invalid('references')
+            if data.get('policy',{}).get('data',{}).get('prompt_profile')=='question_focused_v6' and stage=='translate':
+                for ref in unit['refs']:
+                    if isinstance(ref,dict) and set(ref)=={'material_id'}:
+                        ident=ref['material_id']
+                        material=available.get(ident) if isinstance(ident,str) else None
+                        if not material or not 0<len(material['text'])<=500:invalid('unknown_source_window')
+                        ref['quote']=material['text']
+                        normalizations.append({'kind':'registered_source_window','material_id':ident})
+            from .knowledge_processing_normalize import references
+            try:unit['refs'],changes=references(unit['refs'],source['materials'])
+            except ValueError as error:invalid(str(error))
+            normalizations.extend(changes)
             quotes = []
             for ref in unit['refs']:
                 if not isinstance(ref, dict) or set(ref) != {'material_id', 'quote'}:
@@ -104,8 +177,7 @@ def parse(payload, response):
                 if evidence.get('claim_kind') == 'source_claim' and unit['kind'] == 'fact':
                     invalid('source_claim_promoted')
                 quotes.append(ref['quote'])
-            numbers = lambda s: set(re.findall(r'\d+(?:[.,:/-]\d+)*', unicodedata.normalize('NFKC', s)))
-            if not numbers(unit['text']) <= numbers(' '.join(quotes)):
+            if not numeric_tokens(unit['text']) <= numeric_tokens(' '.join(quotes)):
                 invalid('number_not_supported')
         if sum(len(u['text']) for u in units) > 3000:
             invalid('translation_budget')
@@ -124,4 +196,5 @@ def parse(payload, response):
             text(d['note'], 700)
             indexes.append(d['index'])
         if len(set(indexes)) != len(source['units']): invalid('review_coverage')
+    if normalizations:out.setdefault('_normalizations',[]).extend(normalizations)
     return out

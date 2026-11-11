@@ -141,6 +141,8 @@ class ManagedOrganization:
             raise RuntimeErrorBase('organization_queue_full')
         ident=identifier();now=timestamp()
         model=self.engine.model()
+        if payload.get('knowledge_processing',{}).get('policy',{}).get('data',{}).get('model_source')=='main':model=dict(self.engine.config.load()['model'])
+        if payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry'):model=self.engine.routing.model()
         if payload.get('proactive'):
             from .companion import choose,GENERATION_PROFILE
             model=self.engine.config.load()['model']|{'_companion_profile':choose('minimal_im'),'_generation_profile':GENERATION_PROFILE}
@@ -221,7 +223,15 @@ class ManagedOrganization:
         if not p['enabled'] or contract['policy_id']!=policy['id'] or contract['data']['trigger'] not in p['triggers']:
             raise RuntimeErrorBase('organization_policy_changed')
         model=json.loads(task['model_snapshot'])
-        if p['provider']!=provider_identity(model) or p['provider']!=provider_identity(self.engine.model()):
+        main_source=payload.get('knowledge_processing',{}).get('policy',{}).get('data',{}).get('model_source')=='main'
+        routing=payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry')
+        if routing:
+            from .knowledge_processing import model_contract
+            if model_contract(model)!=model_contract(self.engine.routing.model()):raise RuntimeErrorBase('organization_model_changed')
+        elif main_source:
+            from .knowledge_processing import model_contract
+            if model_contract(model)!=model_contract(self.engine.config.load()['model']):raise RuntimeErrorBase('organization_model_changed')
+        elif p['provider']!=provider_identity(model) or p['provider']!=provider_identity(self.engine.model()):
             raise RuntimeErrorBase('organization_model_changed')
         if payload.get('knowledge_processing'):
             selected=self.scope(db,payload)
@@ -229,7 +239,7 @@ class ManagedOrganization:
                 raise RuntimeErrorBase('organization_scope_mismatch')
             if selected['channel']=='qq' and (selected['bot'],selected['peer'])!=(p['qq']['bot'],p['qq']['peer']):
                 raise RuntimeErrorBase('organization_scope_mismatch')
-            guard_cloud_dispatch(self.store,task['persona_id'],'organization',model)
+            guard_cloud_dispatch(self.store,task['persona_id'],'knowledge_router' if routing else 'main' if main_source else 'organization',model)
             if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
             self.engine.processing.check(db,task,contract,payload)
             return
@@ -427,7 +437,11 @@ class ManagedOrganization:
                     raise RuntimeErrorBase('organization_receipt_corrupt')
             else:
                 from .generation_retry import _one
-                value=await _one(e.client,model|{'_json_output':task['mode'] not in ('test','proactive')},messages,'provider_timeout')
+                if payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry'):
+                    value=await e.routing.execute(model,payload)
+                elif payload.get('knowledge_processing',{}).get('stage') in ('search','fetch','wiki_search','wiki_fetch'):
+                    value=await e.web.execute(model,payload)
+                else:value=await _one(e.client,model|{'_json_output':task['mode'] not in ('test','proactive')},messages,'provider_timeout')
                 reply,usage=value;audit=receipt(reply);audit['status']='received'
                 with self.store.connection(write=True) as db:
                     db.execute('UPDATE organization_attempts SET usage_json=? WHERE id=?',(encoded(usage),aid))
@@ -460,17 +474,26 @@ class ManagedOrganization:
             code=str(error) if isinstance(error,RuntimeErrorBase) else 'organization_failed'
             cancelled=isinstance(error,asyncio.CancelledError)
             diagnostics=safe_diagnostics(getattr(error,'diagnostics',None))
-            usage=usage_fields(getattr(error,'usage',None),deepseek=True,grok=True)
+            tool=payload.get('knowledge_processing',{}).get('stage') in ('search','fetch','wiki_search','wiki_fetch')
+            routing=payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry')
+            usage=getattr(error,'usage',None) if tool else usage_fields(getattr(error,'usage',None),deepseek=True,grok=True)
             with self.store.connection(write=True) as db:
                 c=self.contract(db,task['id']);count=db.execute('SELECT count(*) FROM organization_attempts WHERE task_id=?',(task['id'],)).fetchone()[0]
                 has_receipt=db.execute('SELECT 1 FROM organization_receipts WHERE attempt_id=?',(aid,)).fetchone()
-                safe_retry=(not has_receipt and not cancelled and (diagnostics.get('request_headers_sent') is False or
+                denied_tool=tool and code=='web_target_not_public'
+                source_read=payload.get('knowledge_processing',{}).get('stage') in ('wiki_search','wiki_fetch')
+                known_tool=(tool or routing) and (diagnostics.get('http_status') is not None or denied_tool or source_read)
+                if routing and hasattr(error,'native_response'):
+                    db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO NOTHING',('knowledge.routing.http_receipt.'+aid,encoded({'revision':0,'data':{'body':error.native_response,'status':diagnostics.get('http_status')}})))
+                if tool and hasattr(error,'tool_response'):
+                    db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO NOTHING',('knowledge.web.http_receipt.'+aid,encoded({'revision':0,'data':{'body':error.tool_response,'status':diagnostics.get('http_status')}})))
+                safe_retry=(not has_receipt and not cancelled and not denied_tool and (source_read and code=='wiki_transport_unavailable' or (tool or routing) and diagnostics.get('http_status') in (408,429,500,502,503,504) or diagnostics.get('request_headers_sent') is False or
                     code=='provider_http_429' and diagnostics.get('http_status')==429))
-                unknown=not has_receipt and not safe_retry
+                unknown=not has_receipt and not safe_retry and not known_tool
                 state='cancelled' if c['data']['cancel_requested'] else ('blocked_unknown' if unknown else 'failed')
                 if safe_retry and count<4 and not c['data']['cancel_requested']:
                     state='queued';c['data']['next_epoch']=self.clock()+(1,2,4)[count-1]
-                c['data']['phase']='received' if has_receipt else ('ready' if safe_retry else 'unknown')
+                c['data']['phase']='received' if has_receipt else ('ready' if safe_retry else 'failed_known' if known_tool else 'unknown')
                 if code=='source_expired':state='stale'
                 if has_receipt and code in ('organization_policy_changed','private_cloud_provider_not_authorized','organization_model_changed'):state='blocked_authorization'
                 if self.owns(db,task['id'],generation):

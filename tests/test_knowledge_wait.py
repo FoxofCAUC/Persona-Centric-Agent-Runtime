@@ -35,6 +35,15 @@ class KnowledgeWaitTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(.01)
         self.fail('knowledge stage did not start')
 
+    async def test_finished_children_drain_before_scheduled_cleanup_callbacks(self):
+        done=asyncio.create_task(asyncio.sleep(0))
+        await done
+        self.chat.tasks['finished-owned-turn']=done
+        self.chat.preparations.add(done)
+        await asyncio.wait_for(self.chat.wait(),1)
+        self.assertEqual(self.chat.tasks,{})
+        self.assertEqual(self.chat.preparations,set())
+
     async def test_more_than_five_seconds_waits_and_injects_into_original_turn(self):
         self.pending()
         turn = await self.chat.submit('desktop', '月球是什么', 'slow-original')

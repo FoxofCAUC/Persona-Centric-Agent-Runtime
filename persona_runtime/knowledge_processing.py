@@ -9,7 +9,7 @@ from .knowledge_service import POLICY, read, validate_used
 from .knowledge_wait import check as active, mark, search_turn, refresh_turn
 from .models import LOCAL_USER_ID, RuntimeErrorBase
 from .private_personas import provider_identity
-from .turn_input import load_turn_input
+from .turn_input import load_turn_input,load_turn_sources
 
 
 def model_contract(model):
@@ -38,10 +38,15 @@ class KnowledgeProcessing:
         self.service = engine.chat.knowledge
         self.service.processing = self
 
-    def defaults(self):
-        model = self.engine.model()
+    def model(self,persona_id):
+        with self.store.connection() as db:
+            policy=read(db,'processing.'+persona_id,{})['data']
+        return dict(self.engine.config.load()['model']) if policy.get('model_source')=='main' else self.engine.model()
+
+    def defaults(self,model_source='organization'):
+        model = dict(self.engine.config.load()['model']) if model_source=='main' else self.engine.model()
         return {'enabled':False, 'channels':['desktop','qq'], 'provider':provider_identity(model),
-                'model_contract':fingerprint(model_contract(model)), 'pipeline':VERSION}
+                'model_contract':fingerprint(model_contract(model)), 'pipeline':VERSION, 'prompt_profile':'question_focused_v6', **({'model_source':'main'} if model_source=='main' else {})}
 
     def policy(self, persona_id):
         self.service.current_policy(persona_id)
@@ -51,8 +56,8 @@ class KnowledgeProcessing:
     def update_policy(self, persona_id, data, expected_revision, operation_id):
         from .private_personas import guard_acceptance_write
         guard_acceptance_write(self.store, persona_id)
-        expected = self.defaults()
-        if (not isinstance(data,dict) or set(data) != set(expected) or type(data['enabled']) is not bool
+        expected = self.defaults(data.get('model_source','organization')) if isinstance(data,dict) else self.defaults()
+        if (not isinstance(data,dict) or data.get('model_source','organization') not in ('organization','main') or set(data) not in (set(expected),set(expected)-{'prompt_profile'}) or data.get('prompt_profile','legacy_v1') not in ('legacy_v1','question_focused_v2','question_focused_v3','question_focused_v4','question_focused_v5','question_focused_v6') or type(data['enabled']) is not bool
                 or not isinstance(data['channels'],list) or not data['channels']
                 or len(set(data['channels'])) != len(data['channels']) or not set(data['channels']) <= {'desktop','qq'}
                 or any(data[k] != expected[k] for k in ('provider','model_contract','pipeline'))):
@@ -66,14 +71,20 @@ class KnowledgeProcessing:
 
     def context(self, db, turn):
         selected = turn_scope(db,turn)
-        rows = db.execute("SELECT id FROM turns WHERE persona_id=? AND session_id=? AND rowid<(SELECT rowid FROM turns WHERE id=?) AND status='completed' ORDER BY rowid DESC LIMIT 5",
+        focused=read(db,'processing.'+turn['persona_id'],self.defaults())['data'].get('prompt_profile') in ('question_focused_v2','question_focused_v3','question_focused_v4','question_focused_v5','question_focused_v6')
+        states="('completed','failed','interrupted')" if focused else "('completed')"
+        rows = db.execute("SELECT * FROM turns WHERE persona_id=? AND session_id=? AND rowid<(SELECT rowid FROM turns WHERE id=?) AND status IN "+states+" ORDER BY rowid DESC LIMIT 5",
                           (turn['persona_id'],turn['session_id'],turn['id'])).fetchall()
         recent, used = [], 0
         for row in rows:
-            found = read_exact(db,selected,{'kind':'turn','id':row['id']})
+            failed=row['status']!='completed'
+            if failed and any(db.execute('SELECT 1 FROM source_exclusions WHERE event_id=?',(ident,)).fetchone() for ident in load_turn_sources(db,dict(row))):continue
+            found = read_exact(db,selected,{'kind':'turn','id':row['id']},audit=failed)
             if found['status'] != 'found': continue
             item = {'turn_id':row['id'], 'user':'\n'.join(m['text'] for m in found['members']),
-                    'assistant':'\n'.join(m['text'] for m in found['replies']), 'binding':binding(found)}
+                    'assistant':'' if failed else '\n'.join(m['text'] for m in found['replies']),
+                    'binding':{'status':'input_only','turn_id':row['id'],'hash':fingerprint(found['members'])} if failed else binding(found)}
+            if focused:item['request_state']=row['status']
             length = len(json.dumps(item,ensure_ascii=False))
             if used+length > 4000: break
             recent.append(item); used += length
@@ -86,8 +97,7 @@ class KnowledgeProcessing:
             guard = fingerprint(self.context(db,turn))
         token = fingerprint([turn_scope_value(turn),policy,stage,inputs,VERSION])
         cache_key = 'processing.cache.'+token
-        mark(self.service,turn,{'goal':'knowledge_goal','select':'knowledge_selection','translate':'knowledge_translation',
-                              'compose':'knowledge_translation','verify':'knowledge_review'}[stage])
+        mark(self.service,turn,phase_for(stage))
         with self.store.connection(write=True) as db:
             old = read(db,cache_key,{})['data']
             if old:
@@ -105,7 +115,7 @@ class KnowledgeProcessing:
                      'channel':turn['channel'],'mode':'knowledge_processing','scope':turn_scope_value(turn),
                      'knowledge_processing':data}
             payload['fingerprint']=fingerprint(payload)
-            if sum(len(m['content']) for m in messages(payload)) > self.engine.model()['max_input_chars']:
+            if sum(len(m['content']) for m in messages(payload)) > self.model(turn['persona_id'])['max_input_chars']:
                 raise RuntimeErrorBase('knowledge_processing_input_budget')
             request_id='kp-'+fingerprint([turn['id'],token])
             task=self.engine.managed.register(db,payload,request_id,automatic=1,trigger='incremental')
@@ -133,23 +143,29 @@ class KnowledgeProcessing:
                 if row['status']=='completed':
                     return copy.deepcopy(read(db,'processing.result.'+task['id'],{})['data']),task['id']
                 if row['status'] not in ('queued','waiting_quota','running'):
-                    raise RuntimeErrorBase('knowledge_processing_'+row['status'])
-                state='knowledge_waiting_quota' if row['status']=='waiting_quota' else {'goal':'knowledge_goal','select':'knowledge_selection','translate':'knowledge_translation','compose':'knowledge_translation','verify':'knowledge_review'}[stage]
+                    raise RuntimeErrorBase(row['error_code'] if (row['error_code'] or '').startswith(('web_','wiki_','knowledge_route','knowledge_routing','jev_')) else 'knowledge_processing_'+row['status'])
+                state='knowledge_waiting_quota' if row['status']=='waiting_quota' else phase_for(stage)
             if state!=phase:
                 mark(self.service,turn,state);phase=state
             self.service.closed.wait(.1)
+
+    def _model_from_policy(self,policy):
+        return dict(self.engine.config.load()['model']) if policy.get('model_source')=='main' else self.engine.model()
 
     def _grant(self, db, turn, policy, inputs):
         current=read(db,'processing.'+turn['persona_id'],self.defaults())
         reader=read(db,'policy.'+turn['persona_id'],POLICY)['data']
         if (current!=policy or current['data']['pipeline']!=VERSION or not current['data']['enabled'] or turn['channel'] not in current['data']['channels']
                 or not reader['enabled'] or turn['channel'] not in reader['channels']
-                or current['data']['model_contract']!=fingerprint(model_contract(self.engine.model()))):
+                or current['data']['model_contract']!=fingerprint(model_contract(self._model_from_policy(current['data'])))):
             raise RuntimeErrorBase('knowledge_processing_policy_changed')
+        if 'routing_policy' in inputs:self.engine.routing.grant(db,turn,inputs)
+        if 'web_policy' in inputs:self.engine.web.check_inputs(db,turn,inputs)
         validate_used(db,self.service.paths,turn['persona_id'],turn['channel'],
                       {'evidence':[m['evidence'] for m in inputs.get('materials',[])]})
         for source in inputs.get('sources',[]):
-            validate_used(db,self.service.paths,turn['persona_id'],turn['channel'],{'evidence':[source['evidence']]})
+            if 'evidence' in source:validate_used(db,self.service.paths,turn['persona_id'],turn['channel'],{'evidence':[source['evidence']]})
+            elif 'web_policy' not in inputs:raise RuntimeErrorBase('knowledge_processing_source_invalid')
 
     def check(self, db, task, contract, payload):
         data=payload['knowledge_processing']
@@ -160,9 +176,19 @@ class KnowledgeProcessing:
                 or fingerprint(self.context(db,dict(turn)))!=data['context_guard']):
             raise RuntimeErrorBase('knowledge_processing_request_inactive')
         self._grant(db,dict(turn),data['policy'],data['input'])
+        if data['stage'] in ('search','fetch','wiki_search','wiki_fetch','web_plan','web_fetch_plan'):
+            self.engine.web.check(db,dict(turn),data)
 
     def published(self, db, task, payload, response, audit):
-        output=parse(payload,response)
+        if payload['knowledge_processing']['stage'] in ('route','route_retry'):
+            output=self.engine.routing.accept(payload,response)
+        elif payload['knowledge_processing']['stage'] in ('wiki_search','wiki_fetch'):
+            from .knowledge_wikimedia import parse as parse_tool
+            output=self.engine.web.accept(db,payload,parse_tool(payload['knowledge_processing']['stage'],response))
+        elif payload['knowledge_processing']['stage'] in ('search','fetch'):
+            from .knowledge_web_transport import parse as parse_tool
+            output=self.engine.web.accept(db,payload,parse_tool(payload['knowledge_processing']['stage'],response))
+        else:output=parse(payload,response)
         audit.setdefault('normalizations',[]).extend(output.pop('_normalizations',[]))
         put(db,'result.'+task['id'],output)
         db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
@@ -189,20 +215,25 @@ class KnowledgeProcessing:
             record=read(db,'processing.record.'+metadata['record_id'],{})['data']
             return copy.deepcopy(record['result'])|{'processing':metadata}
 
-    def prepare(self, turn, question, reuse_turn_id=None):
+    def prepare(self, turn, question, reuse_turn_id=None, *, path=None):
         frozen_policy=self.policy(turn['persona_id'])
         if reuse_turn_id:
             previous=self.previous(turn,reuse_turn_id)
             if previous is not None:return previous
         from .knowledge_service import should_retrieve
-        if not should_retrieve(question): return {'state':'not_triggered','evidence':[]}
+        if path is None and not should_retrieve(question): return {'state':'not_triggered','evidence':[]}
         with self.store.connection() as db:
             context=self.context(db,turn)
         goal,goal_task=self._call(turn,'goal',{'question':question,'recent_context':context['recent_context']})
+        if not goal['queries']:raise RuntimeErrorBase('knowledge_route_goal_conflict')
+        if path=='local' and goal['freshness']=='current':raise RuntimeErrorBase('knowledge_route_freshness_conflict')
+        if path=='web' or path is None and self.engine.web.policy(turn['persona_id'])['data']['enabled']:
+            materials=self.engine.web.gather(self,turn,question,goal)
+            return self.translate_materials(turn,question,goal,goal_task,materials,frozen_policy)
         results=[search_turn(self.service,turn,query) for query in goal['queries']]
         combined={'state':'ready','evidence':[e for r in results for e in r.get('evidence',[])]}
         if self.service.maintenance:
-            latest=goal['freshness']=='current'
+            latest=goal['freshness']=='current' and path is None
             refresh=self.service.maintenance.on_result(turn,combined,latest)
             if latest:
                 if not refresh.get('job_ids'):return {'state':'refresh_unavailable','reason':'current_evidence_not_ready','evidence':[]}
@@ -211,8 +242,11 @@ class KnowledgeProcessing:
                 with self.store.connection() as db:
                     results=[merge({'state':'ready','evidence':[]},overlay(db,turn['persona_id'],turn['channel'],q,current=True)) for q in goal['queries']]
         materials=collect(self.service,turn,results)
+        return self.translate_materials(turn,question,goal,goal_task,materials,frozen_policy)
+
+    def translate_materials(self,turn,question,goal,goal_task,materials,frozen_policy):
         if not materials:return {'state':'ready','reason':'no_matches','evidence':[]}
-        budget=self.engine.model()['max_input_chars']-5000
+        budget=self.model(turn['persona_id'])['max_input_chars']-5000
         if budget<3000:raise RuntimeErrorBase('knowledge_processing_input_budget')
         sources=[{'id':m['id'],'title':m['evidence']['article_title'],'section':m['evidence']['section_title'],
                   'lead':m['text'][:250],'characters':len(m['text']),'evidence':m['evidence']} for m in materials]
@@ -224,7 +258,29 @@ class KnowledgeProcessing:
         if len(selected)>6:
             choice,task=self._call(turn,'select',{'question':question,'goal':goal,'sources':[s for s in sources if s['id'] in selected]})
             selected=choice['section_ids'];selection_tasks.append(task)
-        fragments=[piece for m in materials if m['id'] in selected for piece in chunk(m,max(1000,budget-2500))]
+        if frozen_policy['data'].get('prompt_profile') in ('question_focused_v5','question_focused_v6'):
+            # First choose relevant sections as before, then select full small
+            # windows within those sections. Every selected section's tail is
+            # considered without translating all of its irrelevant material.
+            windows=[piece for m in materials if m['id'] in selected for piece in chunk(m,500)]
+            window_sources=[{'id':m['id'],'title':m['evidence']['article_title'],'section':m['evidence']['section_title'],
+                'lead':m['text'],'characters':len(m['text']),'evidence':m['evidence']} for m in windows]
+            chosen=[]
+            for group in groups(window_sources,budget):
+                choice,task=self._call(turn,'select',{'question':question,'goal':goal,'sources':group,'full_windows':True})
+                chosen.extend(choice['section_ids']);selection_tasks.append(task)
+            chosen=list(dict.fromkeys(chosen))
+            while len(chosen)>6:
+                narrowed=[]
+                for group in groups([s for s in window_sources if s['id'] in chosen],budget):
+                    choice,task=self._call(turn,'select',{'question':question,'goal':goal,'sources':group,'full_windows':True})
+                    narrowed.extend(choice['section_ids']);selection_tasks.append(task)
+                narrowed=list(dict.fromkeys(narrowed))
+                if len(narrowed)>=len(chosen):raise RuntimeErrorBase('knowledge_processing_selection_not_progressing')
+                chosen=narrowed
+            fragments=[m for m in windows if m['id'] in chosen]
+        else:
+            fragments=[piece for m in materials if m['id'] in selected for piece in chunk(m,max(1000,budget-2500))]
         if not fragments:return {'state':'ready','reason':'no_relevant_sources','evidence':[]}
         units=[];translation_tasks=[]
         for group in groups(fragments,budget):
@@ -315,3 +371,9 @@ def turn_scope_value(turn):
     return {'persona_id':turn['persona_id'],'user_id':LOCAL_USER_ID,'channel':turn['channel'],
             'bot':str(origin.get('bot','')) if turn['channel']=='qq' else '',
             'peer':str(origin.get('sender','')) if turn['channel']=='qq' else ''}
+
+
+def phase_for(stage):
+    return {'route':'knowledge_routing','route_retry':'knowledge_routing','goal':'knowledge_goal','select':'knowledge_selection','translate':'knowledge_translation',
+        'compose':'knowledge_translation','verify':'knowledge_review','web_plan':'knowledge_web_plan',
+        'web_fetch_plan':'knowledge_web_plan','search':'knowledge_search_web','fetch':'knowledge_fetch_web','wiki_search':'knowledge_search_web','wiki_fetch':'knowledge_fetch_web'}[stage]

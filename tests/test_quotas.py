@@ -24,6 +24,19 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
         self.paths=RuntimePaths(Path(self.temp.name));self.cfg=ConfigStore(self.paths);self.cfg.initialize()
         self.store=Store(self.paths);self.store.initialize();self.quotas=QuotaService(self.store,self.cfg)
 
+    async def test_development_is_persistent_unlimited_with_recoverable_base_limits(self):
+        before=self.quotas.current()['limits']
+        started=self.quotas.begin_development()
+        self.assertTrue(started['development_unlimited']);self.assertTrue(all(v==0 for v in started['limits'].values()))
+        reloaded=QuotaService(self.store,self.cfg)
+        self.assertTrue(reloaded.current()['development_unlimited'])
+        self.cfg.update({'organization':{'hourly_limit':1,'daily_limit':1}})
+        self.assertEqual(reloaded.current()['limits']['background_daily'],0)
+        # A nested legacy acceptance scope cannot remove development status.
+        reloaded.begin_acceptance();self.assertTrue(reloaded.current()['development_unlimited'])
+        reloaded.end_acceptance();self.assertEqual(reloaded.current()['limits'],before)
+        self.assertFalse(reloaded.current()['development_unlimited'])
+
     async def test_zero_is_valid_but_negative_bool_and_unknown_fields_are_rejected(self):
         unlimited=dict(project_hourly=0,background_hourly=0,background_daily=0)
         self.assertEqual(self.quotas.update(unlimited)['limits'],unlimited | {'selector_hourly':300,'selector_daily':2000})
@@ -93,17 +106,18 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(server.close)
         before = self.quotas.current()['limits']
         async with ClientSession() as client:
-            for action in ('quota.current', 'quota.update', 'quota.acceptance.begin', 'quota.acceptance.end'):
+            for action in ('quota.current', 'quota.update', 'quota.acceptance.begin', 'quota.acceptance.end', 'quota.development.begin', 'quota.development.end'):
                 async with client.post(server.make_url('/v1/manage'),
                     headers={'Authorization': 'Bearer ' + self.cfg.token('bridge')},
                     json={'action': action, 'args': {'limits': dict.fromkeys(before, 0)} if action == 'quota.update' else {}}) as response:
                     self.assertEqual(response.status, 403)
             self.assertEqual(self.quotas.current()['limits'], before)
-            for action in ('quota.acceptance.begin', 'quota.acceptance.end'):
+            for action in ('quota.acceptance.begin', 'quota.acceptance.end', 'quota.development.begin', 'quota.development.end'):
                 async with client.post(server.make_url('/v1/manage'),
                     headers={'Authorization': 'Bearer ' + self.cfg.token()},
                     json={'action': action, 'args': {}}) as response:
                     self.assertEqual(response.status, 200)
                     value = await response.json()
                     self.assertEqual(value['acceptance_active'], action.endswith('begin'))
+                    self.assertEqual(value['development_unlimited'], action == 'quota.development.begin')
             self.assertEqual(self.quotas.current()['limits'], before)
