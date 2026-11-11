@@ -1,5 +1,17 @@
 # 当前项目状态
 
+<!-- AGPL_ONLY_STATUS_BEGIN -->
+2026-11-11按用户最新指令完成PCAR许可证更正，当前为 **AGPL-3.0-only**，仅适用第3版。根LICENSE保留标准AGPLv3全文及项目版本限定，README、pyproject.toml和当前开发指导同步；原MIT全文作为历史版本记录保留，第三方许可及版权声明保持。
+
+本次仅许可证、项目元数据与文档更新，业务代码、依赖版本和运行数据未改，模型调用/QQ发送0，未启动服务。用户随后授权本轮累计通用指导及许可证更新提交并推送，发布结果见Git和D盘exports/git-delivery-20261111-guidance-agpl.json。此前GPL迁移待定和MIT现状按原时点阅读。召回优先级及MaiBot实际代码移植仍待实施，M9.A五步顺序保持。
+<!-- AGPL_ONLY_STATUS_END -->
+
+<!-- RECALL_GUIDANCE_STATUS_BEGIN -->
+2026-11-11完成[认知与召回优先级开发指导](PCAR-认知与召回优先级开发指导.md)及入口衔接。新方向为原始资料保留、优先级随自然时间衰减、有效回忆强化、活跃/休眠分层与按需找回。用户确认MaiBot和A_Memorix作者对PCAR的GPL授权，具体许可迁移、代码移植及优先级功能均待实施。M9.A五步尚未开工，顺序保持；召回配套安排在M9.A完成后、G-AUTO前。
+
+本轮仅文档与公开来源只读核查，业务代码、根LICENSE、正式数据和配置未变，新增项目模型/搜索工具付费调用0、QQ发送0，未启动运行服务，未提交推送。源码候选和正式基线维持既有版本。当前接续见[HANDOFF](HANDOFF.md)，以下记录按原时点保留。
+<!-- RECALL_GUIDANCE_STATUS_END -->
+
 <!-- QQ_BACKENDS_STATUS_BEGIN -->
 2026-11-10 临时QQ功能支持NapCat与SnowLuma二选一，源码候选 `0.9.0.dev4`、桥接 `0.7.4`。当前用户选择继续使用NapCat，SnowLuma的独立OneBot接入保留已实现与待验记录。PCAR管理本人好友文本入口、客户端和Bot身份、发送回执与连接退出。旧配置按napcat读取，切换方式或账号/路由会更新连接令牌。世界知识候选仍为结构26、配置3、导出20。
 

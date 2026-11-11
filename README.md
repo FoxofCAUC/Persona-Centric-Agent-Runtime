@@ -9,7 +9,7 @@
 ![Version](https://img.shields.io/badge/version-0.8.0.dev3-4263eb)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
-[MIT 开源协议](LICENSE)
+[AGPL-3.0-only 开源协议](LICENSE)
 
 [产品方向与大肥鱼参考线](docs/AI伴侣产品方向与大肥鱼参考线.md) · [当前状态](docs/STATUS.md) · [快速开始](#快速开始) · [文档导航](#文档导航)
 
@@ -173,4 +173,6 @@ flowchart LR
 
 部分工作台基础代码经授权从既有TRPG项目复用，当前运行不依赖其源码，详见 [复用记录](docs/REUSE.md)。仓库不分发NapCat、QQ或AstrBot二进制，第三方组件遵循各自许可和使用条件。
 
-本项目采用 **[MIT 开源协议](LICENSE)**，版权声明为 `Copyright (c) 2026 FoxofCAUC`。第三方代码、组件及资源仍遵循各自许可证和使用条件；本项目的 MIT 声明不替代其许可。
+本项目采用 **[GNU Affero General Public License v3.0 only（AGPL-3.0-only）](LICENSE)**，版权声明为 `Copyright (c) 2026 FoxofCAUC`。仅适用第3版，不包含“或任何后续版本”的授权。第三方代码、组件及资源仍遵循各自许可证和使用条件，本项目声明不替代其许可。
+
+2026年11月11日按项目所有者决定更正许可证。此前按MIT发布的版本保留其原有许可记录，旧许可全文见[历史MIT许可证](docs/licenses/PCAR-MIT-20261028.txt)。该历史文件不构成当前版本的MIT双重许可。

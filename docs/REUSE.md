@@ -1,6 +1,6 @@
 # 本地代码复用记录
 
-PCAR 于2026-10-28按项目所有者决定采用 [MIT 许可证](../LICENSE)。以下复用来源记录继续保留；第三方组件及资源的原有许可不由本项目声明替代。
+PCAR 于2026-11-11按项目所有者决定采用 [AGPL-3.0-only](../LICENSE)，仅适用第3版。2026-10-28采用的[MIT许可](licenses/PCAR-MIT-20261028.txt)作为历史版本记录保留。以下复用来源与第三方版权声明继续保留，项目许可变更不改写各来源原有许可。
 
 来源：用户授权复用的 `D:\AIPoweredTRPGinQQ\AIPoweredTRPG\integrations\manager`（面板 1.2）。
 
