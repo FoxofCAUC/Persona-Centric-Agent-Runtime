@@ -13,7 +13,7 @@ import time
 from .archive import fingerprint
 from .instance import current_process_identity, process_identity_alive
 from .knowledge_fetch import FetchError, WikimediaFetcher, public_identifier
-from .knowledge_output import VERSION, RELATIVE_TIME, messages, parse, retain_candidates
+from .knowledge_output import VERSION, MAIN_VERSION, RELATIVE_TIME, messages, parse, retain_candidates
 from .knowledge_service import read, POLICY, SOURCES, package_path
 from .knowledge_store import SOURCE_POLICY, check_document, enabled, key, source_policy
 from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier
@@ -31,9 +31,12 @@ class KnowledgeMaintenance:
         self.pending_io = set()
         self.fetcher = fetcher or WikimediaFetcher(self.stopped)
 
-    def defaults(self):
-        return {'enabled': False, 'provider': provider_identity(self.engine.model()),
-                'sources': ['wikipedia_zh', 'wikidata'], 'daily_scan': True}
+    def model(self,policy):
+        return dict(self.engine.config.load()['model']) if policy.get('model_source','organization')=='main' else self.engine.model()
+
+    def defaults(self,model_source='main'):
+        return {'enabled':False,'provider':provider_identity(self.model({'model_source':model_source})),
+                'sources':['wikipedia_zh','wikidata'],'daily_scan':True,'model_source':model_source}
 
     def policy(self, persona_id):
         self.service.current_policy(persona_id)
@@ -44,9 +47,10 @@ class KnowledgeMaintenance:
         from .private_personas import guard_acceptance_write
         guard_acceptance_write(self.store, persona_id)
         self.policy(persona_id)
-        if (not isinstance(data, dict) or set(data) != set(self.defaults())
+        if (not isinstance(data, dict) or set(data) not in (set(self.defaults()),set(self.defaults())-{'model_source'})
+                or data.get('model_source','organization') not in ('main','organization')
                 or type(data['enabled']) is not bool or type(data['daily_scan']) is not bool
-                or data['provider'] != provider_identity(self.engine.model())
+                or data['provider'] != provider_identity(self.model(data))
                 or not isinstance(data['sources'], list) or not data['sources']
                 or any(source not in SOURCES for source in data['sources'])
                 or len(data['sources']) != len(set(data['sources']))):
@@ -72,7 +76,7 @@ class KnowledgeMaintenance:
         data = read(db, 'maintenance.' + persona_id, self.defaults())['data']
         if (self.stopped.is_set() or self.engine.draining or self.engine.chat.draining
                 or not data['enabled'] or source_id not in data['sources']
-                or data['provider'] != provider_identity(self.engine.model())
+                or data['provider'] != provider_identity(self.model(data))
                 or not any(enabled(db, persona_id, channel, source_id) for channel in ('desktop','qq'))
                 or not source_policy(db, source_id)['store_body']):
             raise RuntimeErrorBase('organization_policy_changed')
@@ -90,6 +94,8 @@ class KnowledgeMaintenance:
         target_id = fingerprint([source_id, public_id])
         now = self.clock()
         target = db.execute('SELECT * FROM knowledge_targets WHERE id=?', (target_id,)).fetchone()
+        page=db.execute('SELECT state FROM knowledge_pages WHERE id=?',(target['page_id'],)).fetchone() if target and target['page_id'] else None
+        if (target and target['state']=='withdrawn') or (page and page['state']=='withdrawn'):raise RuntimeErrorBase('knowledge_target_withdrawn')
         bindings = json.loads(target['bindings_json']) if target else []
         binding = item.get('base_binding')
         if binding:
@@ -113,14 +119,18 @@ class KnowledgeMaintenance:
             'ON CONFLICT(id) DO UPDATE SET bindings_json=excluded.bindings_json,last_used=excluded.last_used',
             (target_id, source_id, public_id, json.dumps(bindings), last_used, 'registered'))
         old = db.execute("SELECT * FROM knowledge_fetch_jobs WHERE target_id=? AND state IN ('queued','fetching') "
-                         'ORDER BY created_epoch LIMIT 1', (target_id,)).fetchone()
+                         'AND owner_persona=? ORDER BY created_epoch LIMIT 1', (target_id,persona_id)).fetchone()
         if old:
+            priority={'current':0,'manual':1,'on_demand':2,'daily':3}
+            if priority.get(reason,3)<priority.get(old['reason'],3):
+                db.execute('UPDATE knowledge_fetch_jobs SET reason=? WHERE id=?',(reason,old['id']))
             return old['id']
-        if target and target['last_checked'] is not None:
+        head=db.execute('SELECT head_document_id FROM knowledge_pages WHERE id=?',(target['page_id'],)).fetchone() if target and target['page_id'] else None
+        if target and target['last_checked'] is not None and head and head['head_document_id']:
             age = now - target['last_checked']
             if age < (1 if reason in ('current','manual') else source_policy(db, source_id)['freshness_seconds']):
                 previous = db.execute("SELECT id FROM knowledge_fetch_jobs WHERE target_id=? AND state='completed' "
-                                      'ORDER BY created_epoch DESC LIMIT 1', (target_id,)).fetchone()
+                                      'AND owner_persona=? ORDER BY created_epoch DESC LIMIT 1', (target_id,persona_id)).fetchone()
                 if previous:
                     return previous['id']
         job_id = identifier()
@@ -174,6 +184,9 @@ class KnowledgeMaintenance:
                 bindings.extend(json.loads(row['bindings_json']))
         db.execute("UPDATE knowledge_targets SET state='withdrawn' WHERE id=?", (target['id'],))
         self.invalidate_bindings(db, bindings, reason)
+        if target['source_id']=='wikipedia_zh':
+            from .knowledge_web_maintenance import invalidate_versions
+            invalidate_versions(db,target['page_id'],reason=reason,title=target['public_id'])
 
     def fetch_one(self, job_id=None):
         if self.stopped.is_set() or self.engine.draining or self.engine.chat.draining:
@@ -192,7 +205,7 @@ class KnowledgeMaintenance:
             if job_id:
                 sql += ' AND j.id=?'
                 args.append(job_id)
-            row = db.execute(sql + " ORDER BY CASE j.reason WHEN 'current' THEN 0 WHEN 'manual' THEN 1 ELSE 2 END,j.created_epoch LIMIT 1", args).fetchone()
+            row = db.execute(sql + " ORDER BY CASE j.reason WHEN 'current' THEN 0 WHEN 'manual' THEN 1 WHEN 'on_demand' THEN 2 ELSE 3 END,j.created_epoch LIMIT 1", args).fetchone()
             if not row:
                 return False
             job = dict(row)
@@ -207,11 +220,13 @@ class KnowledgeMaintenance:
             rate['data']['next_epoch'] = now + source_policy(db, job['source_id'])['min_interval_seconds']
             db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
                 ('knowledge.network.' + job['source_id'], json.dumps(rate)))
+            timeout=self.model(self.grant(db,job['owner_persona'],job['source_id']))['timeout']
             token = identifier()
             db.execute("UPDATE knowledge_fetch_jobs SET state='fetching',attempts=attempts+1,lease_json=?,lease_until=? WHERE id=?",
-                (json.dumps({'token': token, 'process': self.process}), now + 30, job['id']))
+                (json.dumps({'token': token, 'process': self.process}), now + max(30,timeout+10), job['id']))
             source = dict(db.execute('SELECT * FROM knowledge_sources WHERE id=?', (job['source_id'],)).fetchone())
             source['interactive'] = not bool(job['automatic']) or job['reason'] == 'current'
+            source['timeout']=timeout
         try:
             document = self.fetcher.fetch(source, job['public_id'])
             if self.stopped.is_set():
@@ -275,12 +290,20 @@ class KnowledgeMaintenance:
         db.execute("UPDATE knowledge_targets SET page_id=?,last_checked=?,state='active' WHERE id=?",
                    (page_id, now, job['target_id']))
         self.invalidate_bindings(db, json.loads(target['bindings_json']), 'upstream_version_observed')
-        excerpt_length = min(8000, self.engine.model()['max_input_chars'] // 3)
-        work_identity = [page_id, body_hash, VERSION, provider_identity(self.engine.model())]
+        if job['source_id']=='wikipedia_zh':
+            from .knowledge_web_maintenance import invalidate_versions
+            invalidate_versions(db,page_id,material['revision'],'maintained_wiki_revision_observed')
+        grant=self.grant(db,job['owner_persona'],job['source_id']);model=self.model(grant)
+        excerpt_length = min(8000, model['max_input_chars'] // 3)
+        pipeline=MAIN_VERSION if grant.get('model_source')=='main' else VERSION
+        work_identity = [page_id, body_hash, pipeline, provider_identity(model)]
+        if grant.get('model_source')=='main':work_identity.append({'model_source':'main'})
         if re.search(RELATIVE_TIME, material['body'][:excerpt_length]):
             work_identity.append({'temporal_anchor': material['upstream_at']})
-        work_key = fingerprint(work_identity)
-        batch = db.execute('SELECT id FROM knowledge_batches WHERE work_key=?', (work_key,)).fetchone()
+        legacy_key=fingerprint(work_identity)
+        work_key = fingerprint(work_identity+[{'owner_persona':job['owner_persona']}])
+        # Reuse only the same owner's old contract, including unknown receipts.
+        batch = db.execute('SELECT id FROM knowledge_batches WHERE work_key=? OR (work_key=? AND owner_persona=?)', (work_key,legacy_key,job['owner_persona'])).fetchone()
         if not batch:
             data = {'automatic': bool(job['automatic']), 'proposals': None,
                     'coverage': {'start': 0, 'end': min(len(material['body']), excerpt_length),
@@ -296,24 +319,42 @@ class KnowledgeMaintenance:
         stored = json.loads(batch['data_json'])
         document = dict(db.execute('SELECT d.*,p.source_id,p.title FROM knowledge_documents d '
             'JOIN knowledge_pages p ON p.id=d.page_id WHERE d.id=?', (batch['document_id'],)).fetchone())
-        limit = self.engine.model()['max_input_chars']
-        existing = [dict(row) for row in db.execute('SELECT id,subject,predicate,value,kind,valid_from,valid_until '
-            'FROM knowledge_claims WHERE page_id=? ORDER BY rowid DESC LIMIT 12', (document['page_id'],))]
+        grant=self.grant(db,batch['owner_persona'],document['source_id'])
+        limit = self.model(grant)['max_input_chars']
+        existing = [dict(row) for row in db.execute('SELECT c.id,c.subject,c.predicate,c.value,c.kind,c.valid_from,c.valid_until '
+            'FROM knowledge_claims c JOIN knowledge_batches b ON b.id=c.batch_id WHERE c.page_id=? AND b.owner_persona=? ORDER BY c.rowid DESC LIMIT 12', (document['page_id'],batch['owner_persona']))]
         metadata = json.loads(document['metadata_json'])
         provenance = metadata.get('pcar_provenance') or {'kind': 'public_wikimedia',
             'name': '中文Wikipedia' if document['source_id'] == 'wikipedia_zh' else 'Wikidata'}
         data = {'stage': stage, 'batch_id': batch['id'], 'document_id': document['id'],
             'document_sha256': document['sha256'], 'source_id': document['source_id'],
             'source_signature': stored['source_signature'], 'grant_signature': stored['grant_signature'],
-            'pipeline': VERSION, 'document': {'title': document['title'],
+            'pipeline': MAIN_VERSION if grant.get('model_source')=='main' else VERSION, 'document': {'title': document['title'],
                 'upstream_revision': document['upstream_revision'], 'upstream_at': document['upstream_at'],
                 'excerpt': document['body'][:min(8000, limit // 3)], 'source_provenance': provenance}, 'existing_claims': existing}
+        if grant.get('model_source')=='main':
+            data['model_source']='main'
+            body=data['document']['excerpt'];windows=[];start=0
+            while start<len(body):
+                end=min(len(body),start+500);windows.append({'id':'W'+str(len(windows)+1),'start':start,'end':end,'text':body[start:end]})
+                if end==len(body):break
+                start=end-180
+            data['document']['windows']=windows
         if stage == 'extract':
+            if not existing:
+                from .knowledge_store import eligible
+                from .knowledge_lexical import ChineseText
+                normalize=ChineseText().simplify;body=normalize(document['body'])
+                names=[]
+                for item in eligible(db,persona_id=batch['owner_persona']):
+                    name={'subject':item['subject'],'predicate':item['predicate']}
+                    if normalize(item['subject']) in body and name not in names:names.append(name)
+                if names:data['related_claim_names']=names[:6]
             data['retention_candidates'] = []
             rows = db.execute('SELECT c.*,e.quote,d.upstream_at FROM knowledge_claims c '
                 'JOIN knowledge_evidence e ON e.claim_id=c.id JOIN knowledge_documents d ON d.id=c.document_id '
-                "WHERE c.state='active' AND c.rowid IN (SELECT max(rowid) FROM knowledge_claims WHERE page_id=? "
-                'GROUP BY claim_key,valid_from,valid_until) ORDER BY c.rowid DESC', (document['page_id'],))
+                "WHERE c.state='active' AND c.rowid IN (SELECT max(x.rowid) FROM knowledge_claims x JOIN knowledge_batches b ON b.id=x.batch_id WHERE x.page_id=? AND b.owner_persona=? "
+                'GROUP BY x.claim_key,x.valid_from,x.valid_until) ORDER BY c.rowid DESC', (document['page_id'],batch['owner_persona']))
             for row in rows:
                 item = dict(row)
                 start = document['body'].find(item['quote'])
@@ -347,14 +388,19 @@ class KnowledgeMaintenance:
                 or self.source_signature(db, data['source_id']) != data['source_signature']):
             raise RuntimeErrorBase('organization_policy_changed')
         document = check_document(db, payload)
+        excerpt=data['document']['excerpt']
+        if document['body'][:len(excerpt)]!=excerpt:raise RuntimeErrorBase('source_expired')
+        for window in data['document'].get('windows',[]):
+            if excerpt[window['start']:window['end']]!=window['text']:raise RuntimeErrorBase('source_expired')
         for fragment in data['document'].get('supporting_fragments', []):
             if document['body'][fragment['start']:fragment['end']] != fragment['text']:
                 raise RuntimeErrorBase('source_expired')
-        if contract['scope'] != payload['scope'] or data['pipeline'] != VERSION:
+        if contract['scope'] != payload['scope'] or data['pipeline'] != (MAIN_VERSION if data.get('model_source')=='main' else VERSION):
             raise RuntimeErrorBase('organization_scope_mismatch')
 
     def published(self, db, task, payload, response, audit):
         output = parse(payload, response, isolate_items=True)
+        audit.setdefault('normalizations',[]).extend(output.pop('_normalizations',[]))
         data = payload['external_knowledge']
         batch = db.execute('SELECT * FROM knowledge_batches WHERE id=?', (data['batch_id'],)).fetchone()
         stored = json.loads(batch['data_json'])
@@ -374,8 +420,8 @@ class KnowledgeMaintenance:
             state = ('active' if all(decision[field] for field in ('supported', 'temporal_ok', 'version_ok'))
                      and decision['kind'] in ('fact', 'source_claim') and proposal['kind'] in ('fact', 'source_claim') else 'quarantined')
             claim_key = key(proposal['subject'], proposal['predicate'])
-            prior = db.execute('SELECT id FROM knowledge_claims WHERE page_id=? AND claim_key=? '
-                               'ORDER BY rowid DESC LIMIT 1', (document['page_id'], claim_key)).fetchone()
+            prior = db.execute('SELECT c.id FROM knowledge_claims c JOIN knowledge_batches b ON b.id=c.batch_id WHERE c.page_id=? AND c.claim_key=? AND b.owner_persona=? '
+                               'ORDER BY c.rowid DESC LIMIT 1', (document['page_id'], claim_key,task['persona_id'])).fetchone()
             claim_id = fingerprint([batch['id'], decision['index']])
             kind = 'source_claim' if proposal['kind'] == 'source_claim' and decision['kind'] == 'fact' else decision['kind']
             db.execute('INSERT OR IGNORE INTO knowledge_claims VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -402,7 +448,9 @@ class KnowledgeMaintenance:
             scan = read(db, 'scan.' + pid, {'last_epoch': 0})
             if now - scan['data']['last_epoch'] < 86400:
                 continue
-            for row in db.execute("SELECT * FROM knowledge_targets WHERE state!='withdrawn' ORDER BY last_used DESC LIMIT 100").fetchall():
+            from .knowledge_web_maintenance import discover_existing
+            discover_existing(self,db,pid)
+            for row in db.execute("SELECT t.* FROM knowledge_targets t WHERE t.state!='withdrawn' AND (EXISTS(SELECT 1 FROM knowledge_fetch_jobs j WHERE j.target_id=t.id AND j.owner_persona=?) OR EXISTS(SELECT 1 FROM knowledge_batches b JOIN knowledge_documents d ON d.id=b.document_id WHERE b.owner_persona=? AND d.page_id=t.page_id)) ORDER BY t.last_used DESC LIMIT 100",(pid,pid)).fetchall():
                 try:
                     self._enqueue(db, pid, {'source_id': row['source_id'], 'public_id': row['public_id']}, True, 'daily')
                 except RuntimeErrorBase:
@@ -449,7 +497,10 @@ class KnowledgeMaintenance:
             await asyncio.shield(task)
 
     async def drain(self):
-        while self.pending_io:await asyncio.gather(*list(self.pending_io),return_exceptions=True)
+        while self.pending_io:
+            pending=list(self.pending_io)
+            await asyncio.gather(*pending,return_exceptions=True)
+            self.pending_io.difference_update(task for task in pending if task.done())
 
     def on_result(self, turn, result, latest):
         jobs = []

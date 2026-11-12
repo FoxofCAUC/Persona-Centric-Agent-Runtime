@@ -71,6 +71,12 @@ def messages(payload):
     if focused and data['stage']=='goal':instruction+='仅当当前用户提出新的公共知识请求才生成查询。童年回忆、感受、表示理解、比喻、告别等闲聊返回queries=[]；不要把提到科学名词当作事实询问。'
     if data['stage'] in ('translate','compose','verify') and any(m.get('evidence',{}).get('kind')=='web_document' for m in data['input'].get('materials',[])):
         instruction+='本轮网页资料均属于来源声称，输出unit.kind必须为source_claim（有冲突则unresolved），不能写fact。保留未知发布日期及来源条件。'
+    if data['stage']=='goal' and data['input'].get('maintained_topics'):
+        instruction+='maintained_topics是本角色已获准维护的资料主题，可据其主体形成检索目标；查询已存资料的事实也需要queries，不要求它一定是现实百科条目。主题名称不是答案，不得凭它补造事实。'
+    if data['stage']=='select' and data['input'].get('cache_only'):
+        instruction+='本轮是已维护事实缓存。只有这些资料足以覆盖question的关键所问时才选择；仅主题相关、资料不足或需要新事实时返回空section_ids，让程序继续查询来源，不得用常识补齐。'
+    if data['input'].get('conflict_contract_revision')==1:
+        instruction+='引用claim_state=conflict材料的每一项unit.kind都必须是unresolved，包括分别转述单方来源的条目；不能用source_claim代替这个状态。文本可以准确归属各方说法，但必须保留分歧，不能选定其中一方为定论。复核时依原文核对所有说法及分歧。'
     value=data['input']
     if focused:
         from .knowledge_model_view import inputs

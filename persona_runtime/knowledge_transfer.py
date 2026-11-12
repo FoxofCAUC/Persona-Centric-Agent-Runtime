@@ -204,8 +204,8 @@ def merge_snapshot(db, data, *, imported_persona=None):
                 'document_id': mapping[item['document_id']]})
     for page in tables['knowledge_pages']:
         current = db.execute('SELECT * FROM knowledge_pages WHERE id=?', (page['id'],)).fetchone()
-        if not current['head_document_id'] or (not imported_persona and current['state'] != 'withdrawn'
-                                               and page['latest_revision'] > current['latest_revision']):
+        if current['state']!='withdrawn' and ((not current['head_document_id'] and page['latest_revision']>=current['latest_revision'])
+                or not imported_persona and page['latest_revision']>current['latest_revision']):
             db.execute('UPDATE knowledge_pages SET title=?,url=?,head_document_id=?,latest_revision=?,state=?,last_checked=? WHERE id=?',
                 (page['title'], page['url'], mapping.get(page['head_document_id']), page['latest_revision'], page['state'], page['last_checked'], page['id']))
     for target in tables['knowledge_targets']:

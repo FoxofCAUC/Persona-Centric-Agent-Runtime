@@ -86,11 +86,14 @@ def eligible(db, *, now=None, claim_keys=None, persona_id=None, channel='desktop
     query = '''SELECT c.*,d.sha256,d.upstream_revision,d.upstream_at,d.metadata_json,
         p.source_id,p.upstream_id,p.title,p.url,p.last_checked,p.latest_revision,p.state AS page_state,
         h.sha256 AS head_sha256,h.upstream_at AS head_upstream_at,s.source_group,e.start_character,e.end_character,e.quote
-        FROM knowledge_claims c JOIN knowledge_documents d ON d.id=c.document_id
+        FROM knowledge_claims c JOIN knowledge_batches b ON b.id=c.batch_id JOIN knowledge_documents d ON d.id=c.document_id
         JOIN knowledge_pages p ON p.id=c.page_id JOIN knowledge_sources s ON s.id=p.source_id
         JOIN knowledge_documents h ON h.id=p.head_document_id
         JOIN knowledge_evidence e ON e.claim_id=c.id WHERE c.state='active' AND p.state='active' '''
     args = []
+    if persona_id is not None:
+        query+=' AND b.owner_persona=?'
+        args.append(persona_id)
     if claim_keys is not None:
         if not claim_keys:
             return []
@@ -102,6 +105,9 @@ def eligible(db, *, now=None, claim_keys=None, persona_id=None, channel='desktop
             row.update(origin(row))
         except (ValueError, TypeError, AttributeError, KeyError):
             continue
+        if persona_id and row['source_id']=='wikipedia_zh':
+            from .knowledge_web_maintenance import withdrawn_version
+            if any(withdrawn_version(db,persona_id,row['page_id'],revision) for revision in {row['upstream_revision'],row['latest_revision']}):continue
         if persona_id and not enabled(db, persona_id, channel, row['source_id']):
             continue
         begin, end = instant(row['valid_from']), instant(row['valid_until'])
@@ -159,16 +165,19 @@ def source_policy(db, source_id):
 
 def search(db, persona_id, channel, query, *, current=False):
     from .chat import terms
-    wanted = terms(query)
+    from .knowledge_lexical import ChineseText
+    normalize=ChineseText().simplify
+    db.create_function('knowledge_normalize',1,lambda value:normalize(value or ''))
+    wanted = terms(normalize(query))
     interval = query_interval(query)
     candidates = []
     tokens = sorted(wanted)[:32]
     if not tokens:
         return []
-    expression = '+'.join('(instr(c.subject||c.predicate||c.value||p.title,?)>0)' for _ in tokens)
+    expression = '+'.join('(instr(knowledge_normalize(c.subject||c.predicate||c.value||p.title),?)>0)' for _ in tokens)
     keys = [row[0] for row in db.execute('SELECT c.claim_key,max(' + expression + ') AS score, '
-        'max(c.created_epoch) AS recorded FROM knowledge_claims c JOIN knowledge_pages p ON p.id=c.page_id '
-        "WHERE c.state='active' GROUP BY c.claim_key HAVING score>0 ORDER BY score DESC,recorded DESC LIMIT 40", tokens)]
+        'max(c.created_epoch) AS recorded FROM knowledge_claims c JOIN knowledge_batches b ON b.id=c.batch_id JOIN knowledge_pages p ON p.id=c.page_id '
+        "WHERE c.state='active' AND b.owner_persona=? GROUP BY c.claim_key HAVING score>0 ORDER BY score DESC,recorded DESC LIMIT 40", tokens+[persona_id])]
     for row in eligible(db, claim_keys=keys, persona_id=persona_id, channel=channel, interval=interval):
         if not enabled(db, persona_id, channel, row['source_id']):
             continue
@@ -176,7 +185,7 @@ def search(db, persona_id, channel, query, *, current=False):
         fresh = time.time() - row['last_checked'] <= policy['freshness_seconds']
         if current and not fresh:
             continue
-        score = len(wanted & terms(' '.join(row[key] for key in ('subject', 'predicate', 'value', 'title'))))
+        score = len(wanted & terms(normalize(' '.join(row[key] for key in ('subject', 'predicate', 'value', 'title')))))
         if score:
             candidates.append((score, row['created_epoch'], row))
     result = []

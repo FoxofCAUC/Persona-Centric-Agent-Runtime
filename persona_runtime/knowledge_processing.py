@@ -77,24 +77,38 @@ class KnowledgeProcessing:
                           (turn['persona_id'],turn['session_id'],turn['id'])).fetchall()
         recent, used = [], 0
         for row in rows:
+            from .knowledge_service import turn_usable
             failed=row['status']!='completed'
+            evidence_invalid=focused and not failed and not turn_usable(db,row['id'])
+            failed=failed or evidence_invalid
             if failed and any(db.execute('SELECT 1 FROM source_exclusions WHERE event_id=?',(ident,)).fetchone() for ident in load_turn_sources(db,dict(row))):continue
             found = read_exact(db,selected,{'kind':'turn','id':row['id']},audit=failed)
             if found['status'] != 'found': continue
             item = {'turn_id':row['id'], 'user':'\n'.join(m['text'] for m in found['members']),
                     'assistant':'' if failed else '\n'.join(m['text'] for m in found['replies']),
                     'binding':{'status':'input_only','turn_id':row['id'],'hash':fingerprint(found['members'])} if failed else binding(found)}
-            if focused:item['request_state']=row['status']
+            if focused:item['request_state']='evidence_invalidated' if evidence_invalid else row['status']
             length = len(json.dumps(item,ensure_ascii=False))
             if used+length > 4000: break
             recent.append(item); used += length
         return {'current':load_turn_input(db,turn),'recent_context':list(reversed(recent))}
+
+    def topic_hints(self,db,turn,question):
+        from .knowledge_store import search as stored_facts
+        hints=[]
+        for item in stored_facts(db,turn['persona_id'],turn['channel'],question,current=False):
+            hint={'subject':item['claim']['subject'],'predicate':item['claim']['predicate'],
+                  'source_name':item['source_name'],'source_origin':item['source_origin']}
+            if hint not in hints:hints.append(hint)
+        return hints[:3]
 
     def _call(self, turn, stage, inputs):
         active(self.service,turn)
         policy = self.policy(turn['persona_id'])
         with self.store.connection() as db:
             guard = fingerprint(self.context(db,turn))
+        if stage in ('translate','compose','verify') and any(m.get('evidence',{}).get('claim_state')=='conflict' for m in inputs.get('materials',[])):
+            inputs=dict(inputs,conflict_contract_revision=1)
         token = fingerprint([turn_scope_value(turn),policy,stage,inputs,VERSION])
         cache_key = 'processing.cache.'+token
         mark(self.service,turn,phase_for(stage))
@@ -224,10 +238,21 @@ class KnowledgeProcessing:
         if path is None and not should_retrieve(question): return {'state':'not_triggered','evidence':[]}
         with self.store.connection() as db:
             context=self.context(db,turn)
-        goal,goal_task=self._call(turn,'goal',{'question':question,'recent_context':context['recent_context']})
+        with self.store.connection() as db:hints=self.topic_hints(db,turn,question)
+        goal,goal_task=self._call(turn,'goal',{'question':question,'recent_context':context['recent_context'],**({'maintained_topics':hints} if hints else {})})
         if not goal['queries']:raise RuntimeErrorBase('knowledge_route_goal_conflict')
         if path=='local' and goal['freshness']=='current':raise RuntimeErrorBase('knowledge_route_freshness_conflict')
         if path=='web' or path is None and self.engine.web.policy(turn['persona_id'])['data']['enabled']:
+            # This is the small authoritative incremental store, not ANN.
+            # Explicit current requests still check upstream before answering.
+            if goal['freshness']!='current':
+                from .knowledge_store import search as stored_facts
+                with self.store.connection() as db:
+                    cached={e['claim_id']:e for query in goal['queries'] for e in stored_facts(db,turn['persona_id'],turn['channel'],query,current=True)}
+                if cached:
+                    materials=collect(self.service,turn,[{'evidence':list(cached.values())}])
+                    result=self.translate_materials(turn,question,goal,goal_task,materials,frozen_policy,cache_only=True)
+                    if result.get('evidence'):return result|{'reuse_kind':'maintained_facts'}
             materials=self.engine.web.gather(self,turn,question,goal)
             return self.translate_materials(turn,question,goal,goal_task,materials,frozen_policy)
         results=[search_turn(self.service,turn,query) for query in goal['queries']]
@@ -244,7 +269,7 @@ class KnowledgeProcessing:
         materials=collect(self.service,turn,results)
         return self.translate_materials(turn,question,goal,goal_task,materials,frozen_policy)
 
-    def translate_materials(self,turn,question,goal,goal_task,materials,frozen_policy):
+    def translate_materials(self,turn,question,goal,goal_task,materials,frozen_policy,cache_only=False):
         if not materials:return {'state':'ready','reason':'no_matches','evidence':[]}
         budget=self.model(turn['persona_id'])['max_input_chars']-5000
         if budget<3000:raise RuntimeErrorBase('knowledge_processing_input_budget')
@@ -252,11 +277,11 @@ class KnowledgeProcessing:
                   'lead':m['text'][:250],'characters':len(m['text']),'evidence':m['evidence']} for m in materials]
         selected=[];selection_tasks=[]
         for group in groups(sources,budget):
-            choice,task=self._call(turn,'select',{'question':question,'goal':goal,'sources':group})
+            choice,task=self._call(turn,'select',{'question':question,'goal':goal,'sources':group,**({'cache_only':True} if cache_only else {})})
             selected.extend(choice['section_ids']);selection_tasks.append(task)
         selected=list(dict.fromkeys(selected))
         if len(selected)>6:
-            choice,task=self._call(turn,'select',{'question':question,'goal':goal,'sources':[s for s in sources if s['id'] in selected]})
+            choice,task=self._call(turn,'select',{'question':question,'goal':goal,'sources':[s for s in sources if s['id'] in selected],**({'cache_only':True} if cache_only else {})})
             selected=choice['section_ids'];selection_tasks.append(task)
         if frozen_policy['data'].get('prompt_profile') in ('question_focused_v5','question_focused_v6'):
             # First choose relevant sections as before, then select full small

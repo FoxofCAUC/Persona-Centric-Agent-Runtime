@@ -59,7 +59,7 @@ class KnowledgeUI:
             ttk.Checkbutton(line, text=label, variable=self.knowledge_channels[channel]).pack(side='left')
         self.button(line, '保存角色开关', self.save_knowledge_reader, {'knowledge-write'})
         line = ttk.Frame(parent); line.pack(fill='x')
-        ttk.Checkbutton(line, text='整理知识后回答（使用整理模型）', variable=self.knowledge_process).pack(side='left')
+        ttk.Checkbutton(line, text='整理知识后回答', variable=self.knowledge_process).pack(side='left')
         self.button(line, '保存知识整理', self.save_knowledge_processing, {'knowledge-write'})
         line = ttk.Frame(parent); line.pack(fill='x')
         ttk.Checkbutton(line, text='允许公共来源学习', variable=self.knowledge_learn).pack(side='left')
@@ -201,7 +201,9 @@ class KnowledgeUI:
         lines.extend(['',f"联网工具尝试 {tool.get('calls',0)}，计费成功 {tool.get('billable_calls',0)}，按文档估算 ${tool.get('known_amount_usd','0')}，未知 {tool.get('unknown_effect',0)}"])
         lines.extend(['', '已登记公开主题'])
         for key,query in data.get('web_policy',{}).get('data',{}).get('topics',{}).items():lines.append(key+' · '+query)
-        lines.extend(['', '知识整理'])
+        processing_model='主模型配置' if data.get('processing_policy',{}).get('data',{}).get('model_source')=='main' else '记忆整理配置'
+        learning_model='主模型配置' if data['maintenance_policy']['data'].get('model_source')=='main' else '记忆整理配置'
+        lines.extend(['', '知识整理：'+processing_model+'；公共来源学习：'+learning_model])
         for row in data.get('processing_tasks',[]):
             stage={'goal':'目标理解','select':'资料选择','translate':'知识翻译','compose':'知识合并','verify':'独立复核','public_page_plan':'公共页面定位','public_page_review':'查询内容复核'}.get(row['stage'],row['stage'])
             lines.append(stage+' · '+states.get(row['status'],row['status'])+' · '+(row['error_code'] or '无错误'))

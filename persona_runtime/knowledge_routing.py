@@ -133,24 +133,27 @@ class KnowledgeRouting:
         with self.store.connection() as db:
             context=processor.context(db,turn)
             capabilities=self.capabilities(db,turn['persona_id'])
+            maintained=processor.topic_hints(db,turn,question)
         policy=self.policy(turn['persona_id'])
         options=['none','local','web'] if policy['data']['variant']=='local_web' else ['none','web']
-        inputs={'routing_prompt_revision':2,'processing_profile':processor.policy(turn['persona_id'])['data'].get('prompt_profile','legacy_v1'),'request_model':self.model()['name'],'options':options,'routing_policy':policy,'state':{'current':question,'recent_context':context['recent_context'],
+        inputs={'routing_prompt_revision':4,'processing_profile':processor.policy(turn['persona_id'])['data'].get('prompt_profile','legacy_v1'),'request_model':self.model()['name'],'options':options,'routing_policy':policy,'state':{'current':question,'recent_context':context['recent_context'],
             'capabilities':capabilities,'reusable_evidence':{'available':bool(previous and previous.get('evidence')),
                 'sources':[{k:e.get(k) for k in ('article_title','source_snapshot_at','url')} for e in (previous or {}).get('evidence',[])]}}}
         focused=processor.policy(turn['persona_id'])['data'].get('prompt_profile') in ('question_focused_v3','question_focused_v4','question_focused_v5','question_focused_v6')
         if focused:
             ready=inputs['state']['reusable_evidence']
             ready['result_ready']=ready['available']
+            if (previous or {}).get('reason')=='referenced_evidence_changed':ready['unavailable_reason']='referenced_evidence_changed'
             if previous_turn_id and ready['available']:
                 with self.store.connection() as db:
                     old=db.execute('SELECT session_id,status,user_event_id FROM turns WHERE id=? AND persona_id=?',(previous_turn_id,turn['persona_id'])).fetchone()
                     text=db.execute('SELECT text FROM events WHERE id=?',(old['user_event_id'],)).fetchone() if old else None
                 ready['previous_question']=text[0] if text else None
                 ready['previous_reply_in_current_history']=bool(old and old['session_id']==turn['session_id'] and old['status']=='completed')
+        if maintained:inputs['state']['maintained_topics']=maintained
         result,task_id=processor._call(turn,'route',inputs)
         route_tasks=[task_id];clarification_task=None;goal=None
-        goal_input={'question':question,'recent_context':context['recent_context']}
+        goal_input={'question':question,'recent_context':context['recent_context'],**({'maintained_topics':maintained} if maintained else {})}
         if inputs['processing_profile'] in ('question_focused_v4','question_focused_v5','question_focused_v6') and result['choice']!='none':
             goal,clarification_task=processor._call(turn,'goal',goal_input)
             if not goal['queries']:result=dict(result,decision_status='uncertain',uncertainty_reason='knowledge_route_goal_conflict')
@@ -172,5 +175,5 @@ class KnowledgeRouting:
                 previous=processor.previous(turn,previous_turn_id)
                 if not previous or not previous.get('evidence'):raise RuntimeErrorBase('knowledge_route_reuse_unavailable')
                 return previous|{'routing':metadata}
-            return {'state':'not_triggered','evidence':[],'routing':metadata}
+            return {'state':'not_triggered','evidence':[],'routing':metadata,**({'reference_status':'previous_evidence_unavailable'} if (previous or {}).get('reason')=='referenced_evidence_changed' else {})}
         return processor.prepare(turn,question,path=result['choice'])|{'routing':metadata}

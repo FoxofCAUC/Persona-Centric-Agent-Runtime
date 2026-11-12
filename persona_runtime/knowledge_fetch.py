@@ -61,9 +61,16 @@ class WikimediaFetcher:
         headers = {'User-Agent': 'PCAR/0.9 public-knowledge-reader '
             '(https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime)', 'Accept': 'application/json'}
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10), trust_env=True) as session:
+            timeout=source.get('timeout',10);proxy=None
+            hostname=urllib.parse.urlsplit(source['endpoint']).hostname
+            if hostname in ('zh.wikipedia.org','www.wikidata.org'):
+                from .knowledge_dns import public_target,system_proxy
+                try:await public_target(hostname,443,timeout)
+                except RuntimeErrorBase:raise FetchError('knowledge_source_dns_unavailable') from None
+                proxy=system_proxy()
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout), trust_env=False) as session:
                 async with session.get(source['endpoint'], params=parameters, headers=headers,
-                                       ssl=self.ssl_context, allow_redirects=False) as response:
+                                       ssl=self.ssl_context, allow_redirects=False,proxy=proxy) as response:
                     if response.status != 200:
                         delay = response.headers.get('Retry-After', '60')
                         try:

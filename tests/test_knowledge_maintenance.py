@@ -86,7 +86,7 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         self.now = time.time()
         self.maintenance.clock = lambda: self.now
         self.chat.knowledge.update_policy(self.pid, {'enabled': True, 'channels': ['desktop','qq']}, 0, 'read')
-        policy = self.maintenance.policy(self.pid)['data']
+        policy = self.maintenance.defaults('organization')
         policy['enabled'] = True
         self.maintenance.update_policy(self.pid, policy, 0, 'learn')
 

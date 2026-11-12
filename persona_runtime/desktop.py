@@ -1082,8 +1082,18 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             body.rowconfigure(0, weight=1)
             listing = tk.Listbox(body, width=1, height=1)
             listing.grid(row=0, column=0, sticky="nsew")
-            for row in rows:
-                listing.insert("end", PHASES.get(row.get("phase"), row["status"]) + " · " + row["channel"] + " · " + row["id"][:8])
+            def current():return dialog.winfo_exists() and epoch==self.view_epoch and pid==self.persona_id
+            def render(fresh):
+                if not current():return
+                selected_id=rows[listing.curselection()[0]]['id'] if listing.curselection() else None
+                rows[:]=fresh;listing.delete(0,'end')
+                for index,row in enumerate(rows):
+                    listing.insert('end',PHASES.get(row.get('phase'),row['status'])+' · '+row['channel']+' · '+row['id'][:8])
+                    if row['id']==selected_id:listing.selection_set(index)
+                if any(row['status'] in ('queued','running') for row in rows):dialog.after(750,refresh)
+            def refresh():
+                if current():self.run_task('刷新请求队列',{'request-list'},lambda _:self.client.manage('chat.requests'),render,quiet=True,error_current=current)
+            render(list(rows))
             def selected():
                 return rows[listing.curselection()[0]] if listing.curselection() else None
             def details():

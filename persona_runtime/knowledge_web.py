@@ -71,9 +71,12 @@ def document(db,persona_id,channel,item):
             or hashlib.sha256(saved['body'].encode()).hexdigest()!=saved['sha256']
             or time.time()-saved['fetched_epoch']>policy['freshness_seconds']):
         raise RuntimeErrorBase('knowledge_evidence_changed')
+    if 'fetched_epoch' in item and (type(item['fetched_epoch']) not in (int,float) or not math.isfinite(item['fetched_epoch']) or not 0<=item['fetched_epoch']<=saved['fetched_epoch']):raise RuntimeErrorBase('knowledge_evidence_changed')
     from .persona_management import active
     active(db,persona_id)
     public_url(saved['url'],policy['domains'])
+    from .knowledge_web_maintenance import check_page
+    check_page(db,saved)
     return saved
 
 
@@ -133,7 +136,8 @@ def merge_snapshot(db,data,imported_persona=None):
         db.execute('INSERT OR IGNORE INTO knowledge_control VALUES(?,?)',
             ('knowledge.web.document.'+row['id'],json.dumps({'revision':0,'data':row},ensure_ascii=False)))
     current=read(db,'web.invalidations',{})
-    current['data'].update({mapping.get(k,k):v for k,v in data['invalidations'].items()})
+    restored={mapping.get(k,k):v for k,v in data['invalidations'].items()}
+    restored.update(current['data']);current['data']=restored
     db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
                ('knowledge.web.invalidations',json.dumps(current)))
 
@@ -279,6 +283,8 @@ class WebKnowledge:
             row['license']=rights;row['license_state']='declared' if rights else 'unknown'
             row['redirect_verification']='api_title_and_revision_reported'
             ident=row['id']=document_identity(row)
+        from .knowledge_web_maintenance import observe
+        observe(db,row)
         invalid_version=read(db,'web.invalidations',{})
         invalid=invalid_version['data']
         if ident in invalid:raise RuntimeErrorBase('web_document_withdrawn')
@@ -288,6 +294,7 @@ class WebKnowledge:
             same_page=saved['url']==url or (row.get('provider')=='wikimedia_api' and saved.get('provider')=='wikimedia_api' and saved['upstream']['page_id']==row['upstream']['page_id'])
             same_revision=row.get('provider')=='wikimedia_api' and saved.get('provider')=='wikimedia_api' and saved['upstream']['revision_id']==row['upstream']['revision_id'] and saved['sha256']==digest
             if saved['owner_persona']==pid and same_page and saved['id']!=ident and not same_revision:
+                if invalid.get(saved['id'],{}).get('state')=='withdrawn':continue
                 invalid[saved['id']]={'state':'corrected','reason':'new_content_version'}
         db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
             ('knowledge.web.invalidations',json.dumps({'revision':invalid_version['revision']+1,'data':invalid})))
@@ -323,7 +330,10 @@ class WebKnowledge:
         for ident in chosen['fetch_ids']:
             row=next(r for r in candidates if r['id']==ident)
             inputs=dict(common,url=row['url'],published_at=row.get('date'),freshness_epoch=epoch)
-            if row.get('provider')=='wikimedia_api':result,_=processor._call(turn,'wiki_fetch',inputs)
+            from .knowledge_service import read as read_control
+            with self.store.connection() as db:
+                learning=read_control(db,'maintenance.'+turn['persona_id'],self.engine.knowledge.defaults())['data']['enabled']
+            if row.get('provider')=='wikimedia_api' or learning and wiki_allowed and article_title(row['url']):result,_=processor._call(turn,'wiki_fetch',inputs)
             else:
                 try:result,_=processor._call(turn,'fetch',inputs)
                 except RuntimeErrorBase as error:
@@ -334,10 +344,12 @@ class WebKnowledge:
 
     def materials(self,persona_id,channel,documents):
         materials=[];seen=set()
-        with self.store.connection() as db:
+        with self.store.connection(write=True) as db:
             for result in documents:
                 item={'kind':'web_document','document_id':result['document_id'],'document_sha256':result['sha256']}
                 row=document(db,persona_id,channel,item)
+                from .knowledge_web_maintenance import track
+                track(self.engine.knowledge,db,persona_id,channel,row)
                 identity=(row.get('provider'),row.get('upstream',{}).get('page_id'),row.get('upstream',{}).get('revision_id'),row['sha256']) if row.get('provider')=='wikimedia_api' else row['id']
                 if identity in seen:continue
                 seen.add(identity)

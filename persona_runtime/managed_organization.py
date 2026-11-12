@@ -141,7 +141,7 @@ class ManagedOrganization:
             raise RuntimeErrorBase('organization_queue_full')
         ident=identifier();now=timestamp()
         model=self.engine.model()
-        if payload.get('knowledge_processing',{}).get('policy',{}).get('data',{}).get('model_source')=='main':model=dict(self.engine.config.load()['model'])
+        if payload.get('knowledge_processing',{}).get('policy',{}).get('data',{}).get('model_source')=='main' or payload.get('external_knowledge',{}).get('model_source')=='main':model=dict(self.engine.config.load()['model'])
         if payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry'):model=self.engine.routing.model()
         if payload.get('proactive'):
             from .companion import choose,GENERATION_PROFILE
@@ -223,7 +223,7 @@ class ManagedOrganization:
         if not p['enabled'] or contract['policy_id']!=policy['id'] or contract['data']['trigger'] not in p['triggers']:
             raise RuntimeErrorBase('organization_policy_changed')
         model=json.loads(task['model_snapshot'])
-        main_source=payload.get('knowledge_processing',{}).get('policy',{}).get('data',{}).get('model_source')=='main'
+        main_source=payload.get('knowledge_processing',{}).get('policy',{}).get('data',{}).get('model_source')=='main' or payload.get('external_knowledge',{}).get('model_source')=='main'
         routing=payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry')
         if routing:
             from .knowledge_processing import model_contract
@@ -244,7 +244,7 @@ class ManagedOrganization:
             self.engine.processing.check(db,task,contract,payload)
             return
         if payload.get('external_knowledge'):
-            guard_cloud_dispatch(self.store,task['persona_id'],'organization',model)
+            guard_cloud_dispatch(self.store,task['persona_id'],'main' if main_source else 'organization',model)
             if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
             self.engine.knowledge.check(db,task,contract,payload)
             return

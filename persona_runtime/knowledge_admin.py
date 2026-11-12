@@ -7,6 +7,7 @@ import time
 from .knowledge_service import POLICY, REGISTRY, read
 from .knowledge_store import SOURCE_POLICY, source_policy
 from .models import RuntimeErrorBase
+from .private_personas import provider_identity
 
 
 def dependencies():
@@ -26,7 +27,7 @@ def overview(service, persona_id):
     with service.store.connection() as db:
         result['policy'] = read(db, 'policy.' + persona_id, POLICY)
         result['maintenance_policy'] = read(db, 'maintenance.' + persona_id, service.maintenance.defaults())
-        result['maintenance_provider'] = service.maintenance.defaults()['provider']
+        result['maintenance_provider'] = provider_identity(service.maintenance.model(result['maintenance_policy']['data']))
         config = service.maintenance.engine.config.load()['organization']
         result['automatic_limits'] = {'hour': config['hourly_limit'], 'rolling_day': config['daily_limit']}
         result['source_policies'] = {row['id']: read(db, 'source_policy.' + row['id'], SOURCE_POLICY)

@@ -11,6 +11,8 @@ def strict_pairs(pairs):
 
 def opening_key_quotes(response,stage):
     allowed={
+        'knowledge_extract':{'format_version','claims','subject','predicate','value','kind','quote','window_id','valid_from','valid_until'},
+        'knowledge_review':{'format_version','decisions','index','supported','temporal_ok','version_ok','kind','note'},
         'goal':{'format_version','queries','freshness'},'select':{'format_version','section_ids'},
         'translate':{'format_version','units','text','kind','refs','material_id','quote'},
         'compose':{'format_version','units','text','kind','refs','material_id','quote'},

@@ -9,6 +9,7 @@ from .models import RuntimeErrorBase
 
 
 VERSION = 'public-knowledge-extract-review-v1'
+MAIN_VERSION = 'public-knowledge-extract-review-v2'
 KINDS = ('fact', 'source_claim', 'commentary', 'unresolved')
 RELATIVE_TIME = r'今天|明天|昨天|今年|明年|去年|本周|下周|本月|下月'
 INSTRUCTION = (
@@ -36,7 +37,13 @@ def messages(payload):
             '对claims每项index均给出结论，格式 '
             '{"format_version":1,"decisions":[{"index":0,"supported":true,'
             '"temporal_ok":true,"version_ok":true,"kind":"fact","note":"原文核对理由"}]}。')
-    user = {key: data[key] for key in ('document', 'existing_claims', 'proposals') if key in data}
+    if data.get('pipeline')==MAIN_VERSION and data['stage']=='extract':
+        instruction=INSTRUCTION.replace('每项引文必须逐字复制document.excerpt。','按原文窗口绑定证据。')+'本协议可用document.windows中的id引用原文窗口，无须抄写quote。每项只选一个足够支持其全部事实的window_id；程序填入原文。最多8项，只保留清晰、可由原文核对的事实，不能补造原文未明确的数字或日期。格式{"format_version":1,"claims":[{"subject":"主语","predicate":"属性","value":"值","kind":"source_claim","window_id":"W1","valid_from":null,"valid_until":null}]}。无可支持主张时claims为空。'
+    if data.get('related_claim_names'):instruction+='related_claim_names只用于沿用同对象的主语和属性命名，不是本份文档的事实证据；值仍必须由本份原文支持。'
+    user = {key: data[key] for key in ('document', 'existing_claims', 'related_claim_names', 'proposals') if key in data}
+    if data.get('pipeline')==MAIN_VERSION:
+        user['document']=dict(user['document'])
+        user['document'].pop('excerpt' if data['stage']=='extract' else 'windows',None)
     return [{'role': 'system', 'content': instruction},
             {'role': 'user', 'content': json.dumps(user, ensure_ascii=False)}]
 
@@ -95,8 +102,14 @@ def claim(material, item):
 
 
 def parse(payload, response, *, isolate_items=False):
+    changes=[]
+    from .knowledge_processing_normalize import strict_pairs,opening_key_quotes
     try:
-        data = json.loads(response)
+        data = json.loads(response,object_pairs_hook=strict_pairs)
+    except json.JSONDecodeError:
+        material=payload['external_knowledge']
+        data,changes=opening_key_quotes(response,'knowledge_'+material['stage']) if material.get('pipeline')==MAIN_VERSION else (None,[])
+        if data is None:invalid()
     except (ValueError, TypeError):
         invalid()
     if not isinstance(data, dict) or type(data.get('format_version')) is not int or data['format_version'] != 1:
@@ -109,13 +122,19 @@ def parse(payload, response, *, isolate_items=False):
         result, quarantined = [], []
         for index, item in enumerate(claims):
             try:
+                if material.get('pipeline')==MAIN_VERSION and isinstance(item,dict) and 'window_id' in item:
+                    if set(item)!={'subject','predicate','value','kind','window_id','valid_from','valid_until'}:invalid('window_reference_shape')
+                    window=next((w for w in material['document']['windows'] if w['id']==item['window_id']),None)
+                    if not window:invalid('unknown_window')
+                    item={k:v for k,v in item.items() if k!='window_id'}|{'quote':window['text']}
+                    changes.append({'kind':'registered_maintenance_window','index':index,'window_id':window['id']})
                 result.append(claim(material, item))
             except OutputError as error:
                 if not isolate_items:
                     raise
                 quarantined.append({'index': index, 'reason': error.diagnostic['reason'],
                     'proposal_sha256': hashlib.sha256(json.dumps(item,ensure_ascii=False,sort_keys=True).encode()).hexdigest()})
-        return {'claims': result, **({'quarantined': quarantined} if quarantined else {})}
+        return {'claims': result, **({'quarantined': quarantined} if quarantined else {}),**({'_normalizations':changes} if changes else {})}
     decisions = data.get('decisions')
     proposals = material['proposals']['claims']
     if (set(data) != {'format_version', 'decisions'} or not isinstance(decisions, list)
@@ -135,7 +154,7 @@ def parse(payload, response, *, isolate_items=False):
         if item['kind'] not in KINDS:
             invalid()
         text(item['note'], 600)
-    return {'decisions': decisions}
+    return {'decisions': decisions,**({'_normalizations':changes} if changes else {})}
 
 
 def retain_candidates(payload, output):
