@@ -111,7 +111,7 @@ class PrivatePersonas:
         from .config import ConfigStore
         from .persona_management import active
         if not operation_id:raise RuntimeErrorBase('operation_id_required')
-        if kind not in ('main','organization','proactive'):raise RuntimeErrorBase('private_permission_kind_invalid')
+        if kind not in ('main','organization','proactive','knowledge_router'):raise RuntimeErrorBase('private_permission_kind_invalid')
         self.root.mkdir(parents=True,exist_ok=True)
         lock=InstanceLock(self.root/'registry.lock')
         try:
@@ -122,6 +122,10 @@ class PrivatePersonas:
                 if policy is None:raise RuntimeErrorBase('private_scope_mismatch')
                 cfg=ConfigStore(self.paths).load()
                 model=cfg['model'] if kind in ('main','proactive') or cfg['organization']['reuse_chat'] else cfg['organization']['model']
+                if kind=='knowledge_router':
+                    from .knowledge_routing import configured_model
+                    model=configured_model(self.paths)
+                    if not model['_routing_gate_valid']:raise RuntimeErrorBase('knowledge_routing_gate_required')
                 if provider_identity(model)!=expected_provider:
                     raise RuntimeErrorBase('private_provider_changed')
                 data=self.model_grants()
@@ -264,7 +268,7 @@ def guard_acceptance_write(store,persona_id):
 def guard_cloud_dispatch(store,persona_id,kind,model):
     private=PrivatePersonas(store.paths)
     policy=private.record_for_persona(persona_id)
-    if policy is not None and kind in ('main','organization','proactive') and private.model_authorized(persona_id,policy,kind,model):return
+    if policy is not None and kind in ('main','organization','proactive','knowledge_router') and private.model_authorized(persona_id,policy,kind,model):return
     with store.connection() as db:
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_imports'").fetchone():
             for row in db.execute('SELECT data_json FROM memory_imports WHERE persona_id=?',(persona_id,)):
@@ -274,7 +278,7 @@ def guard_cloud_dispatch(store,persona_id,kind,model):
     if policy is None and copied.exists():
         candidate=json.loads(copied.read_text(encoding='utf-8'))
         if candidate.get('persona_id')==persona_id:policy=candidate
-    if policy is not None and kind in ('organization','proactive'):
+    if policy is not None and kind in ('organization','proactive','knowledge_router'):
         # Background disclosure always requires a role-specific grant. Neither
         # ancestor registry approvals nor copied acceptance policies transfer it.
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')

@@ -71,6 +71,7 @@ class KnowledgeUI:
         ttk.Checkbutton(line,text='使用Jev判断本轮是否需要知识',variable=self.knowledge_route).pack(side='left')
         ttk.Combobox(line,textvariable=self.knowledge_route_variant,values=('仅联网','本地与联网'),state='readonly',width=12).pack(side='left')
         self.button(line,'保存决策设置',self.save_knowledge_routing,{'knowledge-write'})
+        self.button(line,'授权当前私人角色使用Jev',self.authorize_knowledge_routing,{'knowledge-write'})
         ttk.Label(routing,textvariable=self.knowledge_route_status,wraplength=700).pack(anchor='w')
         web = ttk.LabelFrame(parent,text='联网公开资料（复用主模型配置）',padding=8);web.pack(fill='x',pady=6)
         line=ttk.Frame(web);line.pack(fill='x')
@@ -354,6 +355,25 @@ class KnowledgeUI:
             self.notice.set('请先选择已经获取的网页。');return
         self.knowledge_write('knowledge.web.withdraw',{'persona_id':self.persona_id,'document_id':document_id,
             'reason':'用户在工作台撤回网页','expected_revision':self.knowledge_data['web_invalidations']['revision']})
+
+    def authorize_knowledge_routing(self):
+        if not self.knowledge_ready():return
+        data=self.knowledge_data;authorization=data.get('routing_authorization',{})
+        if not authorization.get('required'):
+            self.notice.set('当前角色不需要独立的私人资料授权。');return
+        if authorization.get('authorized'):
+            self.notice.set('当前角色已经授权此Jev配置。');return
+        model=data.get('routing_configuration',{})
+        if not model.get('gate_passed'):
+            self.notice.set('请先完成当前Jev配置的十轮预检。');return
+        from tkinter import messagebox
+        if not messagebox.askyesno('当前角色的Jev资料授权',
+            '仅为当前角色授权向 '+str(model.get('name'))+'（'+str(model.get('base_url'))+'）发送当前问题及必要近期对话，判断是否查询知识。内容可能涉及私人信息。主回复和知识整理仍使用其原配置。是否授权？',parent=self):return
+        from .models import identifier
+        key=self.knowledge_key();args={'persona_id':self.persona_id,'expected_provider':model['provider'],'operation_id':identifier()}
+        def done(_):
+            if key==self.knowledge_key():self.refresh_knowledge();self.notice.set('已登记当前角色的Jev资料授权；决策开关仍需单独保存。')
+        self.run_task('登记Jev资料授权',{'knowledge-write'},lambda _:self.client.manage('knowledge.routing.authorize',**args),done)
 
     def save_knowledge_processing(self):
         if self.knowledge_ready() and self.knowledge_data.get('processing_policy'):

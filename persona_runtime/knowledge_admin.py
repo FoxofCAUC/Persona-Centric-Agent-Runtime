@@ -23,6 +23,7 @@ def overview(service, persona_id):
         result['processing_policy']=service.processing.policy(persona_id)
         result['routing_policy']=service.processing.engine.routing.policy(persona_id)
         result['routing_configuration']=service.processing.engine.routing.configuration()
+        result['routing_authorization']=service.processing.engine.routing.authorization(persona_id)
         result['dependencies']['required_for_selected_route']=result['routing_policy']['data']['variant']=='local_web'
     with service.store.connection() as db:
         result['policy'] = read(db, 'policy.' + persona_id, POLICY)

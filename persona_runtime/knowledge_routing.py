@@ -52,7 +52,20 @@ class KnowledgeRouting:
     def configuration(self):
         model=self.model()
         return {'base_url':model['base_url'],'name':model['name'],'key_configured':bool(model['encrypted_key']),
-                'gate_passed':model['_routing_gate_valid'],'timeout':model['timeout'],'max_input_chars':model['max_input_chars']}
+                'gate_passed':model['_routing_gate_valid'],'provider':provider_identity(model),'timeout':model['timeout'],'max_input_chars':model['max_input_chars']}
+
+    def authorization(self,persona_id):
+        from .private_personas import PrivatePersonas,guard_cloud_dispatch
+        self.policy(persona_id)
+        required=PrivatePersonas(self.store.paths).record_for_persona(persona_id) is not None
+        try:guard_cloud_dispatch(self.store,persona_id,'knowledge_router',self.model())
+        except RuntimeErrorBase as error:return {'required':True,'authorized':False,'reason':str(error)}
+        return {'required':required,'authorized':True,'reason':None}
+
+    def authorize(self,persona_id,expected_provider,operation_id):
+        from .private_personas import PrivatePersonas,guard_acceptance_write
+        guard_acceptance_write(self.store,persona_id)
+        return PrivatePersonas(self.store.paths).authorize_model(self.store,persona_id,'knowledge_router',expected_provider,operation_id)
 
     def policy(self,persona_id):
         self.engine.chat.knowledge.current_policy(persona_id)

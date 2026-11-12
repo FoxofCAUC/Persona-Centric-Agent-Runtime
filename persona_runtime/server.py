@@ -328,7 +328,9 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 'knowledge.processing.show':organization.processing.show})
             handlers.update({'knowledge.routing.policy.current':organization.routing.policy,
                 'knowledge.routing.policy.update':organization.routing.update_policy,
-                'knowledge.routing.configuration.current':organization.routing.configuration})
+                'knowledge.routing.configuration.current':organization.routing.configuration,
+                'knowledge.routing.authorization.current':organization.routing.authorization,
+                'knowledge.routing.authorize':organization.routing.authorize})
             handlers.update({'knowledge.web.policy.current':organization.web.policy,
                 'knowledge.web.policy.update':organization.web.update_policy,'knowledge.web.withdraw':organization.web.invalidate})
             maintenance=organization.knowledge

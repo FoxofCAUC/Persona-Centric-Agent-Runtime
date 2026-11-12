@@ -219,6 +219,10 @@ class DialogueTests(unittest.IsolatedAsyncioTestCase):
         from persona_runtime.ingress import IngressService
         policies=IngressService(self.engine)
         for channel in ('desktop','qq'):
+            # This test covers historical reply modes, independently of the current v8 default.
+            current=policies.current_policy(self.persona,channel)
+            if current.get('companion'):
+                policies.update_policy(self.persona,channel,current['mode'],current['id'],identifier(),companion_mode='disabled')
             for mode in ('legacy_full','context_full','context_structured','natural_structured'):
                 with self.subTest(channel=channel,mode=mode):
                     old=policies.current_policy(self.persona,channel)
