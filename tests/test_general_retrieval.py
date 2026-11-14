@@ -179,6 +179,77 @@ class GeneralTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('完整攻略',self.main.calls[-1][0]['content'])
         self.assertNotIn(GUIDANCE,self.planner.calls[0][0]['content'])
 
+    async def test_retrieval_output_budget_does_not_expand_short_persona_replies(self):
+        from persona_runtime.knowledge_translation import ORGANIZE
+        from persona_runtime.knowledge_general import OUTPUT_PROFILE,OUTPUT_FLOORS,processing_model
+        self.cfg.update({'model':{'max_tokens':128}});self.enable()
+        plan=self.planner.complete;reply=self.main.complete;requests=[];replies=[]
+        async def check_budget(model,messages):
+            stage='conversation_organize' if messages[0]['content']==ORGANIZE else 'conversation_search_plan'
+            requests.append((stage,copy.deepcopy(model)))
+            if model['max_tokens']<OUTPUT_FLOORS[stage]:
+                raise ModelError('provider_output_truncated',usage={'total_tokens':23},diagnostics={'request_headers_sent':True,'response_headers_received':True,'finish_reason':'length'})
+            return await plan(model,messages)
+        async def check_reply(model,messages):replies.append(copy.deepcopy(model));return await reply(model,messages)
+        self.planner.complete=check_budget;self.main.complete=check_reply
+        result=await self.ask();self.assertEqual(result['status'],'completed',result['error_code'])
+        self.assertEqual({stage:m['max_tokens'] for stage,m in requests},OUTPUT_FLOORS)
+        self.assertEqual(replies[0]['max_tokens'],128);self.assertNotIn('_reasoning_effort',replies[0])
+        self.assertEqual(self.cfg.load()['model']['max_tokens'],128)
+        from scripts.pcar_acceptance_check import collect
+        evidence=collect(self.paths.home)
+        self.assertEqual(evidence['organized_notes']['with_notes'],1)
+        stage=evidence['retrieval_stages']['conversation_organize']
+        self.assertEqual(stage['task_statuses']['completed'],1)
+        self.assertEqual(stage['output_token_limits'],{'8192':1})
+        with self.store.connection() as db:
+            for raw,snapshot in db.execute("SELECT payload_json,model_snapshot FROM organization_tasks WHERE json_extract(payload_json,'$.knowledge_processing.stage') IN ('conversation_search_plan','conversation_organize')"):
+                data=json.loads(raw)['knowledge_processing'];saved=json.loads(snapshot)
+                self.assertEqual(data['request_profile'],OUTPUT_PROFILE)
+                self.assertEqual(saved['max_tokens'],OUTPUT_FLOORS[data['stage']]);self.assertEqual(saved['_reasoning_effort'],'high')
+        # Explicit larger ceilings and pre-fix task snapshots remain intact.
+        base={'max_tokens':16384}
+        self.assertEqual(processing_model(base,{'stage':'conversation_organize','request_profile':OUTPUT_PROFILE})['max_tokens'],16384)
+        self.assertIs(processing_model(base,{'stage':'conversation_organize'}),base)
+
+    async def test_received_truncation_is_known_failure_and_not_replayed_on_primary_retry(self):
+        from persona_runtime.knowledge_translation import ORGANIZE
+        self.enable();plan=self.planner.complete;reply=self.main.complete
+        async def truncate(model,messages):
+            if messages[0]['content']==ORGANIZE:
+                raise ModelError('provider_output_truncated',usage={'total_tokens':93},diagnostics={'request_headers_sent':True,'response_headers_received':True,'finish_reason':'length','network_route':'local_fixture'})
+            return await plan(model,messages)
+        async def fail(model,messages):raise ModelError('provider_http_400')
+        self.planner.complete=truncate;self.main.complete=fail
+        result=await self.ask();self.assertEqual(result['status'],'failed')
+        with self.store.connection() as db:
+            task=dict(db.execute("SELECT * FROM organization_tasks WHERE json_extract(payload_json,'$.knowledge_processing.stage')='conversation_organize'").fetchone())
+            attempt=dict(db.execute('SELECT * FROM organization_attempts WHERE task_id=?',(task['id'],)).fetchone())
+            contract=self.org.managed.contract(db,task['id'])['data']
+            self.assertEqual(task['status'],'failed');self.assertEqual(attempt['status'],'failed')
+            self.assertEqual(contract['phase'],'failed_known');self.assertTrue(contract['last_failure']['provider_completed'])
+            self.assertEqual(json.loads(attempt['usage_json'])['total_tokens'],93)
+            self.assertFalse(db.execute('SELECT 1 FROM organization_receipts WHERE attempt_id=?',(attempt['id'],)).fetchone())
+            before=db.execute('SELECT count(*) FROM organization_attempts').fetchone()[0]
+        self.main.complete=reply;tools=len(self.tools)
+        await self.chat.retry(result['id']);await asyncio.wait_for(self.chat.wait(),30)
+        result=self.chat.get(result['id']);self.assertEqual(result['status'],'completed',result['error_code'])
+        self.assertIn('provider_output_truncated',result['context']['knowledge']['retrieval']['errors']);self.assertEqual(len(self.tools),tools)
+        with self.store.connection() as db:self.assertEqual(db.execute('SELECT count(*) FROM organization_attempts').fetchone()[0],before)
+
+    async def test_unconfirmed_organizer_failure_remains_unknown(self):
+        from persona_runtime.knowledge_translation import ORGANIZE
+        self.enable();complete=self.planner.complete
+        async def uncertain(model,messages):
+            if messages[0]['content']==ORGANIZE:raise ModelError('provider_network_error',diagnostics={'request_headers_sent':True})
+            return await complete(model,messages)
+        self.planner.complete=uncertain;result=await self.ask()
+        self.assertEqual(result['status'],'completed',result['error_code'])
+        with self.store.connection() as db:
+            task=dict(db.execute("SELECT * FROM organization_tasks WHERE json_extract(payload_json,'$.knowledge_processing.stage')='conversation_organize'").fetchone())
+            self.assertEqual(task['status'],'blocked_unknown');self.assertEqual(self.org.managed.contract(db,task['id'])['data']['phase'],'unknown')
+            self.assertFalse(self.org.managed.contract(db,task['id'])['data'].get('last_failure',{}).get('provider_completed'))
+
     async def test_organizer_failure_still_translates_original_sources_without_reply_veto(self):
         from persona_runtime.knowledge_translation import ORGANIZE,GUIDANCE
         self.enable();complete=self.planner.complete

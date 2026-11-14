@@ -85,10 +85,14 @@ def call_count(conn, table, since, *, automatic_only=False):
         ELSE CASE WHEN started_epoch>? THEN 1 ELSE 0 END END),0) FROM '''+table+' AS counted'+condition,(since,since)).fetchone()[0]
 
 
-async def _one(client, model, messages, timeout_code):
+async def _one(client, model, messages, timeout_code, *, paths=None):
     from .maintenance import require_writable_storage
     from .paths import RuntimePaths
-    try:require_writable_storage(RuntimePaths.from_environment())
+    try:
+        paths=paths or RuntimePaths.from_environment()
+        from .migration import ensure_cloud_ready
+        ensure_cloud_ready(paths)
+        require_writable_storage(paths)
     except (OSError,RuntimeErrorBase) as error:
         from .chat import ModelError
         raise ModelError(str(error) if isinstance(error,RuntimeErrorBase) else 'storage_unavailable',
@@ -122,7 +126,7 @@ async def _one(client, model, messages, timeout_code):
 
 
 async def audited_complete(client, model, messages, *, validate, save, before_attempt,
-                           prior_failures=0, timeout_code='provider_timeout', sleep=None):
+                           prior_failures=0, timeout_code='provider_timeout', sleep=None, paths=None):
     from .archive import fingerprint
     from .provider_compat import build_request,usage_fields,request_timeout
     from .chat import ModelCompletion
@@ -138,7 +142,7 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
         state['attempts'].append(row);save(aggregate(state))
         value=None
         try:
-            value=await _one(client,model,messages,timeout_code)
+            value=await _one(client,model,messages,timeout_code,paths=paths)
             finish=getattr(value,'diagnostics',{}).get('finish_reason')
             if finish=='length':raise RuntimeErrorBase('provider_output_truncated')
             if finish=='content_filter':raise RuntimeErrorBase('provider_content_filtered')

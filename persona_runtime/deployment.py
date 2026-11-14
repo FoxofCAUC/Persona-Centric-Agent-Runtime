@@ -19,8 +19,6 @@ def component_python(paths, role):
     override = os.environ.get('PCAR_ASTRBOT_PYTHON' if role == 'astrbot' else 'PCAR_PYTHON')
     candidate = Path(override) if override else (paths.home / 'components/astrbot/.venv/Scripts/python.exe'
         if role == 'astrbot' else paths.home / '.venv/Scripts/python.exe')
-    if not candidate.exists() and role != 'astrbot' and not override:
-        candidate = Path(sys.executable)
     if not candidate.is_absolute() or not candidate.is_file():
         raise RuntimeErrorBase('独立运行环境未准备，请先准备组件或设置解释器路径。')
     return candidate
@@ -78,12 +76,8 @@ def repair_napcat_timeout(paths):
 
 
 def child_environment(paths):
-    env = os.environ.copy()
-    env.update(PERSONA_RUNTIME_HOME=str(paths.home), PYTHONPATH=str(REPO), PYTHONDONTWRITEBYTECODE="1",
-               PYTHONIOENCODING="utf-8", PYTHONUTF8="1", UV_CACHE_DIR=str(paths.home / "cache/uv"),
-               PIP_CACHE_DIR=str(paths.home / "cache/pip"), TEMP=str(paths.home / "tmp"), TMP=str(paths.home / "tmp"),
-               HF_HOME=str(paths.home / "cache/huggingface"), XDG_CACHE_HOME=str(paths.home / "cache/xdg"))
-    return env
+    from .installation import child_environment as environment
+    return environment(paths,source_root=REPO)
 
 
 def prepare(paths, *, install=True, source=None):

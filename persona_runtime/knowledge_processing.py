@@ -3,7 +3,7 @@ import copy,json
 from .archive import fingerprint,turn_scope
 from .models import RuntimeErrorBase,LOCAL_USER_ID
 from .private_personas import provider_identity
-from .knowledge_general import PROFILE,STAGES,GeneralRetrieval,messages
+from .knowledge_general import PROFILE,STAGES,GeneralRetrieval,messages,OUTPUT_PROFILE
 
 VERSION='general-conversation-retrieval-v1'
 def model_contract(model):return {k:v for k,v in model.items() if k!='encrypted_key'}
@@ -94,6 +94,10 @@ class KnowledgeProcessing:
             for row in previous:
                 if row['status']=='completed':
                     return copy.deepcopy(read(db,'processing.result.'+row['id'],{})['data']),row['id']
+                if row['status']=='failed':
+                    contract=self.engine.managed.contract(db,row['id'])
+                    if contract and contract['data'].get('last_failure',{}).get('provider_completed'):
+                        error=RuntimeErrorBase(row['error_code'] or 'retrieval_unavailable');error.task_id=row['id'];raise error
                 if stage=='conversation_web_decision' and db.execute('SELECT 1 FROM organization_receipts r JOIN organization_attempts a ON a.id=r.attempt_id WHERE a.task_id=?',(row['id'],)).fetchone():
                     error=RuntimeErrorBase(row['error_code'] or 'jev_web_decision_invalid');error.task_id=row['id'];raise error
             if any(row['status']=='blocked_unknown' or db.execute("SELECT 1 FROM organization_attempts a WHERE a.task_id=? AND a.status IN ('running','interrupted') AND NOT EXISTS(SELECT 1 FROM organization_receipts r WHERE r.attempt_id=a.id)",(row['id'],)).fetchone() for row in previous):
@@ -103,7 +107,8 @@ class KnowledgeProcessing:
                 task=db.execute('SELECT status FROM organization_tasks WHERE id=?',(old['task_id'],)).fetchone()
                 if task and task['status']=='completed':return copy.deepcopy(read(db,'processing.result.'+old['task_id'],{})['data']),old['task_id']
             data={'stage':stage,'input':inputs,'pipeline':VERSION,'root_turn_id':turn['id'],'context_guard':context_guard,
-                'policy':policy,'cache_key':cache_key,**({'decision_binding':decision_binding} if decision_binding else {})}
+                'policy':policy,'cache_key':cache_key,'request_profile':OUTPUT_PROFILE,
+                **({'decision_binding':decision_binding} if decision_binding else {})}
             payload={'persona_id':turn['persona_id'],'channel':turn['channel'],'session_id':turn['session_id'],'mode':'both',
                 'scope':turn_scope(db,turn),'user_id':LOCAL_USER_ID,
                 'knowledge_processing':data,'fingerprint':token,'manual_quota_request':bool(not turn.get('outbound_id') and (turn.get('user_event_id') or turn.get('input_batch_id')))}

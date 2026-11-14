@@ -23,7 +23,7 @@ class EmergencyTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.paths = RuntimePaths(Path(self.temp.name))
 
-    def test_orphan_and_ordinary_qq_selected_without_any_host_records(self):
+    def test_orphans_and_other_projects_preserved_without_ownership(self):
         rows = [process(10, "QQ.exe", executable="D:/personal/QQ.exe"),
                 process(11, "NapCatWinBootMain.exe", executable="X:/unknown/NapCatWinBootMain.exe"),
                 process(12, "python.exe", 'python -B -m persona_runtime.host --role service'),
@@ -31,7 +31,7 @@ class EmergencyTests(unittest.TestCase):
                 process(14, "python.exe", executable="C:/Users/demo/AppData/Roaming/uv/tools/astrbot/Scripts/python.exe"),
                 process(15, "node.exe", 'node "D:/AIPoweredTRPGinQQ/AIPoweredTRPG/apps/server/dist/index.js"'),
                 process(16, "worker.exe", parent=10)]
-        self.assertEqual({p["pid"] for p in select_targets(rows, self.paths.home, 100)}, set(range(10, 17)))
+        self.assertEqual({p["pid"] for p in select_targets(rows, self.paths.home, 100)}, set())
 
     def test_current_controller_ancestors_and_unrelated_programs_preserved(self):
         rows = [process(100, "pythonw.exe", "pythonw -m persona_runtime gui", parent=90),
@@ -41,18 +41,18 @@ class EmergencyTests(unittest.TestCase):
                 process(22, "msedge.exe", parent=10), process(10, "QQ.exe"),
                 process(23, "node.exe", f'node trusted-worker.js --working-dir "{self.paths.home}"',
                         "C:/Users/demo/AppData/Local/OpenAI/Codex/runtimes/cua_node/bin/node.exe")]
-        self.assertEqual([p["pid"] for p in select_targets(rows, self.paths.home, 100)], [10])
+        self.assertEqual([p["pid"] for p in select_targets(rows, self.paths.home, 100,owned_pids=(10,90,100))], [10])
 
-    def test_other_manager_is_stopped_but_current_manager_is_not(self):
+    def test_other_instance_manager_is_preserved(self):
         rows = [process(100, "pythonw.exe", "pythonw -m persona_runtime gui"),
                 process(101, "pythonw.exe", "pythonw -m persona_runtime gui")]
-        self.assertEqual([p["pid"] for p in select_targets(rows, self.paths.home, 100)], [101])
+        self.assertEqual([p["pid"] for p in select_targets(rows, self.paths.home, 100)], [])
 
     def test_elevated_close_helper_keeps_explicit_controller(self):
         rows=[process(100,'python.exe','force_stop_services.py'),
               process(101,'pythonw.exe','pythonw -m persona_runtime gui'),
               process(102,'python.exe','python -m persona_runtime.host --role service')]
-        self.assertEqual([p['pid'] for p in select_targets(rows,self.paths.home,100,protected_pids=(101,))],[102])
+        self.assertEqual([p['pid'] for p in select_targets(rows,self.paths.home,100,protected_pids=(101,),owned_pids=(102,101))],[102])
 
     def test_elevated_helper_keeps_console_venv_redirector_but_stops_services(self):
         # The UAC broker separates the helper from the protected GUI's tree.
@@ -65,8 +65,8 @@ class EmergencyTests(unittest.TestCase):
                 process(102, 'python.exe', 'python -m persona_runtime.host --role service', parent=101),
                 process(103, 'pythonw.exe', 'pythonw -m persona_runtime gui', parent=70),
                 process(104, 'QQ.exe', parent=102)]
-        actual = {p['pid'] for p in select_targets(rows, self.paths.home, 100, protected_pids=(101,))}
-        self.assertEqual(actual, {102, 103, 104})
+        actual = {p['pid'] for p in select_targets(rows, self.paths.home, 100, protected_pids=(101,),owned_pids=(102,90))}
+        self.assertEqual(actual, {102, 104})
 
     def test_explicit_protected_ancestor_chain_handles_overlap_missing_and_cycles(self):
         rows = [process(100, 'python.exe', 'force_stop_services.py', parent=90),
@@ -74,7 +74,7 @@ class EmergencyTests(unittest.TestCase):
                 process(80, 'pythonw.exe', 'pythonw -m persona_runtime gui', parent=90),
                 process(101, 'pythonw.exe', 'pythonw -m persona_runtime gui', parent=90),
                 process(102, 'QQ.exe')]
-        actual = select_targets(rows, self.paths.home, 100, protected_pids=(101, 80, 999))
+        actual = select_targets(rows, self.paths.home, 100, protected_pids=(101, 80, 999),owned_pids=(90,102))
         self.assertEqual([p['pid'] for p in actual], [102])
 
     def test_repeated_sweeps_catch_respawn_and_write_metadata_only_report(self):
@@ -88,7 +88,8 @@ class EmergencyTests(unittest.TestCase):
             if pid == 10:
                 live[11] = process(11, "QQ.exe")
             return True
-        result = force_stop_related(self.paths, snapshot=snapshot, kill=kill, pause=lambda _: None)
+        with patch("persona_runtime.emergency.owned_processes",side_effect=lambda _:list(live)):
+            result = force_stop_related(self.paths, snapshot=snapshot, kill=kill, pause=lambda _: None)
         self.assertEqual(killed, [10, 11])
         self.assertTrue(result["success"])
         text = Path(result["report_file"]).read_text(encoding="utf-8")
@@ -97,7 +98,8 @@ class EmergencyTests(unittest.TestCase):
 
     def test_permission_failure_is_reported_instead_of_success(self):
         rows = [process(10, "QQ.exe")]
-        result = force_stop_related(self.paths, snapshot=lambda: rows, kill=lambda _: False, pause=lambda _: None)
+        with patch("persona_runtime.emergency.owned_processes",return_value=(10,)):
+            result = force_stop_related(self.paths, snapshot=lambda: rows, kill=lambda _: False, pause=lambda _: None)
         self.assertFalse(result["success"])
         self.assertEqual(result["remaining"][0]["pid"], 10)
 

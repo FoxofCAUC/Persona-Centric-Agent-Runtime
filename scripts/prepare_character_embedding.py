@@ -7,10 +7,10 @@ from pathlib import Path
 import shutil
 import sys
 import time
-import urllib.request
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from persona_runtime.network_proxy import system_urlopen
 from persona_runtime.character_embedding import (MODEL_ID, ENCODING, DIMENSION, digest,
     file_hash, safe_path, private_directory)
 from persona_runtime.paths import RuntimePaths
@@ -21,7 +21,7 @@ FILES = ('config.json', 'model_optimized.onnx', 'ort_config.json', 'special_toke
 
 
 def download(url, path):
-    with urllib.request.urlopen(url, timeout=120) as response, path.open('wb') as target:
+    with system_urlopen(url, timeout=120) as response, path.open('wb') as target:
         shutil.copyfileobj(response, target)
 
 

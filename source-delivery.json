@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "0.9.0.dev36",
+  "release": "0.1.0",
   "mode": "source",
   "roots": [
     "persona_runtime",
@@ -22,9 +22,17 @@
   ],
   "configuration": [
     "pyproject.toml",
-    "requirements-astrbot.lock"
+    "requirements-astrbot.lock",
+    "uv.lock",
+    "model-assets.json"
   ],
   "note": "Source inventory only. Historical data codecs and schema-27 DDL remain for existing databases. Retired M9.B audit implementations and frozen archives are deleted and excluded from publication. The Workbench owns resident components; no detached host or system startup. Development plugins require explicit invocation.",
   "knowledge_option": "conversational_web_v1; Jev decides need_web; main high search planning and notes; main contextual translation; system proxy required",
-  "schema_version": 27
+  "schema_version": 27,
+  "desktop_installation": "selected instance home; project venv; whole-business migration with fresh machine credentials and consent",
+  "knowledge_output": "new high tasks: plan >=4096 / organize >=8192; persona translation preserves original configuration",
+  "release_tag": "v0.1",
+  "deployment_mode": "agent-assisted",
+  "development_baseline": "0.9.0.dev38",
+  "stage": "environment_decoupling_and_cross_machine_migration_complete"
 }

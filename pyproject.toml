@@ -1,14 +1,13 @@
 [project]
 name = "persona-centric-agent-runtime"
-version = "0.9.0.dev36"
+version = "0.1.0"
 description = "Persona-centric companion runtime with persistent local state"
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = ["aiohttp==3.14.5", "certifi==2026.10.23"]
 
 [project.optional-dependencies]
-knowledge-ann = ["numpy==2.5.4", "jieba==0.42.1", "opencc-python-reimplemented==0.1.7"]
 character-semantic = [
     "fastembed==0.9.1",
     "numpy==2.5.4",
@@ -17,3 +16,6 @@ character-semantic = [
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = ["psutil==7.1.3"]

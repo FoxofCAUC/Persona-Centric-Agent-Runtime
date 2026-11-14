@@ -497,11 +497,16 @@ class OrganizationEngine:
     async def worker(self):
         while not self.draining:
             try:
+                from .migration import migration_pending,background_allowed
+                if migration_pending(self.store.paths):
+                    await asyncio.sleep(.5)
+                    continue
                 self.schedule.pause_changed_models()
-                if self.automatic:self.automatic.tick()
-                self.proactive.tick()
-                await self.knowledge.tick()
-                if time.time()-self.last_scan >= 30 and not self.chat.draining:
+                if background_allowed(self.store.paths):
+                    if self.automatic:self.automatic.tick()
+                    self.proactive.tick()
+                    await self.knowledge.tick()
+                if background_allowed(self.store.paths) and time.time()-self.last_scan >= 30 and not self.chat.draining:
                     self.last_scan = time.time()
                     self.schedule.daily_tick()
                     self.schedule.incremental_tick()

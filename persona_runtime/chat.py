@@ -244,6 +244,8 @@ class ChatEngine:
                 "ORDER BY s.created_at", (persona_id, LOCAL_USER_ID))]
 
     async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None, test_reply_mode=None):
+        from .migration import ensure_cloud_ready
+        ensure_cloud_ready(self.store.paths)
         if self.draining:
             raise RuntimeErrorBase("service_draining")
         require_text(text, "text")
@@ -523,7 +525,8 @@ class ChatEngine:
                 completion = await generation_executor(self.client,
                     dict(model,_reply_mode=turn.get('reply_mode_snapshot'),_expression_snapshot=turn.get('expression_snapshot')),messages,
                     validate=validate_generation,
-                    save=save_generation_audit,before_attempt=before_generation_attempt)
+                    save=save_generation_audit,before_attempt=before_generation_attempt,
+                    **({'paths':self.store.paths} if self.generation_executor is None else {}))
                 raw_reply, usage = completion
                 provider_diagnostics=getattr(completion,'diagnostics',{'finish_reason':'unreported'})
                 validation_error=None
@@ -631,10 +634,14 @@ class ChatEngine:
                 self.selector.release(turn_id)
 
     async def retry(self, turn_id):
+        from .migration import ensure_cloud_ready
+        ensure_cloud_ready(self.store.paths)
         if self.draining:
             raise RuntimeErrorBase("service_draining")
         with self.store.connection(write=True) as conn:
             turn = self._view(conn, turn_id)
+            if turn.get('error_code')=='migration_requires_review':
+                raise RuntimeErrorBase('迁移前未完成的请求保持暂停，请检查记录后发起新的消息。')
             from .persona_management import active
             if turn['persona_id']:active(conn,turn['persona_id'])
             if turn["status"] not in ("failed", "interrupted"):

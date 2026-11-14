@@ -45,21 +45,25 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     store = Store(paths)
     store.initialize()
     engine = ChatEngine(store, config, client, assist_admission=assist_admission,live_admission=live_admission)
-    engine.recover()
+    from .migration import migration_pending
+    pending_migration=migration_pending(paths)
+    if not pending_migration:engine.recover()
     ingress=IngressService(engine)
     delivery_service=DeliveryService(store)
-    ingress.recover()
+    if not pending_migration:ingress.recover()
     organization = OrganizationEngine(store, config, engine.client, engine)
-    organization.recover()
+    if not pending_migration:organization.recover()
     from .sessions import SessionService
     from .topics import TopicService
     from .session_organization import SessionOrganization
-    sessions=SessionService(store);sessions.restart_observation()
+    sessions=SessionService(store)
+    if not pending_migration:sessions.restart_observation()
     topics=TopicService(store);session_organization=SessionOrganization(organization)
     from .disposition import DispositionService
     from .disposition_compile import DispositionCompiler
     dispositions=DispositionService(store,ingress)
-    compiler=DispositionCompiler(dispositions,config,engine.client);compiler.recover()
+    compiler=DispositionCompiler(dispositions,config,engine.client)
+    if not pending_migration:compiler.recover()
     profiles=ProfileService(store)
     characters=CharacterService(store)
     from .archive import ArchiveService
@@ -88,6 +92,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             or request.path=="/v2/ingress"):
             return web.json_response({"error": "forbidden"}, status=403)
         try:
+            if request.method=='POST' and request.path not in ('/v1/config','/v1/manage') and not request.path.startswith('/v1/control/') and migration_pending(paths):
+                raise RuntimeErrorBase('migration_configuration_required')
             if request.method=='POST' and request.path in ('/v1/chat','/v2/ingress','/v1/model-test'):
                 from .lifecycle import read_console
                 console=read_console(paths);marker=paths.home/'runtime/application-closing.json'
@@ -303,6 +309,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     async def manage(request):
         value = await body(request)
         action, args = value["action"], value.get("args", {})
+        if migration_pending(paths) and action!='persona.use' and action.rsplit('.',1)[-1] not in ('current','list','show','history','status','preview','explain','snapshot','requests'):
+            raise RuntimeErrorBase('migration_configuration_required')
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
@@ -563,7 +571,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             await asyncio.sleep(5)
 
     async def startup(_):
-        await asyncio.to_thread(engine.cognitive.characters.notify,None)
+        if not migration_pending(paths):await asyncio.to_thread(engine.cognitive.characters.notify,None)
         app["session_worker"] = asyncio.create_task(sessions.worker())
         app["organization_worker"] = asyncio.create_task(organization.worker())
         app["ingress_worker"] = asyncio.create_task(ingress.worker())

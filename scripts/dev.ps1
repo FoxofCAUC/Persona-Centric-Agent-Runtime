@@ -1,17 +1,13 @@
-param(
+﻿param(
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$RuntimeArgs = @('paths')
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$runtimeHome = if ($env:PERSONA_RUNTIME_HOME) { $env:PERSONA_RUNTIME_HOME } else { 'D:\Persona-Centric Agent Runtime' }
-if (-not [System.IO.Path]::IsPathFullyQualified($runtimeHome)) {
-    throw 'PERSONA_RUNTIME_HOME must be an absolute path.'
-}
-$defaultHome = 'D:\Persona-Centric Agent Runtime'
-# The storage root may be a test/sandbox directory; the interpreter stays independent.
-$runtimePython = Join-Path $defaultHome '.venv\Scripts\python.exe'
+. (Join-Path $PSScriptRoot 'pcar-location.ps1')
+$runtimeHome = Get-PcarRuntimeHome
+$runtimePython = Get-PcarPython -RuntimeHome $runtimeHome
 if (-not (Test-Path -LiteralPath $runtimePython)) {
     throw "Project Python environment is missing: $runtimePython"
 }

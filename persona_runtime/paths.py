@@ -4,7 +4,15 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 
-DEFAULT_HOME = Path("D:/Persona-Centric Agent Runtime")
+class _ConfiguredHome:
+    """Compatibility for historical tools; never an implicit storage location."""
+    def _path(self):return RuntimePaths.from_environment().home
+    def __truediv__(self,part):return self._path()/part
+    def __fspath__(self):return str(self._path())
+    def __str__(self):return str(self._path())
+    def __getattr__(self,name):return getattr(self._path(),name)
+
+DEFAULT_HOME = _ConfiguredHome()
 
 
 @dataclass(frozen=True)
@@ -16,9 +24,9 @@ class RuntimePaths:
             raise ValueError("PERSONA_RUNTIME_HOME must be an absolute path")
 
     @classmethod
-    def from_environment(cls) -> "RuntimePaths":
-        home = Path(os.environ.get("PERSONA_RUNTIME_HOME") or str(DEFAULT_HOME))
-        return cls(home)
+    def from_environment(cls,explicit=None) -> "RuntimePaths":
+        from .installation import resolve_home
+        return cls(resolve_home(explicit))
 
     def directories(self) -> dict[str, Path]:
         return {

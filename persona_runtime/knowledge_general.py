@@ -7,6 +7,15 @@ from .models import RuntimeErrorBase
 
 PROFILE='conversational_web_v1'
 STAGES={'conversation_web_decision','conversation_search_plan','conversation_search','conversation_fetch','conversation_organize'}
+OUTPUT_PROFILE='retrieval-high-output-v1'
+OUTPUT_FLOORS={'conversation_search_plan':4096,'conversation_organize':8192}
+
+def processing_model(model,data):
+    """Freeze a separate thinking/output allowance for newly registered work."""
+    stage=data.get('stage')
+    if data.get('request_profile')==OUTPUT_PROFILE and stage in OUTPUT_FLOORS:
+        return model|{'_reasoning_effort':'high','max_tokens':max(model['max_tokens'],OUTPUT_FLOORS[stage])}
+    return model
 
 def reasoning_model(model,knowledge=None,*,plan=False):
     if plan or (knowledge or {}).get('mode')==PROFILE and not knowledge.get('translation') and (

@@ -69,6 +69,8 @@ ERRORS.update({
     'provider_aborted':'供应商终止了本次生成，原调用记录保留。',
     'provider_tool_call_not_supported':'供应商返回了本入口不支持的工具调用，未执行或展示为回复。',
 })
+ERRORS['migration_configuration_required']='迁移资料已载入；请先在本机配置模型并确认使用范围，再开始对话。'
+
 PHASES = {"knowledge_routing":"正在判断知识路径","knowledge_web_plan":"正在规划公开资料查询","knowledge_search_web":"正在搜索公开资料","knowledge_fetch_web":"正在读取公开网页","knowledge_goal":"正在理解检索目标","knowledge_selection":"正在选择相关资料","knowledge_translation":"正在整理知识","knowledge_review":"正在核对整理结果","knowledge_waiting_quota":"知识复核等待额度恢复", "knowledge_search":"正在检索世界知识", "knowledge_refresh":"正在核对最新资料", "knowledge_ready":"知识已就绪，准备回复", "knowledge_no_matches":"未找到匹配资料", "knowledge_unavailable":"知识来源不可用", "character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
@@ -240,6 +242,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             from .app_runtime import AppRuntime
             self.runtime = AppRuntime(self.controller)
             self.runtime.start()
+            from .migration import migration_pending
+            if migration_pending(self.paths):self.notice.set('迁移资料已载入；请先在本机配置模型并确认使用范围，再开始对话。')
             try:
                 from .tray import Tray
                 self.tray=Tray(self)
@@ -493,7 +497,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.build_selector(parent)
 
     def build_diagnostics(self, parent):
-        self.heading(parent, "故障排查", "正常停止核对归属；强制停止会退出全部 QQ 与相关服务，不核对托管来源。日志仅含元数据。")
+        self.heading(parent, "故障排查", "正常退出与强制停止均只处理当前实例所属组件。日志仅含元数据。")
         for role, label in LABELS.items():
             row = ttk.Frame(parent)
             row.pack(fill="x")
@@ -570,7 +574,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             self.run_task("全部停止", {"lifecycle", "config"}, lambda _: self.controller.stop_all(True))
 
     def force_stop_everything(self):
-        if not messagebox.askyesno("强制停止全部相关程序", "将直接结束全部 QQ（包括普通 QQ）、NapCat，以及人格/TRPG/AstrBot 的相关服务、宿主和其他管理窗口。\n\n不校验由谁启动，不等待请求完成；未保存的工作可能丢失。当前工作台保留。确定执行？"):
+        if not messagebox.askyesno("强制停止全部相关程序", "将结束当前实例所属组件及其子进程。\n\n不等待请求完成；未保存的工作可能丢失。当前工作台保留。确定执行？"):
             return
         for operation in self.hub.active.values():
             operation.cancel.set()
@@ -579,7 +583,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             self.last_ready = False
             if report["success"]:
                 self.status_text.set("相关程序已强制停止。")
-                self.notice.set("强制停止完成；普通 QQ 也已退出。记录：" + report["report_file"])
+                self.notice.set("当前实例组件已停止。记录：" + report["report_file"])
             else:
                 remaining = ", ".join(f"{p['name']} (PID {p['pid']})" for p in report["remaining"])
                 self.notice.set("仍有程序未结束：" + remaining + "。查看停止报告；可能需要管理员权限。")

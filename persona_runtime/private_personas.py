@@ -135,7 +135,7 @@ class PrivatePersonas:
         from .config import ConfigStore
         from .persona_management import active
         if not operation_id:raise RuntimeErrorBase('operation_id_required')
-        if kind not in ('main','organization','proactive','knowledge_router'):raise RuntimeErrorBase('private_permission_kind_invalid')
+        if kind not in ('main','organization','proactive','knowledge_router','selector'):raise RuntimeErrorBase('private_permission_kind_invalid')
         self.root.mkdir(parents=True,exist_ok=True)
         lock=InstanceLock(self.root/'registry.lock')
         try:
@@ -153,6 +153,7 @@ class PrivatePersonas:
                 if kind=='knowledge_router':
                     from .knowledge_routing import configured_model
                     model=configured_model(self.paths)
+                if kind=='selector':model=cfg['character_selector']
                 if provider_identity(model)!=expected_provider:
                     raise RuntimeErrorBase('private_provider_changed')
                 data=self.model_grants()
@@ -185,9 +186,14 @@ class PrivatePersonas:
         return all(grant.get(k)==v for k,v in expected.items())
 
     def record_for_persona(self,persona_id):
+        def scoped(record):
+            if record is None:return None
+            from .migration import privacy_binding
+            binding=privacy_binding(self.paths)
+            return dict(record,_copy_binding=binding,_migration_binding=True) if binding else record
         records=self.load()['records']
         direct=next((r for r in records if r.get('persona_id')==persona_id and persona_id),None)
-        if direct:return direct
+        if direct:return scoped(direct)
         from .storage import Store
         import sqlite3
         from contextlib import closing
@@ -199,7 +205,7 @@ class PrivatePersonas:
         if not row or not row[0]:return None
         record=next((r for r in records if r.get('persona_id')==row[0]),None)
         if not record:raise RuntimeErrorBase('private_registry_unavailable')
-        return record
+        return scoped(record)
 
     def assert_acceptance(self,persona_id):
         if self.protected(persona_id):raise RuntimeErrorBase('private_persona_acceptance_forbidden')
@@ -237,7 +243,8 @@ class PrivatePersonas:
         from .character import CharacterService
         from .profile import head
         record=self.record(private_id);package=self.package(record);pid=persona_id or record.get('persona_id')
-        if persona_id and self.record_for_persona(persona_id)!=record:raise RuntimeErrorBase('private_scope_mismatch')
+        scoped=self.record_for_persona(persona_id) if persona_id else None
+        if persona_id and (scoped is None or {k:v for k,v in scoped.items() if not k.startswith('_')}!=record):raise RuntimeErrorBase('private_scope_mismatch')
         archive=safe(self.root/private_id/'source-archive.md',self.root)
         if sha(archive.read_bytes())!=record['archive_sha256']:raise RuntimeErrorBase('private_original_changed')
         if not pid:raise RuntimeErrorBase('private_persona_not_imported')
@@ -305,9 +312,13 @@ def guard_acceptance_write(store,persona_id):
 
 
 def guard_cloud_dispatch(store,persona_id,kind,model):
+    from .migration import ensure_cloud_ready
+    ensure_cloud_ready(store.paths)
     private=PrivatePersonas(store.paths)
     policy=private.record_for_persona(persona_id)
-    if policy is not None and kind in ('main','organization','proactive','knowledge_router') and private.model_authorized(persona_id,policy,kind,model):return
+    if policy is not None and kind in ('main','organization','proactive','knowledge_router','selector') and private.model_authorized(persona_id,policy,kind,model):return
+    if policy is not None and policy.get('_migration_binding'):
+        raise RuntimeErrorBase('private_cloud_provider_not_authorized')
     with store.connection() as db:
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_imports'").fetchone():
             for row in db.execute('SELECT data_json FROM memory_imports WHERE persona_id=?',(persona_id,)):

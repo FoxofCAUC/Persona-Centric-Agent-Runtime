@@ -88,6 +88,7 @@ class ConsoleLifecycleTests(unittest.TestCase):
         with patch("persona_runtime.lifecycle.require_console", return_value=lease) as require, \
                 patch.object(self.ctl, "health", side_effect=[{"state": "已停止", "owned": False, "port": 1}, {"state": "运行"}]), \
                 patch("persona_runtime.lifecycle.port_open", return_value=False), \
+                patch("persona_runtime.lifecycle.component_python", return_value=Path('C:/fixture/python.exe')), \
                 patch("persona_runtime.lifecycle.time.sleep"), \
                 patch.object(self.ctl.app_processes,'start') as spawn:
             self.ctl.start("service")

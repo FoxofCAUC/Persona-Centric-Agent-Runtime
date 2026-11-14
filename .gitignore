@@ -41,5 +41,9 @@ downloads/
 
 # Local personal canon and acceptance copies are never publication assets.
 private/
+.pcar-local.json
 *.private.json
 *.private.md
+
+# Whole-business packages are private local data.
+*.pcar-migration.zip

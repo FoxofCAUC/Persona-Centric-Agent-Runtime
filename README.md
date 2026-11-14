@@ -8,10 +8,13 @@
 
 对话连续性、长期记忆、关系维护和故障恢复，是让这份陪伴更好发生的支持能力。工程正确性与可溯源应服务产品体验，不能用更多通过的检查、完整的架构或精细的记录，代替一个好相处的 AI 伴侣。
 
-![Version](https://img.shields.io/badge/version-0.9.0.dev36-4263eb)
+![Version](https://img.shields.io/badge/version-v0.1-4263eb)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 [AGPL-3.0-only 开源协议](LICENSE)
+
+**首个发行版[v0.1](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.1)** · [Agent部署与启用手册](AGENT_INSTALL.md)。采用Agent辅助部署：下载桌面包、解压为工作区，让DSH/Codex等Agent阅读入口并完成环境与配置。作者已确认二、三台电脑验收及第三台正式迁移通过；一键安装另行规划。
+
 
 [产品方向与大肥鱼参考线](docs/AI伴侣产品方向与大肥鱼参考线.md) · [当前状态](docs/STATUS.md) · [M9全阶段验收](docs/acceptance/M9-全阶段桌面交付验收.md) · [快速开始](#快速开始) · [文档导航](#文档导航)
 
@@ -56,31 +59,13 @@ M8.A受管整理统一了授权、领取、逐次调用额度和原回执恢复�
 
 ### 1. 准备环境
 
-需要 Windows、已安装的 **Python 3.12** 和 `uv`。仓库提供源码，不附虚拟环境、模型密钥、QQ客户端或第三方组件二进制。
+公开发行tag为 **v0.1**，程序版本 **0.1.0**，已验证目标 **Windows 11 x64**。从Release下载 **PCAR-v0.1-Windows-x64-desktop.zip**，核对SHA256SUMS后解压，将该目录交给Agent，并让其先阅读根目录 **AGENTS.md** 与 **AGENT_INSTALL.md**。
 
-克隆后在仓库根目录打开PowerShell：
+包内已有公开CPU模型与全部有效桌面源码；Python3.12 x64、uv、依赖和用户自己的主模型/Jev配置由Agent按本机情况准备。程序、业务和工具目录分开，公共下载只走Windows手动系统代理。包中没有作者人物、聊天、密钥或正式业务。
 
-```powershell
-git clone https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime.git
-cd Persona-Centric-Agent-Runtime
+详细手册区分新建、整库迁移、登记已有实例，提供显式BasePython、普通新机与缺少py启动器时的流程。已有实例保留原数据和.venv，不重复初始化或覆盖。迁移后当前角色和提供商重新授权，Jev仍只判断是否联网，High负责检索/整理，人物按v8与原主模型配置回应。
 
-# 创建D盘数据目录，不调用模型。
-python -B -m persona_runtime init-storage
-
-# 仅作用于当前PowerShell会话及其子进程。
-$env:UV_CACHE_DIR = 'D:\Persona-Centric Agent Runtime\cache\uv'
-$env:PIP_CACHE_DIR = 'D:\Persona-Centric Agent Runtime\cache\pip'
-$env:PYTHONPYCACHEPREFIX = 'D:\Persona-Centric Agent Runtime\cache\pycache'
-$env:TEMP = 'D:\Persona-Centric Agent Runtime\tmp'
-$env:TMP = 'D:\Persona-Centric Agent Runtime\tmp'
-$env:UV_PROJECT_ENVIRONMENT = 'D:\Persona-Centric Agent Runtime\.venv'
-
-uv venv --no-managed-python --python 3.12 'D:\Persona-Centric Agent Runtime\.venv'
-uv sync --frozen --no-managed-python
-.\scripts\dev.ps1 db init
-```
-
-已部署用户使用现有环境，不重复创建或覆盖数据。数据库升级先备份，再事务迁移。
+这是可复用的Agent辅助部署包，一键安装器、自带全部依赖和自动更新还未交付。GitHub自动生成的Source code包不含模型/演练资产，不能替代桌面包。
 
 ### 2. 开始窗口对话
 
@@ -118,17 +103,17 @@ flowchart LR
     Memory --> DB
 ```
 
-当前候选版本 **0.7.6.dev23**，数据库结构 **20**、全量导出 **17**、配置 **2**、桥接插件 **0.7.2**。QQ出站使用纯文本，原语义回复及传输片段分别留存。候选版本号不代表实验能力已经正式启用。
+当前发行版本 **v0.1（程序0.1.0）**，数据库结构 **27**、配置 **3**。QQ出站使用纯文本，原语义回复及传输片段分别留存。候选版本号不代表实验能力已经正式启用。
 
 | 位置 | 内容 |
 | --- | --- |
 | Git仓库 | 源码、模板、测试、进度和验收手册 |
-| `D:\Persona-Centric Agent Runtime\data\database` | 数据库、人格、会话、记忆及版本事实 |
+| 所选数据目录下 `data/database` | 数据库、人格、会话、记忆及版本事实 |
 | 数据根目录下 `config` / `runtime` | 配置、DPAPI密文、实例状态与锁 |
 | `logs` / `backups` / `exports` | 元数据日志、备份、导出及本机验收证据 |
 | `.venv` / `components` / `cache` / `tmp` | 依赖环境、独立组件、缓存与临时文件 |
 
-`PERSONA_RUNTIME_HOME` 可显式覆盖业务数据根目录；磁盘不可用时失败，不自动退回C盘。现有Windows启动/开发脚本的项目解释器仍使用默认D盘 `.venv`，并非完全可移植启动器。`.env.example` 仅作参考，不会自动加载。
+定位顺序为显式参数、进程 `PERSONA_RUNTIME_HOME`、源码根 `.pcar-local.json`；未指定时由桌面选择或命令行报错。解释器跟随所选实例 `.venv`，不退回其他盘或其他项目。`.env.example` 仅作参考，不会自动加载。
 
 默认端口均绑定回环地址：人格服务 **8765**、NapCat管理页 **6399**、AstrBot管理页 **6285**、OneBot **6299**。正常启停核对归属，不接管未知端口。
 
@@ -166,10 +151,12 @@ flowchart LR
 .\scripts\dev.ps1 db status
 ```
 
-默认按改动影响运行必要的局部检查，遵循[分级验证原则](docs/开发验证与验收分级原则.md)。全量测试入口为 `.\scripts\test.ps1`，需要D盘项目环境及独立AstrBot SDK环境，不是每次文档或局部修订的必做步骤。核心持久化测试可单独运行：
+默认按改动影响运行必要的局部检查，遵循[分级验证原则](docs/开发验证与验收分级原则.md)。全量测试入口为 `.\scripts\test.ps1`，使用所选实例环境；历史QQ测试另需独立AstrBot SDK环境，不是每次文档或局部修订的必做步骤。核心持久化测试可单独运行：
 
 ```powershell
-& 'D:\Persona-Centric Agent Runtime\.venv\Scripts\python.exe' -B -m unittest discover -s tests -p test_runtime.py -v
+$pcarData = 'C:\PCAR数据' # 换成所选实例目录
+$env:PERSONA_RUNTIME_HOME = $pcarData
+& (Join-Path $pcarData '.venv\Scripts\python.exe') -B -m unittest tests.test_decoupling tests.test_runtime -v
 ```
 
 离线验证使用隔离数据、模拟模型和模拟QQ。真实调用、用户体验和实际QQ投递分别记录，不能相互冒充。用户偏好与具体出戏点是产品判断的重要依据；工程检查负责发现缺陷，不替代体验判断。提交前请阅读[协作约定](AGENTS.md)。

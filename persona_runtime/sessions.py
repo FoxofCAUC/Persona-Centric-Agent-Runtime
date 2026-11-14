@@ -320,6 +320,10 @@ class SessionService:
 
     async def worker(self):
         while True:
+            from .migration import background_allowed
+            if not background_allowed(self.store.paths):
+                await asyncio.sleep(5)
+                continue
             scan=asyncio.create_task(asyncio.to_thread(self.tick))
             try:
                 await asyncio.shield(scan)

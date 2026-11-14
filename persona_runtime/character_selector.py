@@ -135,7 +135,7 @@ class SelectorService:
             try:
                 completion=await audited_complete(self.client,model|{'_json_output':True,'_character_selection':True,'timeout':min(SELECTOR_TIMEOUT_MAX,model['timeout'])},payload,
                     validate=lambda text:parse_output(text,pool,limit),save=save,before_attempt=before_attempt,
-                    prior_failures=getattr(self,'retry_prior_failures',0),timeout_code='selector_timeout')
+                    prior_failures=getattr(self,'retry_prior_failures',0),timeout_code='selector_timeout',paths=self.store.paths)
                 text,usage=completion;answer=parse_output(text,pool,limit)
             except BaseException as exc:
                 error='selector_interrupted' if isinstance(exc,asyncio.CancelledError) else str(exc)

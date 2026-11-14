@@ -18,7 +18,7 @@ SELECTOR_DEFAULTS = {"enabled": False, "base_url": "", "name": "", "encrypted_ke
 DEFAULTS = {
     "qq_backend": "napcat", "snowluma_port": 5099,
     "version": 3, "character_selector": SELECTOR_DEFAULTS, "service_port": 8765, "napcat_port": 6399,
-    "runtime": {"revision":1,"components":{"service":True,"astrbot":True,"napcat":True},"qq_persona_id":""},
+    "runtime": {"revision":1,"components":{"service":True,"astrbot":False,"napcat":False},"qq_persona_id":""},
     "astrbot_port": 6285, "onebot_port": 6299, "bot_qq": "", "owner_qq": "",
     "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
               "max_tokens": 1024, "hourly_limit": 300, "max_input_chars": 24000},

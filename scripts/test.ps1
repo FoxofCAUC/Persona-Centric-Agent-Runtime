@@ -1,6 +1,8 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$python = 'D:\Persona-Centric Agent Runtime\.venv\Scripts\python.exe'
+. (Join-Path $PSScriptRoot 'pcar-location.ps1')
+$runtimeHome = Get-PcarRuntimeHome
+$python = Get-PcarPython -RuntimeHome $runtimeHome
 $previousEncoding = $env:PYTHONIOENCODING
 try {
     $env:PYTHONIOENCODING = 'utf-8'

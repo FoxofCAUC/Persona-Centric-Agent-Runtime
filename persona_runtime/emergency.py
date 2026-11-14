@@ -1,4 +1,4 @@
-"""Explicit emergency stop: select related programs without ownership records."""
+"""Instance-scoped component stop and the separate legacy explicit QQ action."""
 import json
 import os
 from pathlib import Path
@@ -19,8 +19,8 @@ def normalized(value):
     return str(value or "").replace("/", "\\").casefold()
 
 
-def select_targets(rows, home, current_pid=None, protected_pids=()):
-    """Names and program purpose identify scope; no host/PID provenance is required."""
+def select_targets(rows, home, current_pid=None, protected_pids=(), *, owned_pids=()):
+    """Only verified ownership seeds the process tree; names and source paths are shared."""
     current_pid = os.getpid() if current_pid is None else current_pid
     by_id = {int(row["ProcessId"]): row for row in rows}
     protected = {current_pid, *protected_pids}
@@ -41,40 +41,14 @@ def select_targets(rows, home, current_pid=None, protected_pids=()):
                 break
             protected.add(parent)
             ancestor = by_id.get(parent)
-    roots = tuple(normalized(root) for root in (
-        home, REPO, "D:/QQ_Bot_2", "D:/AIPoweredTRPGinQQ/AIPoweredTRPG"))
     selected = {}
-    for pid, row in by_id.items():
-        name = str(row.get("Name") or "").casefold()
-        if pid in protected or name in PROTECTED_NAMES:
-            continue
-        command = normalized(row.get("CommandLine"))
-        executable = normalized(row.get("ExecutablePath"))
-        if "\\openai\\codex\\runtimes\\" in executable or "\\.cache\\codex-runtimes\\" in executable:
-            protected.add(pid)
-            continue
-        reason = None
-        if name in ROOT_NAMES or name.startswith("napcatwinboot"):
-            reason = "QQ / NapCat"
-        elif name in PYTHON_NAMES:
-            if "-m persona_runtime" in command or "-m astrbot" in command or name == "astrbot.exe":
-                reason = "persona / AstrBot runtime"
-            elif any(root in command for root in roots) and any(script in command for script in (
-                    "botmanager.py", "service_host.py", "startrun.py", "main.py")):
-                reason = "related manager / service host"
-            elif "\\uv\\tools\\astrbot\\scripts\\" in executable or any(
-                    root + "\\components\\astrbot\\.venv\\scripts\\" in executable for root in roots):
-                reason = "dedicated AstrBot environment"
-        elif name in {"node.exe", "pnpm.exe", "npm.exe", "bun.exe"}:
-            if any(root in command for root in roots) and any(marker in command for marker in (
-                    "apps\\server", "apps\\web", "dist\\index.js", "vite", "pnpm")):
-                reason = "related engine / frontend runtime"
-        elif name in {"cmd.exe", "powershell.exe", "pwsh.exe"}:
-            if any(root in command for root in roots) and any(marker in command for marker in (
-                    "launcher", "start-bot", "start-manager", "service_host", "persona_runtime.host")):
-                reason = "related launcher"
-        if reason:
-            selected[pid] = {"pid": pid, "name": row.get("Name", ""), "reason": reason}
+    for pid in owned_pids:
+        row=by_id.get(pid)
+        if row is None or pid in protected:continue
+        name=str(row.get('Name') or '').casefold()
+        executable=normalized(row.get('ExecutablePath'))
+        if name in PROTECTED_NAMES or "\\openai\\codex\\runtimes\\" in executable:continue
+        selected[pid]={'pid':pid,'name':row.get('Name',''),'reason':'current instance owned process'}
     # Include related workers and detached child programs, without closing browsers/system shells.
     changed = True
     while changed:
@@ -102,7 +76,7 @@ def process_snapshot():
 
 
 def kill_pid(pid):
-    # No /IM, no blanket Python/Node kill, no ancestry/instance ownership proof.
+    # No /IM and no blanket Python/Node kill. Caller verifies instance scope.
     # Children are individually selected, so unrelated browser processes are preserved.
     result = subprocess.run(["taskkill", "/PID", str(int(pid)), "/F"], capture_output=True,
                             creationflags=NO_WINDOW, timeout=10)
@@ -317,17 +291,35 @@ def force_stop_qq_elevated(paths, notify=lambda message: None):
     return report | {"report_file": str(report_file)}
 
 
+def owned_processes(paths):
+    """Read only this instance's saved identities; never infer ownership by name."""
+    from .lifecycle import same_process
+    config=paths.home/'config/workbench.json'
+    if not config.exists():return ()
+    instance=json.loads(config.read_text(encoding='utf-8'))['instance_id']
+    result=[]
+    for role in ('service','astrbot','napcat'):
+        file=paths.home/'runtime'/(role+'.json')
+        if not file.exists():continue
+        saved=json.loads(file.read_text(encoding='utf-8'))
+        if saved.get('instance_id')!=instance:continue
+        for key in ('host','loader','qq_listener','qq_parent'):
+            identity=saved.get(key)
+            if identity and same_process(identity):result.append(identity['ProcessId'])
+    return result
+
+
 def force_stop_related(paths, notify=lambda message: None, *, snapshot=None, kill=None, pause=None, protected_pids=()):
     snapshot = snapshot or process_snapshot
     kill = kill or kill_pid
     pause = pause or time.sleep
     stopped, attempted = {}, {}
-    notify("正在强制停止 QQ、NapCat 和相关服务，不等待排空或校验托管来源。")
+    notify("正在停止当前实例所属组件。")
     for _ in range(5):
-        targets = select_targets(snapshot(), paths.home, protected_pids=protected_pids)
+        targets = select_targets(snapshot(), paths.home, protected_pids=protected_pids, owned_pids=owned_processes(paths))
         if not targets:
             pause(.5)
-            if not select_targets(snapshot(), paths.home, protected_pids=protected_pids):
+            if not select_targets(snapshot(), paths.home, protected_pids=protected_pids, owned_pids=owned_processes(paths)):
                 break
             continue
         for target in targets:
@@ -335,10 +327,10 @@ def force_stop_related(paths, notify=lambda message: None, *, snapshot=None, kil
             if kill(target["pid"]):
                 stopped[target["pid"]] = target
         pause(.5)
-    remaining = select_targets(snapshot(), paths.home, protected_pids=protected_pids)
+    remaining = select_targets(snapshot(), paths.home, protected_pids=protected_pids, owned_pids=owned_processes(paths))
     report = {"at": timestamp(), "stopped": list(stopped.values()), "attempted": list(attempted.values()),
               "remaining": remaining, "success": not remaining,
-              "scope": "all QQ/NapCat and related persona/TRPG/AstrBot programs; current controller retained"}
+              "scope": "current instance verified process trees; current controller retained"}
     report_file = paths.home / "logs" / ("force-stop-" + identifier() + ".json")
     atomic_json(report_file, report)
     report["report_file"] = str(report_file)
@@ -346,7 +338,7 @@ def force_stop_related(paths, notify=lambda message: None, *, snapshot=None, kil
 
 
 def force_stop_all_elevated(paths, notify=lambda message: None):
-    """Console exit requires an administrator sweep, including orphan services."""
+    """Console exit stops only this instance, including its recorded detached components."""
     import base64
     import sys
     if is_administrator():
@@ -365,7 +357,7 @@ def force_stop_all_elevated(paths, notify=lambda message: None):
     script = ("$ErrorActionPreference='Stop'; try { $p=Start-Process -FilePath " + quote(sys.executable)
               + ' -ArgumentList ' + quote(args)
               + ' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode } catch { exit 1 }')
-    notify('正在关闭全部服务；如出现 Windows 管理员授权，请确认。')
+    notify('正在关闭当前实例组件；如出现 Windows 管理员授权，请确认。')
     result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand',
                              base64.b64encode(script.encode('utf-16-le')).decode('ascii')],
                             capture_output=True, creationflags=NO_WINDOW)
