@@ -354,33 +354,52 @@ def publication_scan(paths,repo,*,staged=False,base=None):
         for line in archive.decode('utf-8-sig').splitlines():
             if len(line)>36:
                 for i in range(0,len(line)-35,32):needles.add(line[i:i+64].encode())
-    hits=[];checked=0
-    def check(name,data):
-        nonlocal checked
-        checked+=1
-        if (name.replace('\\','/').split(':')[-1].startswith('private/') or Path(name).suffix.lower() in ('.sqlite','.sqlite3','.db','.onnx','.png','.jpg','.zip','.safetensors')
-                or b'\x00' in data or data.startswith((b'\x89PNG\r\n',b'\xff\xd8\xff',b'PK\x03\x04'))
-                or sha(data) in original_hashes or any(n in data for n in needles)):
-            hits.append({'location':name,'reason':'private_or_runtime_content'})
     def git(*args):return subprocess.check_output(['git',*args],cwd=repo)
+    published_documents={}
+    origin_tips=git('for-each-ref','--format=%(objectname)','refs/remotes/origin').decode().splitlines() if base else []
+    published_base=bool(base and any(subprocess.run(['git','merge-base','--is-ancestor',base,tip],cwd=repo,
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0 for tip in origin_tips))
+    if published_base:
+        for item in git('ls-tree','-rz',base,'--','docs').split(b'\0'):
+            if not item:continue
+            meta,path=item.split(b'\t',1);path=path.decode()
+            if path.startswith('docs/') and path.lower().endswith('.docx'):
+                published_documents[path]=meta.split()[-1].decode()
+    hits=[];checked=0;unchanged_documents=0
+    def check(name,data,path):
+        nonlocal checked,unchanged_documents
+        checked+=1
+        expected=published_documents.get(path);published=False
+        if expected:
+            algorithm=hashlib.sha256 if len(expected)==64 else hashlib.sha1
+            published=algorithm(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==expected
+            unchanged_documents+=int(published)
+        private=(path.startswith('private/') or sha(data) in original_hashes or any(n in data for n in needles))
+        binary=(Path(path).suffix.lower() in ('.sqlite','.sqlite3','.db','.onnx','.png','.jpg','.zip','.safetensors')
+                or b'\x00' in data or data.startswith((b'\x89PNG\r\n',b'\xff\xd8\xff',b'PK\x03\x04')))
+        # Only the container-type check may recognize an unchanged document at
+        # its already-published path. Private-content checks always still run.
+        if private or binary and not published:
+            hits.append({'location':name,'reason':'private_or_runtime_content'})
     names=set(git('ls-files','-z').decode().split('\0'))-{''}
     if staged:
         for name in sorted(names):
-            try:check('index:'+name,git('show',':'+name))
+            try:check('index:'+name,git('show',':'+name),name)
             except subprocess.CalledProcessError:continue
     else:
         names|=set(git('ls-files','--others','--exclude-standard','-z').decode().split('\0'))-{''}
         for name in sorted(names):
-            if (repo/name).is_file():check(name,(repo/name).read_bytes())
+            if (repo/name).is_file():check(name,(repo/name).read_bytes(),name)
     if base:
         commits=git('rev-list',base+'..HEAD').decode().splitlines();seen=set()
         for commit in commits:
             for item in git('ls-tree','-rz',commit).split(b'\0'):
                 if not item:continue
                 meta,name=item.split(b'\t',1);blob=meta.split()[-1].decode()
-                if blob in seen:continue
-                seen.add(blob);check(commit[:12]+':'+name.decode(),git('cat-file','blob',blob))
-    return {'passed':not hits,'checked_blobs':checked,'hits':hits}
+                key=(name,blob)
+                if key in seen:continue
+                seen.add(key);check(commit[:12]+':'+name.decode(),git('cat-file','blob',blob),name.decode())
+    return {'passed':not hits,'checked_blobs':checked,'hits':hits,'unchanged_published_documents':unchanged_documents}
 
 
 def install_hook(paths,repo):
