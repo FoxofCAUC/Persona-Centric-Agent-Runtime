@@ -30,10 +30,17 @@ class PrivateCopyAuthorizationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeErrorBase,'private_cloud_provider_not_authorized'):
             guard_cloud_dispatch(store,pid,'main',dict(model,name='other-model'))
 
-    def test_retired_router_cannot_receive_new_cloud_grants(self):
-        copied,paths,store,cfg,private=self.copy()
-        with self.assertRaisesRegex(RuntimeErrorBase,'legacy_retrieval_frozen'):
-            private.authorize_model(store,copied['persona_id'],'knowledge_router',provider_identity(cfg.load()['model']),'retired-router')
+    def test_jev_switch_requires_its_own_provider_grant(self):
+        copied,paths,store,cfg,private=self.copy();pid=copied['persona_id']
+        from persona_runtime.knowledge_routing import configured_model
+        atomic_json(paths.home/'private/knowledge-router/config.json',{'base_url':'https://decision.fixture.invalid/v1','name':'jev-test','encrypted_key':'artificial-protected-jev'})
+        model=configured_model(paths)
+        with self.assertRaisesRegex(RuntimeErrorBase,'private_cloud_provider_not_authorized'):
+            guard_cloud_dispatch(store,pid,'knowledge_router',model)
+        private.authorize_model(store,pid,'knowledge_router',provider_identity(model),'jev-switch-visible-copy')
+        guard_cloud_dispatch(store,pid,'knowledge_router',model)
+        with self.assertRaisesRegex(RuntimeErrorBase,'private_cloud_provider_not_authorized'):
+            guard_cloud_dispatch(store,pid,'knowledge_router',dict(model,name='other-provider'))
 
     def test_visible_copy_main_needs_own_grant_even_when_legacy_provider_matches(self):
         copied,paths,store,cfg,private=self.copy();pid=copied['persona_id'];model=cfg.load()['model']

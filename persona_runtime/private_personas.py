@@ -136,7 +136,6 @@ class PrivatePersonas:
         from .persona_management import active
         if not operation_id:raise RuntimeErrorBase('operation_id_required')
         if kind not in ('main','organization','proactive','knowledge_router'):raise RuntimeErrorBase('private_permission_kind_invalid')
-        if kind=='knowledge_router':raise RuntimeErrorBase('legacy_retrieval_frozen')
         self.root.mkdir(parents=True,exist_ok=True)
         lock=InstanceLock(self.root/'registry.lock')
         try:
@@ -146,11 +145,14 @@ class PrivatePersonas:
                 policy=self.record_for_persona(persona_id)
                 if policy is None:
                     policy=self.acceptance_copy_policy(persona_id)
-                    if policy is not None and kind!='main':
+                    if policy is not None and kind not in ('main','knowledge_router'):
                         raise RuntimeErrorBase('private_copy_permission_kind_not_allowed')
                 if policy is None:raise RuntimeErrorBase('private_scope_mismatch')
                 cfg=ConfigStore(self.paths).load()
                 model=cfg['model'] if kind in ('main','proactive') or cfg['organization']['reuse_chat'] else cfg['organization']['model']
+                if kind=='knowledge_router':
+                    from .knowledge_routing import configured_model
+                    model=configured_model(self.paths)
                 if provider_identity(model)!=expected_provider:
                     raise RuntimeErrorBase('private_provider_changed')
                 data=self.model_grants()

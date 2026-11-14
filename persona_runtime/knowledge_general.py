@@ -6,7 +6,7 @@ from .archive import fingerprint
 from .models import RuntimeErrorBase
 
 PROFILE='conversational_web_v1'
-STAGES={'conversation_plan','conversation_search','conversation_fetch','conversation_organize'}
+STAGES={'conversation_web_decision','conversation_search_plan','conversation_search','conversation_fetch','conversation_organize'}
 
 def reasoning_model(model,knowledge=None,*,plan=False):
     if plan or (knowledge or {}).get('mode')==PROFILE and not knowledge.get('translation') and (
@@ -14,13 +14,11 @@ def reasoning_model(model,knowledge=None,*,plan=False):
         return model|{'_reasoning_effort':'high'}
     return model
 
-PLAN=('你在帮助一个有自己口吻和判断的聊天人物按需找资料。普通聊天不用搜索；涉及外部信息时可搜索任意相关公开网站。'
-+ '用户明确要求搜索、上网找或读取链接时应执行，不因你认为是常识就擅自省略。用户明确点名的平台要实际查找，不拿别的平台完全替代。'
- '把问题提炼为简洁的公开查询，不把私人经历、联系方式、账号密钥或人物设定拼进搜索。'
- '已有资料够用就复用。官网、官方社媒、社区、玩家攻略、普通帖子都可以参考；官方也有利益立场，热度也不等于正确，排序不是结论。'
- '资料用于帮助交流，主回复可以结合常识、社区观察、实际复现和自身判断表达观点。争议问题兼顾不同立场，不预设官方必然正确。'
- '只输出工具计划JSON：{"search":true,"queries":["公开查询"],"read_urls":[],"reuse_previous":false,"official_domains":[],"community_domains":[]}。'
- 'search=false表示直接交流；最多3条查询/链接。域名仅用于相关结果的参考排序，不限制可访问网站。')
+PLAN=('Jev已决定本轮需要新增公开联网资料。你只负责规划如何搜索或读取，不再次判断是否需要联网。'
+ '将当前问题及必要前文提炼成公开查询，不把私人经历、联系方式、账号密钥或人物设定拼进搜索。'
+ '明确点名的平台要实际查找；官网、社区、普通帖子均可参考，排序不决定真假。'
+ '只输出工具计划JSON：{"queries":["公开查询"],"read_urls":[],"reuse_previous":false,"official_domains":[],"community_domains":[]}。'
+ '至少提供一条查询或链接，最多各3条。reuse_previous仅表示补充已有资料，不代替本轮联网。域名只影响参考排序，不限制网站。')
 
 def public_url(value):
     try:
@@ -49,15 +47,15 @@ def plan_output(raw):
     def strings(key,maximum):
         rows=value.get(key,[]);rows=[rows] if isinstance(rows,str) else rows
         return list(dict.fromkeys(str(x).strip() for x in rows if isinstance(x,str) and x.strip()))[:maximum] if isinstance(rows,list) else []
-    return {'search':bool(value.get('search',value.get('need_search',False))),
-        'queries':[q[:128] for q in strings('queries',3)],'read_urls':strings('read_urls',3),
+    queries=[q[:128] for q in strings('queries',3)];urls=strings('read_urls',3)
+    return {'queries':queries,'read_urls':urls,
         'reuse_previous':bool(value.get('reuse_previous')),'official_domains':strings('official_domains',8),
-        'community_domains':strings('community_domains',8),'format_readable':('search' in value or 'need_search' in value)}
+        'community_domains':strings('community_domains',8),'format_readable':bool(queries or urls)}
 
 def messages(payload):
     data=payload['knowledge_processing']
     from .knowledge_translation import ORGANIZE
-    instruction=PLAN if data['stage']=='conversation_plan' else ORGANIZE if data['stage']=='conversation_organize' else None
+    instruction=PLAN if data['stage']=='conversation_search_plan' else ORGANIZE if data['stage']=='conversation_organize' else None
     if instruction is None:return []
     return [{'role':'system','content':instruction},{'role':'user','content':json.dumps(data['input'],ensure_ascii=False)}]
 
@@ -97,7 +95,10 @@ class GeneralRetrieval:
         return await request(stage,values,model)
     def accept(self,payload,raw):
         stage=payload['knowledge_processing']['stage'];data=_json(raw)
-        if stage=='conversation_plan':return plan_output(raw)
+        if stage=='conversation_web_decision':
+            from .knowledge_web_decision import parse
+            return parse(raw)
+        if stage=='conversation_search_plan':return plan_output(raw)
         if stage=='conversation_organize':
             notes=data.get('notes') if isinstance(data,dict) else None
             return {'notes':notes if isinstance(notes,str) and notes.strip() else raw.strip()}
@@ -133,64 +134,77 @@ class GeneralRetrieval:
         with self.store.connection() as db:
             reader=read(db,'policy.'+turn['persona_id'],POLICY)['data'];prior=self.previous(db,turn);previous=prior['sources']
             question=input_text(db,turn);web_policy=read(db,'web.policy.'+turn['persona_id'],{'enabled':False})['data']
-            recent=[r[0] for r in db.execute("SELECT e.text FROM turns t JOIN events e ON e.id=t.user_event_id WHERE t.persona_id=? AND t.session_id=? AND t.rowid<(SELECT rowid FROM turns WHERE id=?) ORDER BY t.rowid DESC LIMIT 2",(turn['persona_id'],turn['session_id'],turn['id']))]
+            rows=db.execute("SELECT t.* FROM turns t WHERE t.persona_id=? AND t.channel=? AND t.session_id=? AND t.status='completed' AND t.rowid<(SELECT rowid FROM turns WHERE id=?) ORDER BY t.rowid DESC LIMIT 2",(turn['persona_id'],turn['channel'],turn['session_id'],turn['id'])).fetchall()
+            recent=[];context=[]
+            for row in reversed(rows):
+                text=input_text(db,dict(row));recent.append(text)
+                reply=db.execute('SELECT text FROM events WHERE id=?',(row['reply_event_id'],)).fetchone()
+                context.append({'user':text,'assistant':reply[0] if reply else ''})
         sources=[];errors=[];calls=[];needed=False;used_previous=False
+        decision={'need_web':False,'decision_source':'disabled'}
         def call(stage,args):
             try:
-                result,tid=self.processor._call(turn,stage,args);calls.append(tid);return result
+                result,tid=self.processor._call(turn,stage,args)
+                if tid not in calls:calls.append(tid)
+                return result
             except RuntimeErrorBase as error:
-                if any(part in str(error) for part in ('private_cloud','scope_changed','cancelled','knowledge_stopped')):raise
+                tid=getattr(error,'task_id',None)
+                if tid and tid not in calls:calls.append(tid)
+                if any(part in str(error) for part in ('scope_changed','cancelled','knowledge_stopped','knowledge_request_inactive')):raise
+                if stage!='conversation_web_decision' and 'private_cloud' in str(error):raise
                 errors.append(str(error));return {}
         if reader['enabled'] and turn['channel'] in reader['channels'] and web_policy.get('enabled') and self.processor.policy(turn['persona_id'])['data'].get('enabled'):
             today=datetime.fromisoformat(turn['created_at']).astimezone(timezone(timedelta(hours=8))).date().isoformat()
-            plan=call('conversation_plan',{'question':question,'recent_user_questions':list(reversed(recent)),
-                'today':today,'available_sources':[{k:s.get(k) for k in ('title','url','summary','date')} for s in previous]})
-            if not plan.get('format_readable'):errors.append('planner_format_unavailable')
-            needed=bool(plan.get('search') or plan.get('read_urls') or plan.get('reuse_previous') or errors)
-            if plan.get('reuse_previous'):sources.extend(previous);used_previous=bool(previous)
-            candidates=[];query_leads=[]
-            if plan.get('search'):
+            state={'question':question,'recent_context':context,'today':today,'available_sources':[{k:v.get(k) for k in ('title','url','date')} for v in previous],'cached_notes_available':bool(prior['organized'].get('notes'))}
+            while state['recent_context'] and len(json.dumps(state,ensure_ascii=False))>self.processor.model()['max_input_chars']-1000:state['recent_context']=state['recent_context'][1:]
+            decision=call('conversation_web_decision',state)
+            if type(decision.get('need_web')) is not bool:
+                decision={'need_web':True,'decision_source':'policy_fallback','fallback_reason':errors[-1] if errors else 'jev_web_decision_unavailable'}
+            decision['task_id']=calls[-1] if calls else None
+            needed=decision['need_web']
+            if not needed:
+                sources.extend(previous);used_previous=bool(previous)
+            else:
+                plan=call('conversation_search_plan',{'question':question,'recent_user_questions':recent,
+                    'today':today,'available_sources':[{k:v.get(k) for k in ('title','url','summary','date')} for v in previous]})
+                if not plan.get('format_readable'):errors.append('planner_format_unavailable')
+                if plan.get('reuse_previous'):sources.extend(previous);used_previous=bool(previous)
+                candidates=[];query_leads=[]
                 for query in plan.get('queries',[]):
-                    found=call('conversation_search',{'query':query}).get('sources',[])
-                    candidates.extend(found)
+                    found=call('conversation_search',{'query':query}).get('sources',[]);candidates.extend(found)
                     if found:query_leads.append(found[0])
-            candidates=list({s['url']:s for s in candidates}.values());candidates.sort(key=lambda s:rank(s,plan))
-            for url in plan.get('read_urls',[]):
-                try:candidates.insert(0,{'url':public_url(url),'title':url,'content':'','summary':'','kind':'search_summary'})
-                except RuntimeErrorBase:errors.append('public_web_address_required')
-            # Preserve a lead from every query angle before filling by soft
-            # preference. One official-heavy query must not erase community work.
-            ordered=list({v['url']:v for v in query_leads+candidates}.values())
-            selected=ordered[:4]
-            community=[v for v in candidates[4:] if any(k in urlsplit(v['url']).hostname for k in ('miyoushe','hoyolab','nga','tieba','bilibili','reddit','taptap'))]
-            if community and selected and not any(any(k in urlsplit(v['url']).hostname for k in ('miyoushe','hoyolab','nga','tieba','bilibili','reddit','taptap')) for v in selected):selected[-1]=community[0]
-            for source in selected:
-                if len(source.get('content',''))<350:
-                    fetched=call('conversation_fetch',{'url':source['url']}).get('sources',[])
-                    if fetched:source=source|fetched[0]
-                source['priority_hint']='参考排序，不代表正确性';sources.append(source)
-        sources=list({s['url']:s for s in sources}.values())[:6]
+                candidates=list({v['url']:v for v in candidates}.values());candidates.sort(key=lambda v:rank(v,plan))
+                for url in plan.get('read_urls',[]):
+                    try:candidates.insert(0,{'url':public_url(url),'title':url,'content':'','summary':'','kind':'search_summary'})
+                    except RuntimeErrorBase:errors.append('public_web_address_required')
+                ordered=list({v['url']:v for v in query_leads+candidates}.values());selected=ordered[:4]
+                community=[v for v in candidates[4:] if any(k in urlsplit(v['url']).hostname for k in ('miyoushe','hoyolab','nga','tieba','bilibili','reddit','taptap'))]
+                if community and selected and not any(any(k in urlsplit(v['url']).hostname for k in ('miyoushe','hoyolab','nga','tieba','bilibili','reddit','taptap')) for v in selected):selected[-1]=community[0]
+                for source in selected:
+                    if len(source.get('content',''))<350:
+                        fetched=call('conversation_fetch',{'url':source['url']}).get('sources',[])
+                        if fetched:source=source|fetched[0]
+                    source['priority_hint']='参考排序，不代表正确性';sources.append(source)
+        sources=list({v['url']:v for v in sources}.values())[:6]
         for source in sources:
-            source['content']=source.get('content','')[:18000]
-            source['summary']=source.get('summary','')[:1800]
+            source['content']=source.get('content','')[:18000];source['summary']=source.get('summary','')[:1800]
             source['id']=fingerprint([turn['persona_id'],source['url'],source.get('content'),source.get('summary')])
         organized={}
         if sources:
-            if used_previous and prior['organized'].get('notes') and {s['id'] for s in sources}=={s['id'] for s in previous}:
-                organized=prior['organized']
+            if not needed or used_previous and prior['organized'].get('notes') and {v['id'] for v in sources}=={v['id'] for v in previous}:organized=prior['organized']
             else:
                 from .knowledge_translation import organize_input
-                inputs=organize_input(question,list(reversed(recent)),sources,json.loads(turn['model_snapshot']))
+                inputs=organize_input(question,recent,sources,json.loads(turn['model_snapshot']))
                 if inputs['sources']:
                     output=call('conversation_organize',inputs)
-                    if output.get('notes'):
-                        organized={'notes':output['notes'],'task_id':calls[-1],'source_ids':[s['id'] for s in inputs['sources']]}
-        record={'persona_id':turn['persona_id'],'channel':turn['channel'],'root_turn_id':turn['id'],'sources':sources,
-            'organized':organized,'retrieval':{'needed':needed,'used_previous':used_previous,'task_ids':calls,'errors':errors}}
+                    if output.get('notes'):organized={'notes':output['notes'],'task_id':calls[-1],'source_ids':[v['id'] for v in inputs['sources']]}
+        record={'persona_id':turn['persona_id'],'channel':turn['channel'],'root_turn_id':turn['id'],'sources':sources,'organized':organized,
+            'retrieval':{'needed':needed,'used_previous':used_previous,'task_ids':calls,'errors':errors,'web_decision':decision}}
         with self.store.connection(write=True) as db:
             db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',('knowledge.conversation.record.'+turn['id'],json.dumps({'revision':0,'data':record},ensure_ascii=False)))
         return {'mode':PROFILE,'state':'ready' if sources else 'unavailable' if needed else 'not_needed',
             'record_id':turn['id'],'record_hash':fingerprint(record),'sources':sources,'organized':organized,'retrieval':record['retrieval']}
+
 
 def attach(messages,details,result,turn):
     from copy import deepcopy

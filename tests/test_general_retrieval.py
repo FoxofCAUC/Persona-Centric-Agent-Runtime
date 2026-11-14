@@ -13,7 +13,7 @@ class Planner:
         if messages[0]['content']==ORGANIZE:
             return json.dumps({'notes':'玩家试了不同装备，推荐轻松路线。尚未在简答中说出的细节：先练走位，再换装备。'},ensure_ascii=False),{'total_tokens':1}
         if self.broken:return '先自然聊就好。',{'total_tokens':1}
-        return json.dumps({'search':self.search,'queries':self.queries if self.search else [],'read_urls':[],
+        return json.dumps({'search':self.search,'queries':self.queries,'read_urls':[],
             'reuse_previous':self.reuse,'official_domains':['official.example'],'community_domains':['community.example']}),{'total_tokens':1}
 class Main:
     def __init__(self):self.calls=[]
@@ -28,7 +28,13 @@ class GeneralTests(unittest.IsolatedAsyncioTestCase):
         pid=self.persona['id'];reader=self.chat.knowledge.current_policy(pid);processing=self.org.processing.policy(pid);web=self.org.web.policy(pid)
         self.org.processing.enable_for_persona(pid,True,reader['revision'],processing['revision'],web['revision'],'general-enable')
         self.planner=self.org.client=Planner();self.main=self.chat.client=Main();self.tools=[]
+        from persona_runtime.config import atomic_json
+        atomic_json(self.paths.home/'private/knowledge-router/config.json',{'base_url':'https://decision.fixture.invalid/v1','name':'jev-test','encrypted_key':'artificial-protected-jev'})
+        self.need_web=True;self.decisions=[];self.org.routing.transport=self.decision_transport
         self.org.processing.general.transport=self.transport;self.worker=asyncio.create_task(self.org.worker())
+    async def decision_transport(self,model,body):
+        self.decisions.append((copy.deepcopy(model),copy.deepcopy(body)))
+        return ModelCompletion(json.dumps({'answers':{'route':{'choice':'web' if self.need_web else 'none','confidence':0.01}}}),{'total_tokens':1},{'network_route':'local_fixture'})
     async def transport(self,stage,args,model):
         self.tools.append((stage,copy.deepcopy(args)))
         data={'results':[{'title':'玩家分享：轻松打法','url':'https://community.example/guide','summary':'社区经验可以有不同看法','content':'点赞 1200，玩家试了不同装备，推荐一套操作轻松的路线。'+('普通玩家的经验分享。'*35),'date':'不知道'}]} if stage=='search' else {'title':'帖子','content':'一次玩家实测，说法并不完整。'}
@@ -42,8 +48,8 @@ class GeneralTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('玩家试了不同装备',self.main.calls[-1][0]['content'])
         self.assertNotIn('assertable',self.main.calls[-1][0]['content']);self.assertEqual(len(self.planner.calls),2)
     async def test_ordinary_chat_has_no_search_or_audit_paragraph(self):
-        self.enable();self.planner.search=False;result=await self.ask('今天就想随便聊聊。')
-        self.assertEqual(result['status'],'completed',result['error_code']);self.assertFalse(self.tools)
+        self.enable();self.need_web=False;result=await self.ask('今天就想随便聊聊。')
+        self.assertEqual(result['status'],'completed',result['error_code']);self.assertFalse(self.tools);self.assertFalse(self.planner.calls);self.assertEqual(len(self.decisions),1)
         self.assertNotIn('这轮检索',self.main.calls[-1][0]['content']);self.assertNotIn('暂时不能认定',self.main.calls[-1][0]['content'])
     async def test_fetch_failure_keeps_search_summary_and_the_conversation(self):
         self.enable()
@@ -58,17 +64,52 @@ class GeneralTests(unittest.IsolatedAsyncioTestCase):
         self.enable();self.planner.broken=True;result=await self.ask()
         self.assertEqual(result['status'],'completed',result['error_code']);self.assertEqual(len(self.main.calls),1)
     async def test_previously_provided_material_can_be_reused_without_new_search(self):
-        self.enable();await self.ask();before=len(self.tools);self.planner.search=False;self.planner.reuse=True
+        self.enable();await self.ask();before=len(self.tools);self.need_web=False;self.planner.reuse=True
         result=await self.ask('就用刚才那篇帖子，给我一个更省事的建议。')
         self.assertEqual(result['status'],'completed',result['error_code']);self.assertEqual(len(self.tools),before)
         self.assertTrue(result['context']['knowledge']['retrieval']['used_previous'])
         self.assertIn('尚未在简答中说出的细节',self.main.calls[-1][0]['content'])
         from persona_runtime.knowledge_translation import ORGANIZE
         self.assertEqual(sum(c[0]['content']==ORGANIZE for c in self.planner.calls),1)
-    async def test_old_jev_route_is_not_called_even_if_its_settings_exist(self):
-        self.enable()
-        with patch.object(self.org.routing,'prepare',side_effect=AssertionError('retired route used')):result=await self.ask()
+    async def test_jev_is_the_only_web_switch_and_high_cannot_veto(self):
+        self.enable();self.planner.search=False;result=await self.ask()
         self.assertEqual(result['status'],'completed',result['error_code'])
+        self.assertEqual(len(self.decisions),1);self.assertTrue(self.tools)
+        self.assertTrue(result['context']['knowledge']['retrieval']['web_decision']['need_web'])
+        self.assertEqual(result['context']['knowledge']['retrieval']['web_decision']['decision_source'],'jev')
+
+    async def test_jev_invalid_reply_falls_back_to_web_without_confidence_gate(self):
+        self.enable()
+        async def invalid(model,body):
+            self.decisions.append((model,body));return ModelCompletion('{"answers":{"route":{"choice":"local"}}}',{'total_tokens':1},{})
+        self.org.routing.transport=invalid;result=await self.ask()
+        self.assertEqual(result['status'],'completed',result['error_code']);self.assertTrue(self.tools)
+        decision=result['context']['knowledge']['retrieval']['web_decision']
+        self.assertEqual(decision['decision_source'],'policy_fallback');self.assertEqual(decision['fallback_reason'],'jev_web_decision_invalid')
+        self.assertEqual(len(self.decisions),1)
+
+    async def test_jev_unknown_is_not_replayed_on_primary_retry(self):
+        self.enable();complete=self.main.complete
+        async def unknown(model,body):
+            self.decisions.append((model,body));raise ModelError('jev_transport_unconfirmed',diagnostics={'request_headers_sent':True})
+        async def fail(model,messages):raise ModelError('provider_http_400')
+        self.org.routing.transport=unknown;self.main.complete=fail;failed=await self.ask()
+        self.assertEqual(failed['status'],'failed');self.assertEqual(len(self.decisions),1)
+        self.main.complete=complete;await self.chat.retry(failed['id']);await asyncio.wait_for(self.chat.wait(),30)
+        result=self.chat.get(failed['id']);self.assertEqual(result['status'],'completed',result['error_code'])
+        self.assertEqual(len(self.decisions),1)
+        self.assertEqual(result['context']['knowledge']['retrieval']['web_decision']['decision_source'],'policy_fallback')
+
+    async def test_unavailable_jev_credential_is_not_retried_or_marked_unknown(self):
+        self.enable()
+        async def denied(model,body):
+            self.decisions.append((model,body));raise ModelError('jev_credential_unavailable',diagnostics={'request_headers_sent':False})
+        self.org.routing.transport=denied;result=await self.ask()
+        self.assertEqual(result['status'],'completed',result['error_code']);self.assertEqual(len(self.decisions),1)
+        self.assertEqual(result['context']['knowledge']['retrieval']['web_decision']['decision_source'],'policy_fallback')
+        with self.store.connection() as db:
+            status=db.execute("SELECT status FROM organization_tasks WHERE json_extract(payload_json,'$.knowledge_processing.stage')='conversation_web_decision'").fetchone()[0]
+        self.assertEqual(status,'failed')
     async def test_evidence_button_returns_the_sources_actually_provided(self):
         self.enable();result=await self.ask();evidence=self.chat.knowledge.show_evidence(self.persona['id'],result['id'])
         self.assertEqual(evidence['evidence'][0]['url'],'https://community.example/guide')
@@ -102,7 +143,7 @@ class GeneralTests(unittest.IsolatedAsyncioTestCase):
     async def test_disabling_retrieval_keeps_chat_available(self):
         self.enable();pid=self.persona['id'];r=self.chat.knowledge.current_policy(pid);p=self.org.processing.policy(pid);w=self.org.web.policy(pid)
         self.org.processing.enable_for_persona(pid,False,r['revision'],p['revision'],w['revision'],'general-disable')
-        result=await self.ask('陪我聊两句。');self.assertEqual(result['status'],'completed',result['error_code']);self.assertFalse(self.tools)
+        result=await self.ask('陪我聊两句。');self.assertEqual(result['status'],'completed',result['error_code']);self.assertFalse(self.tools);self.assertFalse(self.decisions);self.assertFalse(self.planner.calls)
 
     async def test_retrieval_stays_high_and_translation_reuses_main_model_configuration(self):
         from persona_runtime.provider_compat import build_request
@@ -114,7 +155,7 @@ class GeneralTests(unittest.IsolatedAsyncioTestCase):
             reply_models.append(copy.deepcopy(model));return await reply_complete(model,messages)
         self.planner.complete=plan;self.main.complete=reply
         result=await self.ask();self.assertEqual(result['status'],'completed',result['error_code'])
-        self.planner.search=False;self.planner.reuse=False
+        self.need_web=False;self.planner.reuse=False
         result=await self.ask('今天不查资料，陪我闲聊。');self.assertEqual(result['status'],'completed',result['error_code'])
         self.assertTrue(all(m.get('_reasoning_effort')=='high' for m in planner_models))
         self.assertTrue(all('_reasoning_effort' not in m for m in reply_models))

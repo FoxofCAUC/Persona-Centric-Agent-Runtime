@@ -238,15 +238,21 @@ class CognitiveService:
             manifest['scope']=payload['scope']
             manifest['proactive']={k:v for k,v in payload['proactive'].items() if k not in ('content','context')}
         stage=payload.get('knowledge_processing',{}).get('stage')
+        if stage=='conversation_web_decision':
+            from .knowledge_web_decision import request,VERSION
+            body=request(json.loads(task['model_snapshot']),payload['knowledge_processing']['input'])
+            manifest['provider_request_contract']={'version':VERSION,'kind':'need_web','configuration_source':'explicit_jev'}
+            manifest['native_request_hash']=fingerprint(body)
+            return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
         if stage in ('conversation_search','conversation_fetch'):
             manifest['provider_request_contract']={'version':'deepseek-tools-v1','kind':stage.removeprefix('conversation_'),
                 'configuration_source':'main','billing_unit':'successful_request'}
             return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
-        if stage and stage not in ('conversation_plan','conversation_organize'):
+        if stage and stage not in ('conversation_search_plan','conversation_organize'):
             manifest['provider_request_contract']={'version':'retired-knowledge-route','kind':stage,'retired':True}
             return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
         from .knowledge_general import reasoning_model
-        manifest['provider_request_contract']=describe_request(reasoning_model(json.loads(task['model_snapshot']),plan=stage in ('conversation_plan','conversation_organize'))|{'_json_output':task['mode'] not in ('test','proactive')})
+        manifest['provider_request_contract']=describe_request(reasoning_model(json.loads(task['model_snapshot']),plan=stage in ('conversation_search_plan','conversation_organize'))|{'_json_output':task['mode'] not in ('test','proactive')})
         return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
 
     @staticmethod

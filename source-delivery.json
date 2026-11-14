@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "0.9.0.dev35",
+  "release": "0.9.0.dev36",
   "mode": "source",
   "roots": [
     "persona_runtime",
@@ -25,6 +25,6 @@
     "requirements-astrbot.lock"
   ],
   "note": "Source inventory only. Historical data codecs and schema-27 DDL remain for existing databases. Retired M9.B audit implementations and frozen archives are deleted and excluded from publication. The Workbench owns resident components; no detached host or system startup. Development plugins require explicit invocation.",
-  "knowledge_option": "conversational_web_v1; high retrieval notes; contextual translation using main configuration; system proxy required; no local encyclopedia",
+  "knowledge_option": "conversational_web_v1; Jev decides need_web; main high search planning and notes; main contextual translation; system proxy required",
   "schema_version": 27
 }

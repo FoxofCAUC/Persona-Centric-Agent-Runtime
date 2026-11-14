@@ -8,7 +8,7 @@
 
 对话连续性、长期记忆、关系维护和故障恢复，是让这份陪伴更好发生的支持能力。工程正确性与可溯源应服务产品体验，不能用更多通过的检查、完整的架构或精细的记录，代替一个好相处的 AI 伴侣。
 
-![Version](https://img.shields.io/badge/version-0.9.0.dev35-4263eb)
+![Version](https://img.shields.io/badge/version-0.9.0.dev36-4263eb)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 [AGPL-3.0-only 开源协议](LICENSE)
@@ -33,7 +33,7 @@ M8.A受管整理统一了授权、领取、逐次调用额度和原回执恢复�
 
 当前自动整理额度为每小时60次、滚动24小时240次，提取、复核、修复与重试共同计数。人工手动调用不设次数额度，仍记录真实用量；其他原本不限额的自动项保持不限额。详见[额度规则](docs/自动调用额度与人工免限额.md)。
 
-世界知识当前采用**通用联网检索（conversational_web_v1）**：主模型high计划、普通Search/Fetch、high资料底稿、原人物按语境转译，无主题/网站登记名单；Jev不再承担默认裁决，无需下载本地百科。当前日常角色桌面已正式启用，新角色可在“联网与资料”页开启。公共外发走Windows系统代理，失败不回退直连。开发调用和费用继续留账。
+世界知识当前采用**通用联网检索（conversational_web_v1）**：Jev判断是否联网、主模型high规划、普通Search/Fetch、high资料底稿、原人物按语境转译，无主题/网站登记名单；Jev只负责是否联网，不对来源、数字或观点作裁决，无需下载本地百科。当前日常角色桌面已正式启用，新角色可在“联网与资料”页开启。公共外发走Windows系统代理，失败不回退直连。开发调用和费用继续留账。
 
 ## 已有支持能力
 
