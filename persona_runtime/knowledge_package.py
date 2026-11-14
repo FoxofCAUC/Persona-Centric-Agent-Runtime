@@ -20,6 +20,7 @@ import urllib.request
 from .character_embedding import safe_path
 from .config import atomic_json
 from .instance import InstanceLock
+from .network_proxy import system_urlopen
 
 
 DATA_REVISION = "71ecc16d8ab3e3cd2c33e9428ebfdc2fbedc997f"
@@ -112,7 +113,7 @@ class PackageInstaller:
             self.record("downloading", asset=asset.name, bytes=offset,
                         total=asset.size, attempt=attempt + 1)
             try:
-                with urllib.request.urlopen(request, context=ssl_context(), timeout=60) as response:
+                with system_urlopen(request, context=ssl_context(), timeout=60) as response:
                     if response.status not in (200, 206):
                         raise ValueError("package_download_status_invalid")
                     if "Range" in headers and response.status != 206:

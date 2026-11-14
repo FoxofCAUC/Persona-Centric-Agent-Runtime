@@ -111,17 +111,16 @@ class WorkbenchStartupTests(unittest.TestCase):
         self.window_type.assert_not_called()
         self.assertEqual(self.errors()[0]['stage'], 'console_lease')
 
-    def test_cancelled_cleanup_elevation_is_visible_and_releases_lease(self):
+    def test_stale_lease_without_residents_does_not_request_cleanup_elevation(self):
         self.environment()
         self.controller.start_console.return_value = {'previous_stale': True}
-        self.force.side_effect = RuntimeError('private cancelled-elevation details')
-        with self.assertRaises(RuntimeError):
-            run(self.paths)
+        self.force.side_effect = AssertionError('must not request elevation')
+        run(self.paths)
         self.controller.end_console.assert_called_once()
         self.lock.close.assert_called_once()
-        self.window_type.assert_not_called()
-        self.assertEqual(self.errors()[0]['stage'], 'cleanup_legacy')
-        self.assertIn('管理员授权', self.show.call_args.args[0])
+        self.window_type.assert_called_once()
+        self.force.assert_not_called()
+        self.assertEqual(self.errors(),[])
 
     def test_incomplete_cleanup_does_not_open_workbench_or_report_success(self):
         self.environment()
@@ -152,8 +151,8 @@ class WorkbenchStartupTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             run(self.paths)
         self.assertEqual(self.errors()[0]['stage'], 'mainloop')
-        self.force.assert_called_once_with(self.paths)
-        self.controller.end_console.assert_called_once()
+        self.force.assert_not_called()
+        self.controller.shutdown.assert_called_once()
         self.lock.close.assert_called_once()
         self.exit_process.assert_called_once_with(1)
 

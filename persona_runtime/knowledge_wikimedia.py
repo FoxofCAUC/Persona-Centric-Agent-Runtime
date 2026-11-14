@@ -112,7 +112,7 @@ async def execute(stage,args,timeout):
                         await get(client,{'action':'query','revids':revision,'prop':'revisions|info','rvprop':'ids|timestamp','inprop':'url','meta':'siteinfo','siprop':'rightsinfo'})
         envelope={'provider':'wikimedia_api','stage':stage,'responses':responses}
         return ModelCompletion(json.dumps(envelope,ensure_ascii=False),{'tool':stage,'provider':'wikimedia_api','billable':False,'amount_usd':'0','source_network_requests':len(responses),'elapsed_ms':round((time.monotonic()-started)*1000,3)},
-                               {'request_headers_sent':sent,'http_status':200,'read_only_source':True})
+                               {'request_headers_sent':sent,'http_status':200,'read_only_source':True,'network_route':'system_proxy'})
     except asyncio.CancelledError as error:
         partial=failure('wiki_source_cancelled',responses)
         error.usage=partial.usage;error.tool_response=partial.tool_response;error.diagnostics=partial.diagnostics

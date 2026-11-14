@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "0.9.0.dev17",
+  "release": "0.9.0.dev35",
   "mode": "source",
   "roots": [
     "persona_runtime",
@@ -24,6 +24,7 @@
     "pyproject.toml",
     "requirements-astrbot.lock"
   ],
-  "note": "Source inventory only. Historical decoders and policy restore modules remain included. The Workbench owns all resident components; tray visibility never creates a detached host. Automatic memory and scheduled generation share the managed worker. No system startup registration or installer. Development plugins require explicit invocation.",
-  "knowledge_option": "B web_only; opt-in per persona; no bundled local encyclopedia assets"
+  "note": "Source inventory only. Historical data codecs and schema-27 DDL remain for existing databases. Retired M9.B audit implementations and frozen archives are deleted and excluded from publication. The Workbench owns resident components; no detached host or system startup. Development plugins require explicit invocation.",
+  "knowledge_option": "conversational_web_v1; high retrieval notes; contextual translation using main configuration; system proxy required; no local encyclopedia",
+  "schema_version": 27
 }

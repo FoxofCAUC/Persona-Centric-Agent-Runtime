@@ -5,7 +5,7 @@ from .organization import digest,encoded
 
 
 def import_export(store,package,expected_selected,operation_id):
-    if not isinstance(package,dict) or package.get('format_version') not in (17,18,19,20,21,22) or not isinstance(operation_id,str) or not operation_id:
+    if not isinstance(package,dict) or package.get('format_version') not in (17,18,19,20,21,22,23) or not isinstance(operation_id,str) or not operation_id:
         raise RuntimeErrorBase('invalid_business_export')
     def secrets(v):
         if isinstance(v,dict):return any(k in ('encrypted_key','admin_token','bridge_token','claim_token','model_snapshot','sender_json','console_token','session_token') or secrets(x) for k,x in v.items())
@@ -33,6 +33,7 @@ def import_export(store,package,expected_selected,operation_id):
     if package['format_version']==20 and package.get('knowledge',{}).get('web'):
         raise RuntimeErrorBase('invalid_business_export')
     if package['format_version']<22 and package.get('knowledge',{}).get('web',{}).get('version')==2:raise RuntimeErrorBase('invalid_business_export')
+    if package['format_version']<23 and package.get('knowledge',{}).get('web',{}).get('version')==3:raise RuntimeErrorBase('invalid_business_export')
     if package['format_version'] >= 20:
         from .knowledge_transfer import validate
         validate(package.get('knowledge'))

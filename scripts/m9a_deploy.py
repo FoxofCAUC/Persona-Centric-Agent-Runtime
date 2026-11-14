@@ -42,7 +42,7 @@ def prepare(home,out):
     paths.initialize();store=Store(paths)
     with stopped(paths),closing(sqlite3.connect(store.path.as_uri()+'?mode=ro',uri=True)) as db:
         db.row_factory=sqlite3.Row;version=db.execute('PRAGMA user_version').fetchone()[0]
-        require(version in (24,25,26),'knowledge_rollout_schema_changed');pid=Store.current(db)
+        require(version in (24,25,26,27),'knowledge_rollout_schema_changed');pid=Store.current(db)
         idle(db);columns,before=snapshot(db);cfg=ConfigStore(paths).load();router=configured_model(paths)
         require(router['_routing_gate_valid'],'knowledge_routing_gate_required')
         require(cfg['model']['base_url']=='https://api.deepseek.com' and cfg['model']['encrypted_key'],'web_requires_official_main_configuration')

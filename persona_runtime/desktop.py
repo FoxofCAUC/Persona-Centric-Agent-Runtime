@@ -717,7 +717,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         path = filedialog.askopenfilename(initialdir=self.paths.home / "config", filetypes=[("人格 JSON", "*.json")])
         if path:
             package=json.loads(Path(path).read_text(encoding='utf-8-sig'))
-            if package.get('format_version') in (17,18,19,20):
+            if package.get('format_version') in (17,18,19,20,21,22,23):
                 if not messagebox.askyesno('导入历史','将创建新角色并保留导出中的业务历史供核对。原任务和授权不恢复，导入记忆不自动成为已确认事实，自动记忆默认关闭。继续？'):return
                 operation_id=identifier();selected=self.persona_id
                 self.run_task('导入业务历史',{'persona'},lambda _:self.client.manage('persona.import-export',package=package,expected_selected=selected,operation_id=operation_id),lambda _:self.refresh_personas())
@@ -1018,6 +1018,10 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                     if snapshot["turns"] is not None and snapshot["turns"] != self.turns:
                         self.turns = snapshot["turns"]
                         self.render_chat()
+                    watched = next((row for row in self.turns if row.get("id") == getattr(self, "chat_watched_id", None)), None)
+                    if watched and self.notice.get().startswith("消息已受理："):
+                        phase = watched.get("phase", watched["status"])
+                        self.notice.set("消息已受理：" + PHASES.get(phase, phase))
             self.run_task("更新对话", {"conversation-refresh"}, lambda _: self.client.manage("chat.snapshot", session_id=session_id, version=version), done, quiet=True)
         self.after(500, self.refresh_conversation)
 
@@ -1125,6 +1129,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         # One session-level refresh loop covers all in-flight requests, without
         # repeatedly rewriting session selection or loading the whole transcript.
         self.chat_version = None
+        self.chat_watched_id = turn["id"]
         self.notice.set("消息已受理：" + PHASES.get(turn.get("phase"), turn["status"]))
 
     def retry_chat(self):

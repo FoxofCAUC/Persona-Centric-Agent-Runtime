@@ -103,6 +103,30 @@ class PrivatePersonas:
         except (ValueError,OSError,KeyError,TypeError):
             raise RuntimeErrorBase('private_model_grants_invalid') from None
 
+    def acceptance_copy_policy(self, persona_id):
+        """Bind a fresh explicit grant to this owned copy, never its ancestor."""
+        from .config import ConfigStore
+        copied = self.paths.home / 'runtime/private-copy-policy.json'
+        marker_path = self.paths.home / 'private-sandbox.json'
+        if not copied.exists() or not marker_path.exists():
+            return None
+        try:
+            candidate = json.loads(copied.read_text(encoding='utf-8'))
+            marker = json.loads(marker_path.read_text(encoding='utf-8'))
+            formal = safe(Path(marker['formal_home']))
+            home = safe(self.paths.home, formal / 'tmp/private-acceptance')
+            if (candidate.get('persona_id') != persona_id or marker.get('persona_id') != persona_id
+                    or not isinstance(marker.get('private_id'), str) or not marker['private_id']):
+                raise RuntimeErrorBase('private_copy_scope_invalid')
+            # Both root and current config identity are included: copying the
+            # grant file or creating another instance does not transfer consent.
+            binding = canonical({'home': str(home), 'instance_id': ConfigStore(self.paths).load()['instance_id'],
+                                 'marker': marker, 'policy': candidate})
+            return dict(candidate, id=marker['private_id'], _copy_binding=binding)
+        except (OSError, KeyError, TypeError, ValueError) as error:
+            if isinstance(error, RuntimeErrorBase): raise
+            raise RuntimeErrorBase('private_copy_scope_invalid') from None
+
     def authorize_main(self,store,persona_id,expected_provider,operation_id):
         return self.authorize_model(store,persona_id,'main',expected_provider,operation_id)
 
@@ -112,6 +136,7 @@ class PrivatePersonas:
         from .persona_management import active
         if not operation_id:raise RuntimeErrorBase('operation_id_required')
         if kind not in ('main','organization','proactive','knowledge_router'):raise RuntimeErrorBase('private_permission_kind_invalid')
+        if kind=='knowledge_router':raise RuntimeErrorBase('legacy_retrieval_frozen')
         self.root.mkdir(parents=True,exist_ok=True)
         lock=InstanceLock(self.root/'registry.lock')
         try:
@@ -119,18 +144,19 @@ class PrivatePersonas:
                 if store.current(db)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
                 active(db,persona_id)
                 policy=self.record_for_persona(persona_id)
+                if policy is None:
+                    policy=self.acceptance_copy_policy(persona_id)
+                    if policy is not None and kind!='main':
+                        raise RuntimeErrorBase('private_copy_permission_kind_not_allowed')
                 if policy is None:raise RuntimeErrorBase('private_scope_mismatch')
                 cfg=ConfigStore(self.paths).load()
                 model=cfg['model'] if kind in ('main','proactive') or cfg['organization']['reuse_chat'] else cfg['organization']['model']
-                if kind=='knowledge_router':
-                    from .knowledge_routing import configured_model
-                    model=configured_model(self.paths)
-                    if not model['_routing_gate_valid']:raise RuntimeErrorBase('knowledge_routing_gate_required')
                 if provider_identity(model)!=expected_provider:
                     raise RuntimeErrorBase('private_provider_changed')
                 data=self.model_grants()
                 grant={'persona_id':persona_id,'private_id':policy['id'],'kind':kind,
                     'provider':expected_provider,'scope':'necessary_visible_only'}
+                if policy.get('_copy_binding'):grant['copy_binding']=policy['_copy_binding']
                 fingerprint=canonical(grant)
                 old=data['operations'].get(operation_id)
                 if old:
@@ -151,9 +177,10 @@ class PrivatePersonas:
         grant=self.model_grants()['grants'].get(key)
         if grant is None:return False
         if not isinstance(grant,dict):raise RuntimeErrorBase('private_model_grants_invalid')
-        return all(grant.get(k)==v for k,v in {'persona_id':persona_id,
-            'private_id':policy.get('id'),'kind':kind,'scope':'necessary_visible_only',
-            'provider':provider_identity(model)}.items())
+        expected={'persona_id':persona_id,'private_id':policy.get('id'),'kind':kind,
+                  'scope':'necessary_visible_only','provider':provider_identity(model)}
+        if policy.get('_copy_binding'):expected['copy_binding']=policy['_copy_binding']
+        return all(grant.get(k)==v for k,v in expected.items())
 
     def record_for_persona(self,persona_id):
         records=self.load()['records']
@@ -219,23 +246,33 @@ class PrivatePersonas:
         if not ok:raise RuntimeErrorBase('private_literary_content_changed')
         return {'private':True,'literary_unchanged':True,'original_bytes_unchanged':True,'deferred_capabilities':record['deferred']}
 
-    def create_sandbox(self,private_id):
+    def create_sandbox(self,private_id,*,visible_only=False):
         from .paths import RuntimePaths
         from .storage import Store
         from .service import RuntimeService
         from .character import CharacterService
         from .profile import ProfileService,head
         record=self.record(private_id);package=self.package(record)
+        if type(visible_only) is not bool:raise RuntimeErrorBase('private_copy_scope_invalid')
+        if visible_only:
+            from copy import deepcopy
+            package=deepcopy(package)
+            lore={r['id']:r for r in package['character']['lorebook'] if r['enabled'] and r['visibility']=='conversation'}
+            while any(not set(r['dependencies']) <= set(lore) for r in lore.values()):
+                lore={key:r for key,r in lore.items() if set(r['dependencies']) <= set(lore)}
+            package['character']['lorebook']=list(lore.values())
+            package['character']['examples']=[r for r in package['character']['examples'] if r['enabled']]
         root=safe(self.paths.home/'tmp/private-acceptance');root.mkdir(parents=True,exist_ok=True)
         folder=safe(root/identifier(),root);paths=RuntimePaths(folder);store=Store(paths);store.initialize()
         from .models import generic_persona
         service=RuntimeService(store);current=service.create_persona(generic_persona())['id'];service.use_persona(current)
         result=CharacterService(store).import_package(current,package,identifier());service.use_persona(result['id'])
-        relationship=(self.root/private_id/'initial-relationship.txt').read_text(encoding='utf-8')
-        with store.connection(write=True) as db:
-            ProfileService(store)._write(db,result['id'],'relationship',{'description':relationship},head(db,result['id'],'relationship')['id'],identifier(),actor='creator_copy')
-        atomic_json(folder/'private-sandbox.json',{'private_id':private_id,'persona_id':result['id'],'created_at':timestamp(),'formal_home':str(self.paths.home.resolve())})
-        atomic_json(folder/'runtime/private-copy-policy.json',{'persona_id':result['id'],'approved_models':record['approved_models']})
+        if not visible_only:
+            relationship=(self.root/private_id/'initial-relationship.txt').read_text(encoding='utf-8')
+            with store.connection(write=True) as db:
+                ProfileService(store)._write(db,result['id'],'relationship',{'description':relationship},head(db,result['id'],'relationship')['id'],identifier(),actor='creator_copy')
+        atomic_json(folder/'private-sandbox.json',{'private_id':private_id,'persona_id':result['id'],'created_at':timestamp(),'formal_home':str(self.paths.home.resolve()),'visible_only':visible_only})
+        atomic_json(folder/'runtime/private-copy-policy.json',{'persona_id':result['id'],'approved_models':record['approved_models'],**({'copy_scope':'visible_only_v1'} if visible_only else {})})
         return {'home':str(folder),'persona_id':result['id'],'private_id':private_id}
 
     def cleanup_sandbox(self,folder):
@@ -277,7 +314,14 @@ def guard_cloud_dispatch(store,persona_id,kind,model):
     copied=store.paths.home/'runtime/private-copy-policy.json'
     if policy is None and copied.exists():
         candidate=json.loads(copied.read_text(encoding='utf-8'))
-        if candidate.get('persona_id')==persona_id:policy=candidate
+        if candidate.get('persona_id')==persona_id:
+            key=persona_id if kind=='main' else persona_id+':'+kind
+            if private.model_grants()['grants'].get(key):
+                scoped=private.acceptance_copy_policy(persona_id)
+                if scoped is not None and private.model_authorized(persona_id,scoped,kind,model):return
+            if candidate.get('copy_scope')=='visible_only_v1':
+                raise RuntimeErrorBase('private_cloud_provider_not_authorized')
+            policy=candidate
     if policy is not None and kind in ('organization','proactive','knowledge_router'):
         # Background disclosure always requires a role-specific grant. Neither
         # ancestor registry approvals nor copied acceptance policies transfer it.

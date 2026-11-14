@@ -61,7 +61,8 @@ class WikimediaFetcher:
         headers = {'User-Agent': 'PCAR/0.9 public-knowledge-reader '
             '(https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime)', 'Accept': 'application/json'}
         try:
-            timeout=source.get('timeout',10);proxy=None
+            from .network_proxy import outbound_proxy
+            timeout=source.get('timeout',10);proxy=outbound_proxy(source['endpoint'])
             hostname=urllib.parse.urlsplit(source['endpoint']).hostname
             if hostname in ('zh.wikipedia.org','www.wikidata.org'):
                 from .knowledge_dns import public_target,system_proxy

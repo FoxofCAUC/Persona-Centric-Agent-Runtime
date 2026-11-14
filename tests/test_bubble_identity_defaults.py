@@ -11,7 +11,7 @@ class BubbleIdentityDefaultsTests(unittest.TestCase):
     setUp = ManagementTests.setUp
     clone = ManagementTests.clone
 
-    def test_create_import_clone_preserve_source_and_default_to_v3(self):
+    def test_create_import_clone_preserve_source_and_default_to_native_v8(self):
         character = CharacterService(self.store)
         source = self.service.show_persona(self.a)['spec']
         package = {'format': 'pcar_character_v1', 'persona_spec': source,
@@ -23,7 +23,8 @@ class BubbleIdentityDefaultsTests(unittest.TestCase):
             self.assertEqual(self.service.show_persona(pid)['spec'], source)
             for channel in ('desktop', 'qq'):
                 policy = ingress.current_policy(pid, channel)
-                self.assertEqual(policy['reply_mode'], 'natural_structured')
+                self.assertEqual(policy['reply_mode'], 'context_full')
+                self.assertEqual(policy['companion']['version'], 'companion-runtime-v8')
                 self.assertEqual(policy['expression_policy']['version'], 3)
                 self.assertEqual(policy['expression_policy']['presentation'], 'model-bubbles-v1')
                 self.assertEqual(policy['mode'], 'natural_batch')

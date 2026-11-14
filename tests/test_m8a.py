@@ -277,6 +277,7 @@ class MigrationTests(unittest.TestCase):
         from persona_runtime.models import generic_persona
         from scripts.verify_m8a_migration import verify
         root=RuntimePaths.from_environment().home/'exports/acceptance'
+        root.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='m8a-migration-test-',dir=root) as temp:
             paths=RuntimePaths(Path(temp)/'source');store=Store(paths)
             with patch('persona_runtime.storage.SCHEMA_VERSION',21):

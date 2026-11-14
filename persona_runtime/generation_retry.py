@@ -31,7 +31,7 @@ class GenerationRetriesExhausted(RuntimeErrorBase):
 def safe_diagnostics(value):
     if not isinstance(value,dict):return {}
     result={}
-    for key in ('phase','transport_profile','response_format','thinking','reasoning_effort','finish_reason','generation_version','timeout_policy','output_limit'):
+    for key in ('phase','transport_profile','response_format','thinking','reasoning_effort','finish_reason','generation_version','timeout_policy','output_limit','network_route'):
         item=value.get(key)
         if isinstance(item,str) and re.fullmatch(r'[a-z0-9_-]{1,64}',item):result[key]=item
     for key in ('timeout_seconds','elapsed_ms','output_characters','http_status','stream_events','first_event_ms','first_content_delta_ms'):
@@ -174,3 +174,15 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
         diagnostics=dict(getattr(value,'diagnostics',{}))
         diagnostics.update(retry_count=index,provider_attempt_count=len(state['attempts']),retry_version=VERSION)
         return ModelCompletion(value[0],aggregate(state),diagnostics)
+
+
+def assert_manual_retry_safe(conn,turn_id):
+    """Keep paid-response recovery protection, independent of retrieval content."""
+    for row in conn.execute('SELECT usage_json FROM attempts WHERE turn_id=?',(turn_id,)):
+        state=json.loads(row[0] or '{}').get('generation_retry',{})
+        for attempt in state.get('attempts',[]):
+            if attempt.get('status')=='completed':raise RuntimeErrorBase('generation_already_received')
+            code=attempt.get('error_code') or '';diag=attempt.get('diagnostics') or {}
+            if (attempt.get('status') in ('running','interrupted') or any(k in code for k in ('unknown','unconfirmed','unsettled'))
+                or diag.get('request_headers_sent') is True and not diag.get('response_headers_received') and not diag.get('http_status')):
+                raise RuntimeErrorBase('generation_effect_unconfirmed')

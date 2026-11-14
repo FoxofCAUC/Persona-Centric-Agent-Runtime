@@ -203,7 +203,7 @@ class ReflectionBuilder:
             return {'purpose':'knowledge_'+data['stage'],'source_domain':'authorized_dialogue_and_public_world',
                 'evidence_refs':[{'kind':'knowledge_material','id':m['id'],'hash':fingerprint(m)} for m in data['input'].get('materials',[])],
                 'included_state_refs':[],'missing_data':[], 'root_turn_id':data['root_turn_id'],
-                'hard_constraints':['source_binding','current_role_permission','independent_translation_review'],
+                'hard_constraints':['current_role_permission','provider_authorization','managed_call_receipt'],
                 'soft_tendencies':[],'input_snapshot_hash':fingerprint(messages),'builder_version':BUILDER_VERSION}
         if payload.get('external_knowledge'):
             data=payload['external_knowledge']

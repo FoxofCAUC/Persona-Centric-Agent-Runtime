@@ -132,6 +132,24 @@ class DesktopTests(unittest.TestCase):
             manage.assert_called_once_with("chat.snapshot", session_id="test-session", version=10)
             snapshot.assert_not_called()
 
+    def test_retried_older_turn_updates_its_notice_after_completion(self):
+        window = self.window()
+        window.current_page = "chat"
+        window.session_id = "test-session"
+        older = {"id": "older", "status": "queued"}
+        newer = {"id": "newer", "status": "completed"}
+        window.turns = [older, newer]
+        window.watch_turn(older, window.view_epoch)
+        completed = [{"id": "older", "status": "completed"}, newer]
+        callbacks = []
+        with patch.object(window, "run_task", side_effect=lambda name, resources, action, success=None, **kwargs: callbacks.append(success)), patch.object(window, "render_chat"):
+            window.refresh_conversation()
+            callbacks[0]({"version": 11, "turns": completed})
+        self.assertEqual(window.notice.get(), "消息已受理：已完成")
+        window.notice.set("刚刚保存成功")
+        callbacks[0]({"version": 11, "turns": None})
+        self.assertEqual(window.notice.get(), "刚刚保存成功")
+
     def test_quiet_refresh_error_does_not_replace_foreground_notice(self):
         window = self.window()
         window.notice.set('刚刚保存成功')

@@ -439,10 +439,15 @@ class ManagedOrganization:
                 from .generation_retry import _one
                 if payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry'):
                     value=await e.routing.execute(model,payload)
-                elif payload.get('knowledge_processing',{}).get('stage') in ('search','fetch','wiki_search','wiki_fetch'):
-                    value=await e.web.execute(model,payload)
-                else:value=await _one(e.client,model|{'_json_output':task['mode'] not in ('test','proactive')},messages,'provider_timeout')
+                elif payload.get('knowledge_processing',{}).get('stage') in ('conversation_search','conversation_fetch'):
+                    value=await e.processing.general.execute(model,payload)
+                else:
+                    from .knowledge_general import reasoning_model
+                    request_model=reasoning_model(model,plan=payload.get('knowledge_processing',{}).get('stage') in ('conversation_plan','conversation_organize'))
+                    value=await _one(e.client,request_model|{'_json_output':task['mode'] not in ('test','proactive')},messages,'provider_timeout')
                 reply,usage=value;audit=receipt(reply);audit['status']='received'
+                from .generation_retry import safe_diagnostics
+                audit['provider']=safe_diagnostics(getattr(value,'diagnostics',{}))
                 with self.store.connection(write=True) as db:
                     db.execute('UPDATE organization_attempts SET usage_json=? WHERE id=?',(encoded(usage),aid))
                     db.execute('INSERT INTO organization_receipts VALUES(?,?,?)',(aid,reply,encoded(audit)))
@@ -474,7 +479,7 @@ class ManagedOrganization:
             code=str(error) if isinstance(error,RuntimeErrorBase) else 'organization_failed'
             cancelled=isinstance(error,asyncio.CancelledError)
             diagnostics=safe_diagnostics(getattr(error,'diagnostics',None))
-            tool=payload.get('knowledge_processing',{}).get('stage') in ('search','fetch','wiki_search','wiki_fetch')
+            tool=payload.get('knowledge_processing',{}).get('stage') in ('conversation_search','conversation_fetch')
             routing=payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry')
             usage=getattr(error,'usage',None) if tool else usage_fields(getattr(error,'usage',None),deepseek=True,grok=True)
             with self.store.connection(write=True) as db:

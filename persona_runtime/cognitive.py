@@ -88,7 +88,8 @@ class CognitiveService:
         from .evaluation_material import descriptor as evaluation_descriptor
         evaluation=evaluation_descriptor(self.engine,conn,turn)
         from .provider_compat import describe_request
-        wire=describe_request(json.loads(turn['model_snapshot'])|{'_reply_mode':turn.get('reply_mode_snapshot'),
+        from .knowledge_general import reasoning_model
+        wire=describe_request(reasoning_model(json.loads(turn['model_snapshot']),details.get('knowledge'))|{'_reply_mode':turn.get('reply_mode_snapshot'),
                               '_expression_snapshot':turn.get('expression_snapshot')})
         manifest={**({'evaluation':evaluation} if evaluation else {}),'context_id':identifier(),'task_type':'dialogue','purpose':'provider_probe' if turn['channel']=='test' else 'conversation',
             'scope':selected,'turn_id':turn['id'],'builder_version':BUILDER_VERSION,'created_at':timestamp(),
@@ -148,7 +149,7 @@ class CognitiveService:
             manifest=self._manifest(conn,turn,messages,details)
         manifest['_shadow_prepared']=decision
         manifest['preparation_ms']=round((time.perf_counter()-started)*1000,3)
-        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character,'knowledge_prepared':knowledge,'accepted_policy_hash':fingerprint(turn.get('context_policy_snapshot'))}
+        return {'messages':messages,'details':details,'guard':guard,'manifest':manifest,'character_prepared':character,'knowledge_prepared':knowledge,'evidence_prepared':evidence,'accepted_policy_hash':fingerprint(turn.get('context_policy_snapshot'))}
 
     @staticmethod
     def bind_decision(decision,details):
@@ -161,6 +162,7 @@ class CognitiveService:
         return decision|{'applied_to_prompt':bool(text),'capsule':meta}
 
     def finalize(self,conn,turn,prepared):
+        if prepared.get('_conversation_frozen'):return prepared
         if prepared.get('_dialogue_pipeline'):
             from .chat import ModelError
             if self.engine.dialogue_pipeline is None:raise ModelError('dialogue_pipeline_missing')
@@ -191,11 +193,12 @@ class CognitiveService:
             manifest=self._manifest(conn,turn,messages,details)
             manifest['preparation_ms']=prepared['manifest'].get('preparation_ms',0)
             manifest['_shadow_prepared']=decision
-            prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character,'knowledge_prepared':knowledge}
+            prepared={**prepared,'messages':messages,'details':details,'manifest':manifest,'character_prepared':character,'knowledge_prepared':knowledge,'evidence_prepared':evidence}
         prepared['manifest']['final_verification_ms']=round((time.perf_counter()-started)*1000,3)
         prepared['manifest']['_shadow_prepared']=None if is_minimal else self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
         from .prompt_assembly import fit_manifest
         prepared['manifest']=fit_manifest(prepared['manifest'])
+        prepared['_conversation_frozen']=True
         return prepared
 
     @staticmethod
@@ -234,19 +237,16 @@ class CognitiveService:
             manifest['hard_constraints']=['explicit_appointment','frozen_scope','private_proactive_authorization','automatic_quota']
             manifest['scope']=payload['scope']
             manifest['proactive']={k:v for k,v in payload['proactive'].items() if k not in ('content','context')}
-        if payload.get('knowledge_processing',{}).get('stage') in ('route','route_retry'):
-            from .knowledge_routing_contract import request,VERSION
-            body=request(json.loads(task['model_snapshot']),payload['knowledge_processing']['input'])
-            manifest['provider_request_contract']={'version':VERSION,'kind':'choice_and_reuse_noul','configuration_source':'explicit_jev','endpoint':'systemone'}
-            manifest['native_request_hash']=fingerprint(body)
+        stage=payload.get('knowledge_processing',{}).get('stage')
+        if stage in ('conversation_search','conversation_fetch'):
+            manifest['provider_request_contract']={'version':'deepseek-tools-v1','kind':stage.removeprefix('conversation_'),
+                'configuration_source':'main','billing_unit':'successful_request'}
             return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
-        if payload.get('knowledge_processing',{}).get('stage') in ('wiki_search','wiki_fetch'):
-            manifest['provider_request_contract']={'version':'wikimedia-source-v1','kind':payload['knowledge_processing']['stage'],'configuration_source':'registered_public_source','credentials_sent':False,'billing_unit':'none'}
+        if stage and stage not in ('conversation_plan','conversation_organize'):
+            manifest['provider_request_contract']={'version':'retired-knowledge-route','kind':stage,'retired':True}
             return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
-        if payload.get('knowledge_processing',{}).get('stage') in ('search','fetch'):
-            manifest['provider_request_contract']={'version':'deepseek-tools-v1','kind':payload['knowledge_processing']['stage'],'configuration_source':'main','billing_unit':'successful_request'}
-            return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
-        manifest['provider_request_contract']=describe_request(json.loads(task['model_snapshot'])|{'_json_output':task['mode'] not in ('test','proactive')})
+        from .knowledge_general import reasoning_model
+        manifest['provider_request_contract']=describe_request(reasoning_model(json.loads(task['model_snapshot']),plan=stage in ('conversation_plan','conversation_organize'))|{'_json_output':task['mode'] not in ('test','proactive')})
         return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
 
     @staticmethod

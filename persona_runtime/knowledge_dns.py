@@ -1,4 +1,4 @@
-"""Public naming checks for remote Fetch, with authenticated HTTPS DNS fallback."""
+"""Public naming checks for remote Fetch through system-proxied HTTPS DNS."""
 import asyncio
 import ipaddress
 import json
@@ -8,23 +8,11 @@ import aiohttp
 from .chat import ModelError,model_tls_context
 
 RESOLVER='https://cloudflare-dns.com/dns-query'
-VERSION='public-target-dns-v1'
+VERSION='public-target-dns-v2-system-proxy'
 
 def system_proxy():
-    try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Internet Settings') as key:
-            if not winreg.QueryValueEx(key,'ProxyEnable')[0]:return None
-            raw=winreg.QueryValueEx(key,'ProxyServer')[0]
-        if '=' in raw:
-            values=dict(part.split('=',1) for part in raw.split(';') if '=' in part)
-            raw=values.get('https') or values.get('http') or ''
-        value=raw if '://' in raw else 'http://'+raw
-        parsed=urlsplit(value)
-        if parsed.scheme in ('http','https') and parsed.hostname in ('127.0.0.1','localhost','::1') and not parsed.username and not parsed.password and parsed.port:
-            return value
-    except (ImportError,OSError,ValueError,TypeError):pass
-    return None
+    from .network_proxy import outbound_proxy
+    return outbound_proxy(RESOLVER)
 
 def answer_addresses(data,hostname,kind):
     try:
@@ -68,12 +56,8 @@ async def public_target(hostname,port,timeout):
         return ModelError(code,usage={'tool':'fetch','billable':False,'amount_usd':'0'},diagnostics={'request_headers_sent':False})
     try:
         async with asyncio.timeout(timeout):
-            try:records=await asyncio.get_running_loop().getaddrinfo(hostname,port)
-            except OSError:records=[]
-            local=sorted({str(ipaddress.ip_address(row[4][0])) for row in records})
-            addresses=local;method='system';via_proxy=False
-            if not addresses or not all(ipaddress.ip_address(value).is_global for value in addresses):
-                addresses,via_proxy=await https_answers(hostname,timeout);method='https_dns'
+            local=[]
+            addresses,via_proxy=await https_answers(hostname,timeout);method='https_dns'
             if not addresses or not all(ipaddress.ip_address(value).is_global for value in addresses):raise failure('web_target_not_public')
             return {'version':VERSION,'host':hostname,'addresses':addresses,'system_addresses':local,'method':method,
                     'resolver':RESOLVER if method=='https_dns' else None,'via_system_proxy':via_proxy,'checked_epoch':time.time(),

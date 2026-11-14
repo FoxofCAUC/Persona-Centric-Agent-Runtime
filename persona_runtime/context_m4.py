@@ -10,7 +10,6 @@ from .prompt_assembly import PromptBlock, assemble
 
 def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=False):
     """Collect source material before character selection; no prompt introspection."""
-    from .chat import terms
     ordinal = conn.execute('SELECT rowid FROM turns WHERE id=?', (turn['id'],)).fetchone()[0]
     frozen=json.loads(turn['profile_snapshot']) if turn.get('profile_snapshot') else snapshot(conn,turn['persona_id'])
     spec={'format_version':1,**frozen['core']['data'],'expression_style':frozen['expression']['data']['style']}
@@ -28,32 +27,8 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
     else:
         turns=[{'id':g['turn_id'],'ordinal':evidence['orders'][g['turn_id']]} for g in evidence['pool']]
         recent_queries=[render_input(i['group']['members']) for i in evidence['items'] if i['kind']=='recent']
-    current_terms = terms(text)
-    previous_terms = terms(' '.join(recent_queries))
-    ranked = []
-    for memory in conn.execute("SELECT * FROM memories WHERE persona_id=? AND user_id=? AND status='active'", (turn['persona_id'], LOCAL_USER_ID)):
-        memory = dict(memory)
-        from .automatic_memory import usable_fact
-        if not usable_fact(conn,memory):continue
-        if evidence is not None:
-            from .context_builders import memory_usable
-            if not memory_usable(conn,turn,memory):continue
-        mt = terms(memory['text'])
-        current, history = sorted(mt & current_terms), sorted(mt & previous_terms)
-        score = 3*len(current)+len(history)
-        if text.strip() and text.strip().lower() in memory['text'].lower():
-            score += 9
-        if not score and memory['previous_id']:
-            # A current revision must accompany an old source present in raw
-            # context even if the user's new query contains no matching term.
-            old=conn.execute('SELECT source_event_id FROM memories WHERE id=?',(memory['previous_id'],)).fetchone()
-            if old:
-                original=conn.execute('SELECT session_id FROM events WHERE id=?',(old[0],)).fetchone()
-                if original and original[0]==turn['session_id']:score=1
-        if score:
-            ranked.append((score, memory['updated_at'], memory['id'], memory, current, history))
-    ranked.sort(key=lambda r: r[:3], reverse=True)
-    memories = ranked[:8]
+    from .context_memory import rank_memories
+    memories=rank_memories(conn,turn,text,recent_queries,enforce_scope=evidence is not None)[:8]
     from .organization_output import pending_conflicts
     pending = pending_conflicts(conn, turn, {r[3]['id'] for r in memories})
     row = conn.execute("SELECT * FROM summaries WHERE session_id=? AND channel=? AND status='active' AND end_row<? ORDER BY rowid DESC LIMIT 1", (turn['session_id'], turn['channel'], ordinal)).fetchone()

@@ -323,7 +323,7 @@ class RuntimeService:
             if knowledge:
                 from .knowledge_transfer import snapshot
                 payload['knowledge'] = snapshot(conn, persona['id'])
-                if payload['knowledge'].get('web'):payload['format_version']=22 if payload['knowledge']['web']['version']==2 else 21
+                if payload['knowledge'].get('web'):payload['format_version']=23 if payload['knowledge']['web']['version']==3 else 22 if payload['knowledge']['web']['version']==2 else 21
         path = self._output_path("exports", name, ".json")
         created = False
         try:

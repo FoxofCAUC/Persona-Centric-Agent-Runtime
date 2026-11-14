@@ -2,8 +2,9 @@
 
 DeepSeek's Chat Completions supports json_object rather than JSON Schema.
 The application validators remain authoritative. Current DeepSeek models default
-to thinking; this interactive profile explicitly disables it within the existing
-output and timeout limits. Unrecognized gateways keep the original protocol.
+to thinking; this interactive profile disables it unless retrieval explicitly
+requests high effort. Output and timeout limits stay unchanged. Unrecognized
+gateways keep the original protocol.
 """
 import re
 from urllib.parse import urlsplit
@@ -105,6 +106,8 @@ def describe_request(model):
     result={'version':VERSION,'profile':'deepseek-chat-v1' if deepseek else 'openai-compatible-v1',
             'response_format':fmt['type'] if fmt else 'text','thinking':thinking,
             'format_hash':fingerprint(fmt) if fmt else None,'application_validation_required':bool(fmt)}
+    if deepseek and model.get('_reasoning_effort')=='high':
+        result.update(thinking='enabled',reasoning_effort='high')
     if grok_interactive(model) or native:result.update(version='provider-wire-grok47-v1',profile='grok47-chat-v1',reasoning_effort='low')
     if native:result.update(version='provider-wire-native-text-low-v1',native_text_profile=NATIVE_TEXT_VERSION)
     if generation:result.update(generation_version=STREAM_UNLIMITED_VERSION,stream=True,
@@ -123,8 +126,8 @@ def build_request(model,messages):
         payload={'model':model['name'],'messages':messages,'stream':True,'stream_options':{'include_usage':True}}
     else:payload={'model':model['name'],'messages':messages,'max_tokens':model['max_tokens'],'stream':False}
     if fmt:payload['response_format']=fmt
-    if contract['thinking']=='disabled':payload['thinking']={'type':'disabled'}
-    if contract.get('reasoning_effort')=='low':payload['reasoning_effort']='low'
+    if contract['thinking'] in ('disabled','enabled'):payload['thinking']={'type':contract['thinking']}
+    if contract.get('reasoning_effort') in ('low','high'):payload['reasoning_effort']=contract['reasoning_effort']
     if model.get('_dialogue_profile') is not None:
         from .dialogue_voice import read
         profile=read({'model_snapshot':model})

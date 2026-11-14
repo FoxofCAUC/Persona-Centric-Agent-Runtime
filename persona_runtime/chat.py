@@ -78,6 +78,7 @@ class ChatCompletionsClient:
                     'elapsed_ms': round((time.monotonic()-started)*1000, 3),
                     'transport_profile':wire['profile'],'response_format':wire['response_format'],
                     'thinking':wire['thinking']}
+            if wire.get('reasoning_effort'):result['reasoning_effort']=wire['reasoning_effort']
             if wire.get('generation_version'):
                 result.update(generation_version=wire['generation_version'],timeout_policy='none',
                               output_limit='omitted',stream=True,
@@ -85,6 +86,9 @@ class ChatCompletionsClient:
             return result
         # Keep the OS trust store and add the project's pinned public CA bundle
         # for every model purpose. Isolated probes and production use one path.
+        from .network_proxy import outbound_proxy
+        proxy=outbound_proxy(url)
+        transport['network_route']='system_proxy' if proxy else 'local'
         connector=aiohttp.TCPConnector(ssl=self.ssl_context or model_tls_context())
         if budget is not None and model.get('_request_deadline') is not None:
             budget=min(budget,max(.01,model['_request_deadline']-time.monotonic()-.1))
@@ -92,7 +96,7 @@ class ChatCompletionsClient:
         try:
             async with aiohttp.ClientSession(timeout=timeout, trust_env=False, trace_configs=[trace],connector=connector) as client:
                 async with client.post(url,
-                                       headers=headers, json=payload, allow_redirects=False) as response:
+                                       headers=headers, json=payload, allow_redirects=False, proxy=proxy) as response:
                     transport.update(phase='reading_body', response_headers_received=True)
                     if response.status != 200:
                         raise ModelError(f"provider_http_{response.status}", diagnostics=diagnostic())
@@ -472,6 +476,8 @@ class ChatEngine:
                     evaluation=getattr(self,'evaluation_session',None)
                     if evaluation:evaluation.before_dispatch(self,turn,prepared)
                     messages=prepared['messages'];turn['_context_details']={k:v for k,v in prepared['details'].items() if k!='prompt_assembly'}
+                    from .knowledge_general import reasoning_model
+                    model=reasoning_model(model,turn['_context_details'].get('knowledge'))
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
@@ -633,6 +639,8 @@ class ChatEngine:
             if turn['persona_id']:active(conn,turn['persona_id'])
             if turn["status"] not in ("failed", "interrupted"):
                 return turn
+            from .generation_retry import assert_manual_retry_safe
+            assert_manual_retry_safe(conn,turn_id)
             from .sessions import assert_writable
             assert_writable(conn,turn["session_id"])
             waiting = conn.execute("SELECT count(*) FROM turns WHERE persona_id IS ? AND status='queued'",
