@@ -523,6 +523,7 @@ class OrganizationEngine:
 
     async def drain(self):
         self.draining = True
+        self.managed.cancel_native_dependents(exiting=True)
         self.knowledge.close()
         await self.knowledge.drain()
         while self.running:

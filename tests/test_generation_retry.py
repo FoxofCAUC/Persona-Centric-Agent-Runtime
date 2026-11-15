@@ -57,11 +57,15 @@ class AuditedRetry(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):await task
         self.assertEqual(self.client.complete.await_count,1)
         self.assertEqual(self.saved[-1]['generation_retry']['attempts'][0]['status'],'interrupted')
-    async def test_timeout_cancels_old_task_before_retry(self):
+    async def test_known_not_sent_timeout_cancels_old_task_before_retry(self):
         self.model['timeout']=.01;cancelled=[]
         async def wait(*_):
             try:await asyncio.Event().wait()
-            except asyncio.CancelledError:cancelled.append(True);raise
+            except asyncio.CancelledError as error:
+                # This fixture fails before dispatch; real in-flight unknowns
+                # are deliberately not replayed by the M9R recovery contract.
+                error.diagnostics={'request_headers_sent':False}
+                cancelled.append(True);raise
         self.client.complete.side_effect=wait
         with self.assertRaises(retry.GenerationRetriesExhausted):await self.run_case(timeout_code='selector_timeout')
         self.assertEqual(len(cancelled),4)

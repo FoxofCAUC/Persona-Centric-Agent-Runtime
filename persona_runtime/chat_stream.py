@@ -17,15 +17,17 @@ class ChatStream:
         self.finished=None;self.done=False;self.reasoning=False
         self.usage=None;self.metadata={};self.events=0
         self.first_event_ms=None;self.first_content_delta_ms=None
+        self.terminal_error=False
 
     def error(self, code):
         from .chat import ModelError
         # A stream without terminal evidence has no final usage receipt.
-        usage=self.usage if self.done else None
+        usage=self.usage if self.done or self.terminal_error else None
         raise ModelError(code,usage=usage,diagnostics=self.diagnostics())
 
     def diagnostics(self):
         result={'stream':True,'stream_complete':self.done,
+                'provider_terminal_error':self.terminal_error,
                 'stream_events':self.events,'reasoning_present':self.reasoning,
                 'output_characters':sum(map(len,self.parts)),
                 'finish_reason':self.finished or 'unknown',**self.metadata}
@@ -46,13 +48,15 @@ class ChatStream:
         try:value=json.loads(raw)
         except (ValueError,TypeError):self.error('provider_invalid_response')
         if not isinstance(value,dict):self.error('provider_invalid_response')
-        if value.get('error') is not None:self.error('provider_aborted')
         self.metadata.update(response_metadata(value,grok=is_grok47(self.model)))
         supplied=value.get('usage')
         if supplied is not None:
             if not isinstance(supplied,dict):self.error('provider_invalid_response')
             # Usage events are cumulative snapshots, never additive deltas.
             self.usage=usage_fields(supplied,deepseek=True,grok=True) or None
+        if value.get('error') is not None:
+            self.terminal_error=True
+            self.error('provider_aborted')
         choices=value.get('choices')
         if not isinstance(choices,list):self.error('provider_invalid_response')
         if not choices:return

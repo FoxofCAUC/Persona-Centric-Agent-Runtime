@@ -314,7 +314,7 @@ class OfflineTests(unittest.TestCase):
             async def call():
                 from persona_runtime.chat import ChatCompletionsClient
                 with self.assertRaisesRegex(StopRun, 'real_client_forbidden'):
-                    await ChatCompletionsClient().complete({}, [])
+                    await ChatCompletionsClient(allow_loopback_fixture=True, ).complete({}, [])
             asyncio.run(call())
         self.assertEqual(second['external_connection_attempts'], 1)
         self.assertEqual(second['real_client_attempts'], 1)

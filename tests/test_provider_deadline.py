@@ -38,7 +38,7 @@ class DeadlineTests(unittest.IsolatedAsyncioTestCase):
             captured.append(kwargs['timeout']);return original(**kwargs)
         self.model['timeout']=60
         with patch('persona_runtime.chat.aiohttp.ClientSession',side_effect=session):
-            result=await ChatCompletionsClient().complete(self.model,self.messages)
+            result=await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(captured[0].total,60);self.assertEqual(captured[0].connect,60)
         self.assertTrue(result.diagnostics['request_headers_sent'])
         self.assertEqual(self.calls,1)
@@ -47,7 +47,7 @@ class DeadlineTests(unittest.IsolatedAsyncioTestCase):
         async def delayed(*args,**kwargs):await asyncio.sleep(.4)
         with patch.object(aiohttp.TCPConnector,'_create_connection',delayed):
             with self.assertRaises(ModelError) as caught:
-                await ChatCompletionsClient().complete(self.model,self.messages)
+                await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(str(caught.exception),'provider_connection_timeout')
         d=caught.exception.diagnostics
         self.assertEqual(d['phase'],'connecting');self.assertFalse(d['request_headers_sent'])
@@ -57,7 +57,7 @@ class DeadlineTests(unittest.IsolatedAsyncioTestCase):
     async def test_headers_timeout_once_without_retry(self):
         self.delay=.35
         with self.assertRaises(ModelError) as caught:
-            await ChatCompletionsClient().complete(self.model,self.messages)
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(str(caught.exception),'provider_timeout')
         d=caught.exception.diagnostics
         self.assertEqual(d['phase'],'awaiting_headers');self.assertTrue(d['request_headers_sent'])
@@ -66,7 +66,7 @@ class DeadlineTests(unittest.IsolatedAsyncioTestCase):
     async def test_body_timeout_is_not_connection_failure(self):
         self.body_delay=.35
         with self.assertRaises(ModelError) as caught:
-            await ChatCompletionsClient().complete(self.model,self.messages)
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         d=caught.exception.diagnostics
         self.assertEqual(d['phase'],'reading_body');self.assertTrue(d['response_headers_received'])
         self.assertEqual(str(caught.exception),'provider_timeout');self.assertEqual(self.calls,1)
@@ -78,13 +78,13 @@ class DeadlineTests(unittest.IsolatedAsyncioTestCase):
         self.delay=.1
         with patch.object(aiohttp.TCPConnector,'_create_connection',delayed):
             with self.assertRaises(ModelError) as caught:
-                await ChatCompletionsClient().complete(self.model,self.messages)
+                await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertLess(caught.exception.diagnostics['elapsed_ms'],350)
         self.assertEqual(self.calls,1)
 
     async def test_cancellation_propagates_without_retry(self):
         self.delay=.5;self.model['timeout']=60
-        task=asyncio.create_task(ChatCompletionsClient().complete(self.model,self.messages))
+        task=asyncio.create_task(ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages))
         for _ in range(100):
             if self.calls:break
             await asyncio.sleep(.005)

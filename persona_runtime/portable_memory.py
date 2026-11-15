@@ -37,6 +37,10 @@ def import_export(store,package,expected_selected,operation_id):
     if package['format_version'] >= 20:
         from .knowledge_transfer import validate
         validate(package.get('knowledge'))
+        native=package['knowledge'].get('native_readable',{})
+        if (any(row['persona_id']!=source_pid for row in native.get('records',[]))
+                or any(owner!=source_pid for owner in native.get('source_states',{}))):
+            raise RuntimeErrorBase('invalid_business_export')
         if any(row['owner_persona'] != source_pid for row in package['knowledge']['tables']['knowledge_batches']):
             raise RuntimeErrorBase('invalid_business_export')
         if any(row['owner_persona']!=source_pid for row in package['knowledge'].get('web',{}).get('documents',[])):

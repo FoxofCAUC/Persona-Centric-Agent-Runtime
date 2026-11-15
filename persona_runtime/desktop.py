@@ -70,10 +70,20 @@ ERRORS.update({
     'provider_tool_call_not_supported':'供应商返回了本入口不支持的工具调用，未执行或展示为回复。',
 })
 ERRORS['migration_configuration_required']='迁移资料已载入；请先在本机配置模型并确认使用范围，再开始对话。'
+ERRORS['provider_effect_unknown']='本次调用结果未确认，记录已保留，请先核对，不重复发送。'
+ERRORS['generation_effect_unconfirmed']='已有调用的结果尚未确认，已停止重复生成，请先核对原记录。'
 
 PHASES = {"knowledge_routing":"正在判断知识路径","knowledge_web_plan":"正在规划公开资料查询","knowledge_search_web":"正在搜索公开资料","knowledge_fetch_web":"正在读取公开网页","knowledge_goal":"正在理解检索目标","knowledge_selection":"正在选择相关资料","knowledge_translation":"正在整理知识","knowledge_review":"正在核对整理结果","knowledge_waiting_quota":"知识复核等待额度恢复", "knowledge_search":"正在检索世界知识", "knowledge_refresh":"正在核对最新资料", "knowledge_ready":"知识已就绪，准备回复", "knowledge_no_matches":"未找到匹配资料", "knowledge_unavailable":"知识来源不可用", "character_local":"正在本地召回", "character_selection":"正在云端选择候选", "character_fallback":"已退回词法，准备回复", "queued": "排队中", "running": "正在生成", "completed": "已完成", "failed": "生成失败",
           "interrupted": "已中断", "cancelled": "已取消", "awaiting_delivery": "已生成，等待投递",
           "delivering": "正在发送", "delivery_uncertain": "送达结果不确定", "delivery_failed": "发送失败"}
+
+
+PHASES.update(knowledge_search_notice='正在回应', search_notice_published='准备查找')
+ERRORS.update(
+    legacy_request_requires_review='旧请求的结果需要先核对。原记录已保留，不会自动重复查找。',
+    knowledge_prior_execution_requires_review='此前已有调用记录，请先核对原结果。不会重复发送。',
+    provider_official_deepseek_required='当前生成连接不受支持。请配置DeepSeek官方地址和当前型号；已有记录仍保留。',
+    native_backend_selection_retired='检索方式已统一；关闭联网请使用当前角色的联网开关。')
 
 
 def compact_usage(usage):
@@ -393,6 +403,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.button(bar, "恢复当前会话", self.load_chat, {"chat"})
         self.button(bar, "新建会话", lambda: self.load_chat(fresh=True), {"chat"})
         self.button(bar, "选择已有会话", self.choose_session, {"chat"})
+        self.button(bar, "公开检索", self.edit_public_search, {"chat"})
+        self.button(bar, "本轮资料", self.show_current_materials, {"knowledge-read"})
         self.transcript = scrolledtext.ScrolledText(parent, height=17, wrap="word", state="disabled", font=("Microsoft YaHei UI", 10))
         self.transcript.pack(fill="both", expand=True, pady=8)
         reference_bar=ttk.Frame(parent);reference_bar.pack(fill='x')
@@ -469,7 +481,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         ttk.Label(parent, text="更改账号或端口前，请在故障排查中停止本项目全部服务，包括 QQ。所有地址绑定本机。", wraplength=700).pack(anchor="w", pady=10)
 
     def build_model(self, parent):
-        self.heading(parent, "模型", "Chat Completions 兼容接口。地址填写到 /v1 等基础路径，程序追加 /chat/completions。")
+        self.heading(parent, "模型", "使用DeepSeek官方生成连接；完整联网请选择deepseek-flash。Jev使用独立连接。")
         self.fields(parent, self.model_vars, (("base_url", "接口基础地址"), ("name", "模型名称"), ("api_key", "新密钥（留空保留）"),
                     ("timeout", "总超时（秒）"), ("max_tokens", "输出 token 上限"), ("hourly_limit", "自动调用总额／小时（0不限）"),
                     ("max_input_chars", "输入字符上限")), secret="api_key")
@@ -773,7 +785,10 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         dialog.transient(self)
         width = min(size[0], max(minimum[0], self.winfo_screenwidth()-80))
         height = min(size[1], max(minimum[1], self.winfo_screenheight()-140))
-        dialog.geometry(f"{width}x{height}")
+        self.update_idletasks()
+        left=max(12,min(self.winfo_rootx()+(self.winfo_width()-width)//2,self.winfo_screenwidth()-width-12))
+        top=max(12,min(self.winfo_rooty()+(self.winfo_height()-height)//2,self.winfo_screenheight()-height-48))
+        dialog.geometry(f"{width}x{height}+{left}+{top}")
         dialog.minsize(minimum[0], minimum[1])
         dialog.columnconfigure(0, weight=1)
         dialog.rowconfigure(0, weight=1)
@@ -934,6 +949,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                     self.transcript.insert("end", "你：" + member['text'] + "\n")
             else:
                 self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
+            if turn.get('search_notice'):
+                self.transcript.insert('end','人格：'+turn['search_notice']['text']+'\n\n')
             if turn["status"] == "completed":
                 displayed=turn.get('display_messages')
                 if displayed:
@@ -941,7 +958,13 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                     findings=[str(i) for i,m in enumerate(displayed,1) if m.get('diagnostics',{}).get('quality_findings')]
                     if findings:self.transcript.insert('end','表达检查：第'+ '、'.join(findings)+'条有长度或内部换行提示，正文已完整保留；请在详情中核对。\n\n')
                 else:self.transcript.insert("end", "人格：" + (turn.get('display_reply',turn["reply"]) or "") + "\n\n")
-                self.transcript.insert("end", "用量：" + compact_usage(turn.get('usage')) + "\n\n")
+                self.transcript.insert("end", "主回复用量：" + compact_usage(turn.get('usage')) + "\n")
+                retrieval_cost=(turn.get('context') or {}).get('knowledge',{}).get('retrieval',{}).get('cost')
+                if retrieval_cost:
+                    self.transcript.insert('end','本轮查找：已知 '+str(retrieval_cost['tokens_known'])+' tokens，已知工具估算 ¥'+retrieval_cost['tool_estimated_cny_known']+
+                        ('；模型用量未知 '+str(retrieval_cost['usage_unknown'])+' 笔，工具用量未知 '+str(retrieval_cost['tool_usage_unknown'])+' 笔'
+                            if retrieval_cost['usage_unknown'] or retrieval_cost['tool_usage_unknown'] else '')+'；实际总费用以账单为准。\n')
+                self.transcript.insert('end','\n')
             else:
                 phase = turn.get("phase", turn["status"])
                 label = PHASES.get(phase, phase)
@@ -990,6 +1013,11 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         if selected_reference and selected_reference["persona_id"]!=persona_id:
             self.notice.set("引用属于原人格，请清除或重新选择。");return
         if selected_reference:payload["reference"]=dict(selected_reference["target"])
+        selected_public=getattr(self,'chat_public_task',None)
+        if selected_public:
+            if (selected_public['persona_id'],selected_public['session_id'])!=(persona_id,self.session_id):
+                self.notice.set('公开问题属于原人物或会话，请重新设置或清除。');return
+            payload['public_task']=dict(selected_public['task'])
         payload["persona_id"] = persona_id
         if self.session_id:
             payload["session_id"] = self.session_id
@@ -999,6 +1027,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                 self.notice.set("消息已提交给原人格；切回该人格可查看结果。")
                 return
             # A user may already be typing the next message while HTTP is in flight.
+            if getattr(self,'chat_public_task',None)==selected_public:self.chat_public_task=None
             if self.chat_input.get("1.0", "end-1c") == text and getattr(self,"chat_reference",None)==selected_reference:
                 self.chat_input.delete("1.0", "end")
                 if selected_reference:self.clear_archive_reference()

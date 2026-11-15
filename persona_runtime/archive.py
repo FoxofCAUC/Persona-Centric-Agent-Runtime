@@ -52,6 +52,8 @@ def find_turn(conn, kind, ident):
         row = conn.execute('SELECT t.* FROM turns t JOIN reply_delivery_parts p ON p.turn_id=t.id WHERE p.id=?', (ident,)).fetchone()
     else:
         row = conn.execute('SELECT t.* FROM turns t WHERE t.user_event_id=? OR t.reply_event_id=? OR t.input_batch_id IN (SELECT batch_id FROM input_batch_members WHERE event_id=?) ORDER BY t.rowid LIMIT 1', (ident, ident, ident)).fetchone()
+    if not row and kind=='event':
+        row=conn.execute("SELECT t.* FROM turns t JOIN knowledge_control c ON c.key='knowledge.search_notice.turn.'||t.id WHERE json_extract(c.value,'$.data.event_id')=? LIMIT 1",(ident,)).fetchone()
     return dict(row) if row else None
 
 
@@ -97,13 +99,15 @@ def read_exact(conn, selected_scope, target, audit=False):
     parts = [dict(r) for r in conn.execute('SELECT id,text,state,platform_message_id,part_index,sent_at FROM reply_delivery_parts WHERE turn_id=? ORDER BY part_index', (turn['id'],))]
     raw = [dict(r) for r in conn.execute('SELECT id,event_id,platform_message_id,platform_time,received_at,representation FROM raw_events WHERE event_id IN (SELECT event_id FROM input_batch_members WHERE batch_id=?) ORDER BY rowid', (turn['input_batch_id'],))] if turn['input_batch_id'] else []
     r = conn.execute('SELECT id,text FROM events WHERE id=?',(turn['reply_event_id'],)).fetchone() if turn['reply_event_id'] else None
-    return project_turn(turn, selected_scope, target, members, parts, raw, dict(r) if r else None, blocked, audit)
+    from .knowledge_search_notice import read as read_search_notice
+    return project_turn(turn, selected_scope, target, members, parts, raw, dict(r) if r else None, blocked, audit, notice=read_search_notice(conn,turn))
 
 
-def project_turn(turn, selected_scope, target, members, parts, raw, semantic, blocked, audit=False):
+def project_turn(turn, selected_scope, target, members, parts, raw, semantic, blocked, audit=False, *, notice=None):
     """Canonical qualification/projection shared by exact and bounded bulk reads."""
     kind, ident = target['kind'], target['id']
     ids = [m['id'] for m in members]+([turn['reply_event_id']] if turn['reply_event_id'] else [])
+    if notice:ids.append(notice['event_id'])
     chosen = next((p for p in parts if p['id'] == ident), None) if kind == 'part' else None
     usable = turn['status'] == 'completed' and not blocked and (kind != 'part' or (chosen and chosen['state'] == 'sent'))
     if not audit and not usable: return {'status': 'unavailable'}
@@ -113,6 +117,9 @@ def project_turn(turn, selected_scope, target, members, parts, raw, semantic, bl
         replies = [{'kind':'part','id':p['id'],'text':p['text'],'state':p['state']} for p in parts if p['state']=='sent']
     elif turn['reply_event_id']:
         if semantic: replies = [{'kind':'generated_reply','id':semantic['id'],'text':semantic['text'],'state':'generated_only'}]
+    if notice:
+        replies.insert(0,{'kind':'search_notice','id':notice['event_id'],'text':notice['text'],
+            'state':'available','created_at':notice['created_at']})
     result = {'status':'found','target':target,'scope':selected_scope,'turn_id':turn['id'],'session_id':turn['session_id'],
               'batch_id':turn['input_batch_id'],'turn_status':turn['status'],'usable':bool(usable),'audit_only':bool(audit),
               'coverage':'normalized_payload' if raw else 'legacy_normalized_only','members':members,'replies':replies,

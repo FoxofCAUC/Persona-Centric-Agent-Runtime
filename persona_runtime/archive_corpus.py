@@ -59,6 +59,8 @@ def capture_connection(conn,spec,budget,*,before_order=None,prefer_session=None,
     characters = 0
     for batch in chunks(turns):
         budget.check()
+        from .knowledge_search_notice import read_many as read_search_notices
+        notices=read_search_notices(conn,batch)
         turn_ids = [t['id'] for t in batch]
         marks = ','.join('?' for _ in turn_ids)
         member_rows = list(conn.execute(f'''SELECT t.id AS tid,m.member_order,e.id,e.role,e.text,e.created_at
@@ -87,7 +89,7 @@ def capture_connection(conn,spec,budget,*,before_order=None,prefer_session=None,
             mem = members.get(tid,[]) if turn['input_batch_id'] else [events[turn['user_event_id']]]
             semantic = events.get(turn['reply_event_id'])
             group = project_turn(turn,selected,{'kind':'turn','id':tid},mem,parts.get(tid,[]),raws.get(tid,[]),
-                                 {k:semantic[k] for k in ('id','text')} if semantic else None,False)
+                                 {k:semantic[k] for k in ('id','text')} if semantic else None,False,notice=notices.get(tid))
             if group['status']!='found':
                 continue
             groups.append(group)

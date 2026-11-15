@@ -181,7 +181,7 @@ class Network(unittest.TestCase):
     def test_http_dns_socket_datagram_and_real_client_are_blocked(self):
         import httpx
         with offline() as count:
-            with self.assertRaises(StopRun):asyncio.run(ChatCompletionsClient().complete({},[]))
+            with self.assertRaises(StopRun):asyncio.run(ChatCompletionsClient(allow_loopback_fixture=True, ).complete({},[]))
             with httpx.Client() as client:
                 with self.assertRaises(StopRun):client.send(httpx.Request('GET','https://example.invalid'))
             with self.assertRaises(StopRun):socket.getaddrinfo('example.invalid',443)

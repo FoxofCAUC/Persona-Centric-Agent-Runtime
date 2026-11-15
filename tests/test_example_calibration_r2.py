@@ -92,7 +92,7 @@ class Network(unittest.TestCase):
     def test_real_model_and_http_clients_blocked(self):
         import httpx
         with offline() as count:
-            with self.assertRaises(StopRun):asyncio.run(ChatCompletionsClient().complete({},[]))
+            with self.assertRaises(StopRun):asyncio.run(ChatCompletionsClient(allow_loopback_fixture=True, ).complete({},[]))
             with httpx.Client() as client:
                 with self.assertRaises(StopRun):client.send(httpx.Request('GET','https://example.invalid'))
         self.assertEqual(count['http_attempts'],1);self.assertEqual(count['real_client_attempts'],1)

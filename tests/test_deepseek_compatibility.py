@@ -84,7 +84,7 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
         self.messages=[{'role':'system','content':prompt_contract('natural_structured')},{'role':'user','content':'人工输入'}]
 
     async def test_wire_content_usage_and_body_free_metadata(self):
-        before=fingerprint(self.messages);reply=await ChatCompletionsClient().complete(self.model,self.messages)
+        before=fingerprint(self.messages);reply=await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(validate_reply(reply[0],'natural_structured').text,'收到')
         self.assertEqual(self.requests[0]['response_format'],{'type':'json_object'});self.assertEqual(self.requests[0]['thinking'],{'type':'disabled'})
         self.assertEqual(reply[1]['prompt_cache_hit_tokens'],6);self.assertEqual(reply[1]['completion_tokens_details']['reasoning_tokens'],2)
@@ -98,23 +98,23 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
         from persona_runtime.character_selector_protocol import SYSTEM_V2
         for flags,prompt in (({'_json_output':True},SYSTEM_V2),({'_disposition_compile':True},PROMPT),({'_disposition_compile':True,'_situation_observation':True},OBSERVATION)):
             model=self.model|{'base_url':str(self.server.make_url('/v1/chat/completions')),'_reply_mode':None}|flags
-            await ChatCompletionsClient().complete(model,[{'role':'system','content':prompt},{'role':'user','content':'人工资料'}])
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model,[{'role':'system','content':prompt},{'role':'user','content':'人工资料'}])
             self.assertEqual(self.requests[-1]['response_format'],{'type':'json_object'})
             self.assertEqual(self.requests[-1]['thinking'],{'type':'disabled'})
         self.assertEqual(len(self.requests),3)
 
     async def test_plain_probe_has_no_json_mode(self):
-        await ChatCompletionsClient().complete(self.model|{'_reply_mode':'legacy_full'},[{'role':'user','content':'Reply OK'}])
+        await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model|{'_reply_mode':'legacy_full'},[{'role':'user','content':'Reply OK'}])
         self.assertNotIn('response_format',self.requests[0]);self.assertEqual(self.requests[0]['thinking'],{'type':'disabled'})
 
     async def test_missing_json_instruction_is_zero_requests(self):
         with self.assertRaisesRegex(ModelError,'provider_json_instruction_missing'):
-            await ChatCompletionsClient().complete(self.model,[{'role':'user','content':'没有格式约定'}])
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,[{'role':'user','content':'没有格式约定'}])
         self.assertEqual(self.requests,[])
 
     async def test_blank_and_reasoning_only_does_not_become_reply_or_retry(self):
         self.raw='   \n'
-        with self.assertRaisesRegex(ModelError,'provider_empty_response') as caught:await ChatCompletionsClient().complete(self.model,self.messages)
+        with self.assertRaisesRegex(ModelError,'provider_empty_response') as caught:await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(caught.exception.usage['total_tokens'],14);self.assertEqual(len(self.requests),1)
         self.assertNotIn('synthetic-private-thought',str(caught.exception));self.assertTrue(caught.exception.diagnostics['reasoning_present'])
 
@@ -122,18 +122,18 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
         for finish,code in (('length','provider_output_truncated'),('aborted','provider_aborted'),
                             ('insufficient_system_resource','provider_insufficient_system_resource'),('content_filter','provider_content_filtered'),('tool_calls','provider_tool_call_not_supported')):
             self.finish=finish;before=len(self.requests)
-            with self.assertRaisesRegex(ModelError,code) as caught:await ChatCompletionsClient().complete(self.model,self.messages)
+            with self.assertRaisesRegex(ModelError,code) as caught:await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
             self.assertEqual(caught.exception.usage['total_tokens'],14);self.assertEqual(len(self.requests),before+1)
 
     async def test_http_error_is_not_schema_downgrade_retry(self):
         for status in (400,401,402,422,429,500,503):
             self.status=status;before=len(self.requests)
-            with self.assertRaisesRegex(ModelError,'provider_http_'+str(status)):await ChatCompletionsClient().complete(self.model,self.messages)
+            with self.assertRaisesRegex(ModelError,'provider_http_'+str(status)):await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
             self.assertEqual(len(self.requests),before+1)
 
     async def test_keepalive_whitespace_and_one_total_deadline(self):
         self.heartbeat=True;self.delay=.005
-        client=ChatCompletionsClient(ssl_context=model_tls_context())
+        client=ChatCompletionsClient(allow_loopback_fixture=True, ssl_context=model_tls_context())
         reply=await client.complete(self.model,self.messages);self.assertTrue(reply[0])
         self.delay=.6;before=len(self.requests)
         with self.assertRaisesRegex(ModelError,'provider_timeout'):

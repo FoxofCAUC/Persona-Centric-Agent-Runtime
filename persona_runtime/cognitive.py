@@ -50,7 +50,10 @@ class CognitiveService:
         # Hashes are internal transient guards. Full rows never enter the
         # persisted manifest or ordinary logs.
         settings=turn if expected else current
+        from .knowledge_search_notice import read as read_search_notice
+        spoken=read_search_notice(conn,current)
         return fingerprint({'turn_settings':{k:settings.get(k) for k in ('profile_snapshot','character_snapshot','context_policy_snapshot','observation_model_snapshot','model_snapshot','reply_mode_snapshot','expression_snapshot','origin_json')},
+            'search_notice':fingerprint(spoken) if spoken else None,
             'inputs':load_turn_input(conn,current),'history':history,'memories':memories,'pending_conflicts':pending,
             'summary':dict(summary) if summary else None,'summary_valid':summary_valid,
             'state':details.get('state_version') if expected else state['id'] if active_state(state) else None,
@@ -88,8 +91,7 @@ class CognitiveService:
         from .evaluation_material import descriptor as evaluation_descriptor
         evaluation=evaluation_descriptor(self.engine,conn,turn)
         from .provider_compat import describe_request
-        from .knowledge_general import reasoning_model
-        wire=describe_request(reasoning_model(json.loads(turn['model_snapshot']),details.get('knowledge'))|{'_reply_mode':turn.get('reply_mode_snapshot'),
+        wire=describe_request(json.loads(turn['model_snapshot'])|{'_reply_mode':turn.get('reply_mode_snapshot'),
                               '_expression_snapshot':turn.get('expression_snapshot')})
         manifest={**({'evaluation':evaluation} if evaluation else {}),'context_id':identifier(),'task_type':'dialogue','purpose':'provider_probe' if turn['channel']=='test' else 'conversation',
             'scope':selected,'turn_id':turn['id'],'builder_version':BUILDER_VERSION,'created_at':timestamp(),
@@ -238,21 +240,26 @@ class CognitiveService:
             manifest['scope']=payload['scope']
             manifest['proactive']={k:v for k,v in payload['proactive'].items() if k not in ('content','context')}
         stage=payload.get('knowledge_processing',{}).get('stage')
+        if stage=='conversation_native':
+            manifest['provider_request_contract']=describe_request(json.loads(task['model_snapshot']))
+            manifest['hard_constraints']+=['explicit_public_projection','native_protocol_scoped','no_unknown_replay']
+            return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
         if stage=='conversation_web_decision':
             from .knowledge_web_decision import request,VERSION
             body=request(json.loads(task['model_snapshot']),payload['knowledge_processing']['input'])
             manifest['provider_request_contract']={'version':VERSION,'kind':'need_web','configuration_source':'explicit_jev'}
+            if payload['knowledge_processing']['input'].get('decision_profile'):
+                manifest['provider_request_contract']['instruction_profile']=payload['knowledge_processing']['input']['decision_profile']
             manifest['native_request_hash']=fingerprint(body)
             return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
         if stage in ('conversation_search','conversation_fetch'):
             manifest['provider_request_contract']={'version':'deepseek-tools-v1','kind':stage.removeprefix('conversation_'),
                 'configuration_source':'main','billing_unit':'successful_request'}
             return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
-        if stage and stage not in ('conversation_search_plan','conversation_organize'):
+        if stage:
             manifest['provider_request_contract']={'version':'retired-knowledge-route','kind':stage,'retired':True}
             return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
-        from .knowledge_general import reasoning_model
-        manifest['provider_request_contract']=describe_request(reasoning_model(json.loads(task['model_snapshot']),plan=stage in ('conversation_search_plan','conversation_organize'))|{'_json_output':task['mode'] not in ('test','proactive')})
+        manifest['provider_request_contract']=describe_request(json.loads(task['model_snapshot'])|{'_json_output':task['mode'] not in ('test','proactive')})
         return CognitiveService.persist(conn,manifest,task=task,attempt_id=attempt_id)
 
     @staticmethod
@@ -295,6 +302,8 @@ class CognitiveService:
                 from .session_organization import valid as source_valid
                 if payload.get('knowledge_processing'):
                     try:
+                        if payload['knowledge_processing'].get('stage')=='conversation_native':
+                            messages,_=self.engine.knowledge.processing.native.messages_for_task(conn,owner,payload)
                         c=self.engine.knowledge.processing.engine.managed.contract(conn,owner['id'])
                         self.engine.knowledge.processing.check(conn,owner,c,payload);valid=True
                     except RuntimeErrorBase:valid=False

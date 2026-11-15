@@ -302,10 +302,14 @@ class IngressService:
 
     def accept(self,value):
         started=time.perf_counter()
-        allowed={'channel','text','request_id','persona_id','session_id','bot','sender','platform_message_id','platform_time','reference'}
+        allowed={'channel','text','request_id','persona_id','session_id','bot','sender','platform_message_id','platform_time','reference','public_task'}
         if not isinstance(value,dict) or set(value)-allowed:raise RuntimeErrorBase('unknown_ingress_field')
         channel=value.get('channel','desktop');text=value.get('text');rid=value.get('request_id')
         require_text(text,'text');require_text(rid,'request_id')
+        if 'public_task' in value:
+            from .knowledge_native import public_task
+            if channel!='desktop':raise RuntimeErrorBase('native_public_task_channel_invalid')
+            value={**value,'public_task':public_task(value['public_task'])}
         if channel not in ('desktop','qq') or len(text)>24000 or len(rid)>200:raise RuntimeErrorBase('invalid_ingress_input')
         if self.engine.draining:raise RuntimeErrorBase('service_draining')
         from .archive import target_spec
@@ -361,6 +365,9 @@ class IngressService:
                 from .companion import freeze_auxiliary
                 conn.execute('UPDATE input_batches SET observation_model_snapshot=? WHERE id=?',(encoded(freeze_auxiliary(cfg['character_selector'],policy['context'])),bid))
             conn.execute("INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES (?,?,?,?,'user',?,?)",(eid,sid,pid,LOCAL_USER_ID,text,timestamp()))
+            if 'public_task' in value:
+                from .knowledge_native import bind_public_event
+                bind_public_event(conn,eid,pid,sid,channel,text,value['public_task'])
             conn.execute('INSERT INTO raw_events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(rawid,pid,LOCAL_USER_ID,eid,channel,bot,peer,value.get('platform_message_id'),value.get('platform_time'),timestamp(),'normalized_payload',2 if 'reference' in value else 1,encoded(payload),fp))
             conn.execute('INSERT INTO ingress_receipts(id,source_key,request_id,persona_id,user_id,channel,bot,peer,session_id,fingerprint,raw_event_id,event_id,batch_id,received_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(receipt,source,rid,pid,LOCAL_USER_ID,channel,bot,peer,sid,fp,rawid,eid,bid,timestamp()))
             if 'reference' in value:

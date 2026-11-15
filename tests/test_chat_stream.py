@@ -134,7 +134,7 @@ class LocalStreaming(unittest.IsolatedAsyncioTestCase):
         self.delay=.04;captured=[];saved=[];original=aiohttp.ClientSession
         def session(**kw):captured.append(kw['timeout']);return original(**kw)
         with patch('persona_runtime.chat.aiohttp.ClientSession',side_effect=session):
-            result=await audited_complete(ChatCompletionsClient(),self.model,self.messages,
+            result=await audited_complete(ChatCompletionsClient(allow_loopback_fixture=True, ),self.model,self.messages,
                 validate=lambda _:None,save=lambda value:saved.append(deepcopy(value)),before_attempt=lambda _:None)
         timeout=captured[0]
         self.assertTrue(all(getattr(timeout,k) is None for k in ('total','connect','sock_connect','sock_read')))
@@ -147,24 +147,24 @@ class LocalStreaming(unittest.IsolatedAsyncioTestCase):
     async def test_server_json_fallback_rejected_without_second_dispatch(self):
         self.json_fallback=True
         with self.assertRaisesRegex(ModelError,'provider_stream_expected'):
-            await ChatCompletionsClient().complete(self.model,self.messages)
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(len(self.calls),1)
 
     async def test_done_returns_without_waiting_for_server_connection_close(self):
         self.linger=True
         try:
-            result=await asyncio.wait_for(ChatCompletionsClient().complete(self.model,self.messages),1)
+            result=await asyncio.wait_for(ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages),1)
             self.assertEqual(result[0],'你好')
         finally:self.release.set()
 
     async def test_unlimited_request_ignores_stale_numeric_deadline(self):
         self.delay=.03;self.model['_request_deadline']=0
-        result=await ChatCompletionsClient().complete(self.model,self.messages)
+        result=await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(result[0],'你好')
 
     async def test_cancel_incomplete_stream_leaves_terminal_without_retry(self):
         self.hold=True;saved=[]
-        task=asyncio.create_task(audited_complete(ChatCompletionsClient(),self.model,self.messages,
+        task=asyncio.create_task(audited_complete(ChatCompletionsClient(allow_loopback_fixture=True, ),self.model,self.messages,
             validate=lambda _:None,save=lambda value:saved.append(deepcopy(value)),before_attempt=lambda _:None))
         await self.started.wait();await asyncio.sleep(.01)
         self.assertFalse(task.done());task.cancel()

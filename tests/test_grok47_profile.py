@@ -47,18 +47,18 @@ class HTTP(fixture.GrokGatewayCompatibility):
     async def test_truncated_even_parseable_answer_is_rejected(self):
         self.response['choices'][0]['finish_reason']='length'
         with self.assertRaisesRegex(ModelError,'provider_output_truncated'):
-            await ChatCompletionsClient().complete(self.model,self.messages)
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(len(self.payloads),1)
     async def test_blank_is_classified_without_body_or_second_request(self):
         self.response['choices'][0]['message']['content']=' '*12
         with self.assertRaisesRegex(ModelError,'provider_empty_response') as caught:
-            await ChatCompletionsClient().complete(self.model,self.messages)
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(caught.exception.diagnostics['content_kind'],'ascii_spaces_only')
         self.assertEqual(caught.exception.diagnostics['http_status'],200)
         self.assertNotIn('synthetic-internal',str(caught.exception.diagnostics));self.assertEqual(len(self.payloads),1)
     async def test_selector_sends_schema_and_effort_and_keeps_local_validation(self):
         model=self.model|{'_character_selection':True,'_json_output':True}
-        await ChatCompletionsClient().complete(model,self.messages)
+        await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model,self.messages)
         self.assertEqual(self.payloads[0]['reasoning_effort'],'low')
         self.assertEqual(self.payloads[0]['response_format']['json_schema']['name'],'pcar_character_selection_v1')
 

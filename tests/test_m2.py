@@ -243,7 +243,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         app.router.add_post("/v1/chat/completions", provider)
         async with TestServer(app) as server:
             model = self.cfg.load()["model"] | {"base_url": str(server.make_url("/v1"))}
-            text, usage = await ChatCompletionsClient().complete(model, [{"role": "user", "content": "test"}])
+            text, usage = await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [{"role": "user", "content": "test"}])
             self.assertEqual(text, "本地模拟")
             self.assertEqual(usage["total_tokens"], 5)
             self.assertEqual(seen[0]["max_tokens"], 1024)
@@ -251,7 +251,7 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
             for code in (401, 429, 500):
                 status[0] = code
                 with self.assertRaisesRegex(ModelError, f"provider_http_{code}"):
-                    await ChatCompletionsClient().complete(model, [])
+                    await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [])
 
     async def test_dpapi_and_configuration_no_plaintext_secret(self):
         self.assertEqual(unprotect(protect("机密🙂")), "机密🙂")
@@ -308,15 +308,15 @@ class M2Tests(unittest.IsolatedAsyncioTestCase):
         async with TestServer(app) as server:
             model = self.cfg.load()["model"] | {"base_url": str(server.make_url("")), "timeout": 1}
             with self.assertRaisesRegex(ModelError, "provider_timeout"):
-                await ChatCompletionsClient().complete(model, [])
+                await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [])
             mode[0] = "invalid"
             with self.assertRaisesRegex(ModelError, "provider_invalid_response"):
-                await ChatCompletionsClient().complete(model, [])
+                await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [])
             mode[0] = "empty"
             with self.assertRaisesRegex(ModelError, "provider_empty_response"):
-                await ChatCompletionsClient().complete(model, [])
+                await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [])
             mode[0] = "chunked"
-            text, usage = await ChatCompletionsClient().complete(model, [])
+            text, usage = await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [])
             self.assertEqual(text, "分块响应")
             self.assertIsNone(usage)
 

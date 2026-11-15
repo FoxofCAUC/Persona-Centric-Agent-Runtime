@@ -11,7 +11,7 @@ SECRETS={'encrypted_key','api_key','admin_token','bridge_token','claim_token','c
 CORE={'personas','settings','relationships','sessions','events','memories','summaries','candidates','memory_sources','candidate_reviews','source_exclusions'}
 PREFIXES=('memory_','profile_','character_','context_','archive_','knowledge_')
 CANON={'source-package.json','source-archive.md','initial-relationship.txt'}
-STAGES={'conversation_web_decision','conversation_search_plan','conversation_search','conversation_fetch','conversation_organize'}
+STAGES={'conversation_web_decision','conversation_search_plan','conversation_search','conversation_fetch','conversation_organize','conversation_search_notice','conversation_native'}
 
 
 def read(path):return json.loads(path.read_text(encoding='utf-8-sig')) if path.is_file() else {}

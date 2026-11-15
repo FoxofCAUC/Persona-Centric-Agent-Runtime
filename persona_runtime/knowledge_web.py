@@ -45,4 +45,4 @@ class WebKnowledge:
         with self.store.connection() as db:values=read(db,'web.invalidations',{})['data']
         values[document_id]={'state':'withdrawn','reason':reason}
         return self.engine.chat.knowledge._update('web.invalidations',values,expected_revision,operation_id)
-    async def execute(self,model,payload):return await self.engine.processing.general.execute(model,payload)
+    async def execute(self,model,payload):return await self.engine.processing.tools.execute(model,payload)

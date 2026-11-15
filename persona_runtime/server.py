@@ -131,7 +131,9 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 raise web.HTTPForbidden()
 
     async def health(request):
-        return web.json_response(health_status(config,engine,organization,ingress))
+        status=health_status(config,engine,organization,ingress)
+        status['capabilities'].append('native_web_v1')
+        return web.json_response(status)
 
     async def chat(request):
         value = await body(request)
@@ -144,7 +146,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         elif value.get("channel", "desktop") != "desktop":
             raise RuntimeErrorBase("Desktop clients must use desktop channel")
         origin = {"sender": value["sender"], "bot": value["bot"]} if request["role"] == "bridge" else None
-        result = await engine.submit(value.get("channel", "desktop"), value["text"], value["request_id"], value.get("session_id"), origin=origin, persona_id=value.get("persona_id"))
+        result = await engine.submit(value.get("channel", "desktop"), value["text"], value["request_id"], value.get("session_id"), origin=origin, persona_id=value.get("persona_id"),public_task=value.get('public_task'))
         return web.json_response(result)
 
     def bridge_batch(request,value):
@@ -334,6 +336,9 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             handlers.update({'knowledge.processing.policy.current':organization.processing.policy,
                 'knowledge.processing.policy.update':organization.processing.update_policy,
                 'knowledge.processing.show':organization.processing.show,'knowledge.general.update':organization.processing.enable_for_persona})
+            handlers.update({'knowledge.native.policy.current':organization.processing.native.policy,
+                'knowledge.native.policy.update':organization.processing.native.update,
+                'knowledge.native.source.update':organization.processing.native.update_source})
             handlers.update({'knowledge.routing.policy.current':organization.routing.policy,
                 'knowledge.routing.policy.update':organization.routing.update_policy,
                 'knowledge.routing.configuration.current':organization.routing.configuration,

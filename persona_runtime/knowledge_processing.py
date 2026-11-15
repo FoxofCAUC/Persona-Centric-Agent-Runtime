@@ -3,7 +3,7 @@ import copy,json
 from .archive import fingerprint,turn_scope
 from .models import RuntimeErrorBase,LOCAL_USER_ID
 from .private_personas import provider_identity
-from .knowledge_general import PROFILE,STAGES,GeneralRetrieval,messages,OUTPUT_PROFILE
+from .knowledge_general import PROFILE,STAGES,IndependentWebTools,OUTPUT_PROFILE
 
 VERSION='general-conversation-retrieval-v1'
 def model_contract(model):return {k:v for k,v in model.items() if k!='encrypted_key'}
@@ -18,7 +18,11 @@ def record_used(db,paths,pid,channel,metadata):
 class KnowledgeProcessing:
     def __init__(self,engine):
         self.engine=engine;self.store=engine.store;self.service=engine.chat.knowledge;self.service.processing=self
-        self.general=GeneralRetrieval(self)
+        self.tools=IndependentWebTools(self)
+        from .knowledge_native import NativeRetrieval
+        self.native=NativeRetrieval(self)
+        from .knowledge_search_notice import SearchNotice
+        self.search_notice=SearchNotice(self)
     def model(self,pid=None):return dict(self.engine.config.load()['model'])
     def _model_from_policy(self,policy):return self.model()
     def defaults(self,model_source='main'):
@@ -44,12 +48,20 @@ class KnowledgeProcessing:
         from .private_personas import guard_acceptance_write
         guard_acceptance_write(self.store,persona_id)
         if type(enabled) is not bool:raise RuntimeErrorBase('knowledge_policy_invalid')
+        if enabled:
+            from .migration import ensure_cloud_ready
+            ensure_cloud_ready(self.store.paths)
         def apply(db):
             if self.store.current(db)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
             old=read(db,'processing.'+persona_id,self.defaults());web=read(db,'web.policy.'+persona_id,DEFAULT)
             if old['revision']!=expected_processing_revision or web['revision']!=expected_web_revision:raise RuntimeErrorBase('version_conflict')
             values={'processing.'+persona_id:{'revision':old['revision']+1,'data':self.defaults()|{'enabled':enabled}},
                 'web.policy.'+persona_id:{'revision':web['revision']+1,'data':web['data']|{'enabled':enabled}}}
+            if enabled:
+                from .knowledge_native import POLICY as NATIVE_POLICY
+                native=read(db,'native.policy.'+persona_id,NATIVE_POLICY)
+                data={**native['data'],'enabled':True};data.pop('migration_requires_review',None)
+                values['native.policy.'+persona_id]={'revision':native['revision']+1,'data':data}
             for key,value in values.items():db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',('knowledge.'+key,json.dumps(value,ensure_ascii=False)))
         return self.service._update('policy.'+persona_id,{'enabled':enabled,'channels':['desktop']},expected_reader_revision,operation_id,
             request=[persona_id,enabled,expected_reader_revision,expected_processing_revision,expected_web_revision],apply=apply)
@@ -65,10 +77,23 @@ class KnowledgeProcessing:
         from .private_personas import guard_cloud_dispatch
         current=read(db,'processing.'+turn['persona_id'],self.defaults())
         reader=read(db,'policy.'+turn['persona_id'],POLICY)['data']
-        if current!=policy or not reader['enabled'] or turn['channel'] not in reader['channels'] or not current['data'].get('enabled') or current['data'].get('prompt_profile')!=PROFILE:
+        web=read(db,'web.policy.'+turn['persona_id'],{'enabled':False})['data']
+        if current!=policy or not reader['enabled'] or not web.get('enabled') or turn['channel'] not in reader['channels'] or not current['data'].get('enabled') or current['data'].get('prompt_profile')!=PROFILE:
             raise RuntimeErrorBase('knowledge_permission_changed')
         guard_cloud_dispatch(self.store,turn['persona_id'],'main',self.model())
         if stage=='conversation_web_decision':self.engine.routing.grant(turn['persona_id'])
+        if stage in ('conversation_native','conversation_search_notice'):
+            if self.native.policy(turn['persona_id'])!=inputs.get('native_policy'):
+                raise RuntimeErrorBase('native_policy_changed')
+            from .turn_input import input_text
+            from .knowledge_native import public_task
+            projection=self.native.projection(db,turn,input_text(db,turn),inputs['native_policy'])
+            if projection!=public_task(inputs['public_task']):
+                raise RuntimeErrorBase('native_public_task_scope_changed')
+            if inputs.get('protocol_parent') or inputs.get('public_context'):
+                from .knowledge_native_memory import source_states
+                if source_states(db,turn['persona_id'])['revision']!=inputs.get('source_state_revision',0):
+                    raise RuntimeErrorBase('native_readable_source_changed')
     def _call(self,turn,stage,inputs):
         from .knowledge_service import read
         from .knowledge_wait import check,mark
@@ -87,21 +112,34 @@ class KnowledgeProcessing:
             previous=[]
             for row in db.execute("SELECT * FROM organization_tasks WHERE persona_id=? AND json_extract(payload_json,'$.knowledge_processing.root_turn_id')=? AND json_extract(payload_json,'$.knowledge_processing.stage')=? ORDER BY rowid",(turn['persona_id'],turn['id'],stage)):
                 payload=json.loads(row['payload_json']);data=payload['knowledge_processing']
-                if (data['input']==inputs and (data['policy']==policy or stage=='conversation_web_decision') and data['pipeline']==VERSION
-                        and data.get('decision_binding')==decision_binding
+                if ((data['input']==inputs or stage in ('conversation_native','conversation_web_decision','conversation_search_notice')) and data['pipeline']==VERSION
+                        and (data.get('decision_binding')==decision_binding or stage=='conversation_web_decision')
                         and data['context_guard']==context_guard and payload['scope']==turn_scope(db,turn)):
                     previous.append(row)
+            resumed=None
             for row in previous:
                 if row['status']=='completed':
                     return copy.deepcopy(read(db,'processing.result.'+row['id'],{})['data']),row['id']
-                if row['status']=='failed':
+                if row['status']=='failed' or stage in ('conversation_native','conversation_search_notice') and row['status']=='cancelled':
                     contract=self.engine.managed.contract(db,row['id'])
+                    if stage in ('conversation_native','conversation_search_notice') and contract and contract['data']['phase']=='received' and not contract['data']['cancel_requested']:
+                        if db.execute('SELECT 1 FROM organization_receipts r JOIN organization_attempts a ON a.id=r.attempt_id WHERE a.task_id=?',(row['id'],)).fetchone():
+                            db.execute("UPDATE organization_tasks SET status='queued',error_code=NULL WHERE id=?",(row['id'],))
+                            resumed={'id':row['id']}
+                            continue
                     if contract and contract['data'].get('last_failure',{}).get('provider_completed'):
                         error=RuntimeErrorBase(row['error_code'] or 'retrieval_unavailable');error.task_id=row['id'];raise error
                 if stage=='conversation_web_decision' and db.execute('SELECT 1 FROM organization_receipts r JOIN organization_attempts a ON a.id=r.attempt_id WHERE a.task_id=?',(row['id'],)).fetchone():
                     error=RuntimeErrorBase(row['error_code'] or 'jev_web_decision_invalid');error.task_id=row['id'];raise error
             if any(row['status']=='blocked_unknown' or db.execute("SELECT 1 FROM organization_attempts a WHERE a.task_id=? AND a.status IN ('running','interrupted') AND NOT EXISTS(SELECT 1 FROM organization_receipts r WHERE r.attempt_id=a.id)",(row['id'],)).fetchone() for row in previous):
                 error=RuntimeErrorBase('organization_effect_unknown');error.task_id=previous[-1]['id'];raise error
+            if not resumed:
+                for row in previous:
+                    contract=self.engine.managed.contract(db,row['id'])
+                    attempted=db.execute('SELECT 1 FROM organization_attempts WHERE task_id=?',(row['id'],)).fetchone()
+                    if attempted and not (contract and contract['data'].get('last_failure',{}).get('not_sent')):
+                        error=RuntimeErrorBase(row['error_code'] or 'knowledge_prior_execution_requires_review')
+                        error.task_id=row['id'];raise error
             old=read(db,cache_key,{})['data']
             if old:
                 task=db.execute('SELECT status FROM organization_tasks WHERE id=?',(old['task_id'],)).fetchone()
@@ -112,7 +150,7 @@ class KnowledgeProcessing:
             payload={'persona_id':turn['persona_id'],'channel':turn['channel'],'session_id':turn['session_id'],'mode':'both',
                 'scope':turn_scope(db,turn),'user_id':LOCAL_USER_ID,
                 'knowledge_processing':data,'fingerprint':token,'manual_quota_request':bool(not turn.get('outbound_id') and (turn.get('user_event_id') or turn.get('input_batch_id')))}
-            task=self.engine.managed.register(db,payload,'general-'+token,automatic=1,trigger='incremental')
+            task=resumed or self.engine.managed.register(db,payload,'general-'+token,automatic=1,trigger='incremental')
             key='wait.'+turn['id'];waiting=read(db,'processing.'+key,{})['data']
             ids=waiting.get('task_ids',[]) if waiting.get('execution_revision')==turn.get('execution_revision') else []
             put(db,key,{'execution_revision':turn.get('execution_revision'),'task_ids':list(dict.fromkeys(ids+[task['id']]))})
@@ -134,11 +172,29 @@ class KnowledgeProcessing:
         if data['stage']=='conversation_web_decision':
             from .knowledge_routing import binding
             if binding(self.engine.routing.model())!=data.get('decision_binding'):raise RuntimeErrorBase('organization_model_changed')
-        self.general.check(db,dict(turn),data)
+        self.tools.check(db,dict(turn),data)
     def published(self,db,task,payload,response,audit):
-        output=self.general.accept(payload,response);put(db,'result.'+task['id'],output)
+        output=(self.search_notice.publish(db,task,payload,response,audit) if payload['knowledge_processing']['stage']=='conversation_search_notice'
+            else self.native.accept(db,task,payload,response,audit) if payload['knowledge_processing']['stage']=='conversation_native'
+            else self.tools.accept(payload,response))
+        put(db,'result.'+task['id'],output)
         db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',('knowledge.'+payload['knowledge_processing']['cache_key'],json.dumps({'revision':0,'data':{'task_id':task['id']}})))
-    def prepare(self,turn,*args,**kwargs):return self.general.prepare(turn)
+    def prepare(self,turn,*args,**kwargs):
+        if turn['channel']=='test' or not turn.get('persona_id'):
+            return {'state':'disabled','evidence':[]}
+        from .knowledge_service import read
+        with self.store.connection() as db:
+            retired=[row[0] for row in db.execute("SELECT id FROM organization_tasks WHERE json_extract(payload_json,'$.knowledge_processing.root_turn_id')=? AND json_extract(payload_json,'$.knowledge_processing.stage') IN ('conversation_search_plan','conversation_organize')",(turn['id'],))]
+            if retired:
+                unknown=db.execute("SELECT 1 FROM organization_attempts a JOIN organization_tasks t ON t.id=a.task_id WHERE json_extract(t.payload_json,'$.knowledge_processing.root_turn_id')=? AND a.status IN ('running','interrupted') AND NOT EXISTS(SELECT 1 FROM organization_receipts r WHERE r.attempt_id=a.id)",(turn['id'],)).fetchone()
+                record=read(db,'conversation.record.'+turn['id'],{})['data']
+                if (unknown or record.get('persona_id')!=turn['persona_id'] or record.get('channel')!=turn['channel']
+                        or not (record.get('sources') or record.get('organized',{}).get('notes'))):
+                    raise RuntimeErrorBase('legacy_request_requires_review')
+                return {'mode':PROFILE,'state':'ready','record_id':turn['id'],'record_hash':fingerprint(record),
+                    'sources':copy.deepcopy(record.get('sources',[])),'organized':copy.deepcopy(record.get('organized',{})),
+                    'retrieval':copy.deepcopy(record.get('retrieval',{})),'legacy_receipt_reused':True}
+        return self.native.prepare(turn)
     def show(self,pid,turn_id):
         with self.store.connection() as db:
             row=db.execute('SELECT value FROM knowledge_control WHERE key=?',('knowledge.conversation.record.'+turn_id,)).fetchone()
@@ -146,5 +202,5 @@ class KnowledgeProcessing:
         if record.get('persona_id')!=pid:return {'state':'not_processed'}
         return {'state':'ready','mode':PROFILE,'knowledge':record}
 
-def phase_for(stage):return {'conversation_web_decision':'knowledge_routing','conversation_search_plan':'knowledge_web_plan','conversation_search':'knowledge_search_web','conversation_fetch':'knowledge_fetch_web','conversation_organize':'knowledge_translation'}.get(stage,'knowledge_goal')
+def phase_for(stage):return {'conversation_web_decision':'knowledge_routing','conversation_search_notice':'knowledge_search_notice','conversation_search_plan':'knowledge_web_plan','conversation_search':'knowledge_search_web','conversation_fetch':'knowledge_fetch_web','conversation_organize':'knowledge_translation','conversation_native':'knowledge_search_web'}.get(stage,'knowledge_goal')
 def turn_scope_value(turn):return {'persona_id':turn['persona_id'],'channel':turn['channel']}

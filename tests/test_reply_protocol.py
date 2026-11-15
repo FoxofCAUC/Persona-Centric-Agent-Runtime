@@ -68,7 +68,8 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.provider=TestServer(app);await self.provider.start_server();self.addAsyncCleanup(self.provider.close)
         self.config.update({'model':{'base_url':str(self.provider.make_url('/v1')),'name':'mock'}})
         self.service=RuntimeService(self.store);self.pid=self.service.create_persona(generic_persona())['id'];self.service.use_persona(self.pid)
-        self.engine=ChatEngine(self.store,self.config);self.ingress=IngressService(self.engine)
+        from persona_runtime.chat import ChatCompletionsClient
+        self.engine=ChatEngine(self.store,self.config,ChatCompletionsClient(allow_loopback_fixture=True));self.ingress=IngressService(self.engine)
         policy=self.ingress.current_policy(self.pid,'desktop')
         self.ingress.update_policy(self.pid,'desktop',policy['mode'],policy['id'],identifier(),companion_mode='disabled')
         # This suite verifies the frozen pre-bubble wire contract.
@@ -174,7 +175,7 @@ class ProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_admin_probe_http_is_idempotent_and_bridge_is_denied(self):
         from persona_runtime.server import create_app
-        app=create_app(self.paths)
+        app=create_app(self.paths,client=self.engine.client)
         async with TestServer(app) as server,ClientSession() as client:
             endpoint=server.make_url('/v1/model-test')
             payload={'reply_mode':'natural_structured','request_id':identifier()}

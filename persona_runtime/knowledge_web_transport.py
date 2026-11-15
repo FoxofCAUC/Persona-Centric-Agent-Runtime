@@ -36,14 +36,18 @@ async def request(stage,args,model):
                     if len(raw)>8*1024**2:raise ModelError('web_response_too_large')
                 body=raw.decode('utf-8')
                 if status!=200:
-                    error=ModelError('web_http_'+str(status),usage={'tool':stage,'http_status':status,'billable':False,'amount_usd':'0','network_route':'system_proxy'},
+                    error=ModelError('web_http_'+str(status),usage={'tool':stage,'http_status':status,'billable':False,
+                        'estimated_amount_cny':'0','currency':'CNY','price_version':'deepseek-cny-2026-11-15','network_route':'system_proxy'},
                         diagnostics={'request_headers_sent':sent,'http_status':status,'read_only_tool':True,'network_route':'system_proxy'})
                     error.tool_response=body
                     raise error
                 data=json.loads(body)
                 billable=bool(data.get('results')) if stage=='search' else bool(data.get('content'))
                 usage={'tool':stage,'http_status':200,'billable':billable,
-                    'amount_usd':str(Decimal('0.00075') if billable else Decimal('0')),'network_route':'system_proxy','pricing_source':'https://api-docs.deepseek.com/guides/search/','amount_is_estimate':True,'elapsed_ms':round((time.monotonic()-started)*1000,3)}
+                    'estimated_amount_cny':str(Decimal('0.005') if billable else Decimal('0')),
+                    'currency':'CNY','price_version':'deepseek-cny-2026-11-15',
+                    'network_route':'system_proxy','pricing_source':'https://api-docs.deepseek.com/zh-cn/quick_start/pricing/',
+                    'amount_is_estimate':True,'elapsed_ms':round((time.monotonic()-started)*1000,3)}
                 return ModelCompletion(body,usage,{'request_headers_sent':sent,'http_status':200,'read_only_tool':True,'network_route':'system_proxy'})
     except ModelError:raise
     except (aiohttp.ClientError,TimeoutError,ValueError,UnicodeError):

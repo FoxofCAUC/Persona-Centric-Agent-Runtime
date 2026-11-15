@@ -138,6 +138,17 @@ def _sanitize_database(path):
                         db.execute('UPDATE '+quoted+' SET '+q+'=? WHERE rowid=?',(clean,rowid));changes['structured_credentials_scrubbed']=changes.get('structured_credentials_scrubbed',0)+1
         # Pending work has no new-machine execution authority. Completed and
         # unknown outcomes and their usage stay untouched.
+        if 'knowledge_control' in tables:
+            from .knowledge_native import POLICY as NATIVE_POLICY
+            for (persona_id,) in db.execute('SELECT id FROM personas').fetchall():
+                key='knowledge.native.policy.'+persona_id
+                old=db.execute('SELECT value FROM knowledge_control WHERE key=?',(key,)).fetchone()
+                value=json.loads(old[0]) if old else {'revision':0,'data':dict(NATIVE_POLICY)}
+                value['data']['enabled']=False
+                value['data']['allow_current_public_question']=False
+                value['data']['migration_requires_review']=True;value['revision']+=1
+                db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,json.dumps(value,ensure_ascii=False)))
+                changes['native_policies_paused']=changes.get('native_policies_paused',0)+1
         for table,states,target in [('turns',('queued','running'),'interrupted'),('organization_tasks',('queued','running','waiting_quota'),'failed')]:
             if table in tables:
                 cur=db.execute('UPDATE '+table+" SET status=?,error_code='migration_requires_review' WHERE status IN ("+','.join('?' for _ in states)+')',(target,*states));changes[table+'_paused']=cur.rowcount

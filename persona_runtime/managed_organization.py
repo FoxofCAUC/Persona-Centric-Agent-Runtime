@@ -143,6 +143,9 @@ class ManagedOrganization:
         model=self.engine.model()
         if payload.get('knowledge_processing',{}).get('policy',{}).get('data',{}).get('model_source')=='main' or payload.get('external_knowledge',{}).get('model_source')=='main':model=dict(self.engine.config.load()['model'])
         if payload.get('knowledge_processing',{}).get('stage') in ('conversation_web_decision',):model=self.engine.routing.model()
+        if payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
+            model=json.loads(db.execute('SELECT model_snapshot FROM turns WHERE id=?',
+                (payload['knowledge_processing']['root_turn_id'],)).fetchone()[0])
         if payload.get('knowledge_processing'):
             from .knowledge_general import processing_model
             model=processing_model(model,payload['knowledge_processing'])
@@ -234,7 +237,11 @@ class ManagedOrganization:
         elif main_source:
             from .knowledge_processing import model_contract
             from .knowledge_general import processing_model
-            expected=processing_model(self.engine.config.load()['model'],payload.get('knowledge_processing',{}))
+            base=self.engine.config.load()['model']
+            if payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
+                base=json.loads(db.execute('SELECT model_snapshot FROM turns WHERE id=?',
+                    (payload['knowledge_processing']['root_turn_id'],)).fetchone()[0])
+            expected=processing_model(base,payload.get('knowledge_processing',{}))
             if model_contract(model)!=model_contract(expected):raise RuntimeErrorBase('organization_model_changed')
         elif p['provider']!=provider_identity(model) or p['provider']!=provider_identity(self.engine.model()):
             raise RuntimeErrorBase('organization_model_changed')
@@ -335,6 +342,29 @@ class ManagedOrganization:
             running.get_loop().call_soon_threadsafe(running.cancel,'cancelled_by_user')
         return self.engine.show(tid)
 
+    def cancel_native_dependents(self,turn_id=None,*,exiting=False):
+        """Stop only owned native work; a transport cancellation remains unknown."""
+        targets=[]
+        with self.store.connection(write=True) as db:
+            for row in db.execute("SELECT * FROM organization_tasks WHERE status IN ('queued','running','waiting_quota') AND json_extract(payload_json,'$.knowledge_processing.stage') IN ('conversation_native','conversation_search_notice')").fetchall():
+                payload=json.loads(row['payload_json']);root=payload['knowledge_processing']['root_turn_id']
+                if turn_id is not None and root!=turn_id:continue
+                owner=db.execute('SELECT persona_id FROM turns WHERE id=?',(root,)).fetchone()
+                if not owner or owner[0]!=row['persona_id']:continue
+                c=self.contract(db,row['id'])
+                if not c or c['data']['phase']=='received':continue
+                targets.append(row['id'])
+                if not exiting:
+                    c['data']['cancel_requested']=True;self.save(db,c)
+                    db.execute("UPDATE organization_tasks SET status='cancelled',error_code='cancelled_by_user' WHERE id=?",(row['id'],))
+        if self.active_task and self.active_task[0] in targets:
+            loop=self.active_task[1].get_loop()
+            def cancel_owned():
+                if self.active_task and self.active_task[0] in targets:
+                    self.active_task[1].cancel('application_exit' if exiting else 'root_turn_cancelled')
+            loop.call_soon_threadsafe(cancel_owned)
+        return targets
+
     def retry(self,tid):
         from .migration import ensure_cloud_ready
         ensure_cloud_ready(self.store.paths)
@@ -423,15 +453,33 @@ class ManagedOrganization:
                     db.execute("UPDATE organization_tasks SET status='failed',error_code='provider_retries_exhausted' WHERE id=?",(task['id'],));return True
                 model=json.loads(task['model_snapshot'])
                 messages=[{'role':'user','content':'Reply with OK.'}] if task['mode']=='test' else e.messages(payload)
+                native_request_meta=None
+                notice_context=None
+                if payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
+                    try:notice_context=e.processing.search_notice.context(db,task,payload)
+                    except Exception as error:
+                        db.execute("UPDATE organization_reservations SET state='released' WHERE id=?",(reservation,))
+                        db.execute("UPDATE organization_tasks SET status='failed',error_code=? WHERE id=?",
+                            (str(error) if isinstance(error,RuntimeErrorBase) else 'search_notice_context_failed',task['id']))
+                        return True
+                    messages=notice_context['messages']
+                if payload.get('knowledge_processing',{}).get('stage')=='conversation_native':
+                    messages,native_request_meta=e.processing.native.messages_for_task(db,task,payload)
                 aid=identifier()
                 db.execute('SAVEPOINT organization_manifest')
                 db.execute("INSERT INTO organization_attempts VALUES(?,?,?,'running',NULL,NULL,?)",(aid,task['id'],self.clock(),task['model_snapshot']))
-                try:e.chat.cognitive.reflection(db,task,payload,messages,aid)
-                except Exception:
+                try:
+                    if notice_context:e.chat.cognitive.persist(db,notice_context['manifest'],task=task,attempt_id=aid)
+                    else:e.chat.cognitive.reflection(db,task,payload,messages,aid)
+                except Exception as error:
                     db.execute('ROLLBACK TO organization_manifest');db.execute('RELEASE organization_manifest')
                     db.execute("UPDATE organization_reservations SET state='released' WHERE id=?",(reservation,))
-                    db.execute("UPDATE organization_tasks SET status='failed',error_code='context_manifest_storage_failed' WHERE id=?",(task['id'],))
+                    code=str(error) if isinstance(error,RuntimeErrorBase) and str(error) in ('jev_input_budget_exceeded','native_input_budget_exceeded','context_limit_exceeded') else 'context_manifest_storage_failed'
+                    db.execute("UPDATE organization_tasks SET status='failed',error_code=? WHERE id=?",(code,task['id']))
                     return True
+                if native_request_meta is not None:
+                    db.execute('INSERT INTO knowledge_control VALUES(?,?)',('knowledge.native.request.'+aid,
+                        encoded({'revision':0,'data':native_request_meta})))
                 db.execute('RELEASE organization_manifest')
                 db.execute("UPDATE organization_reservations SET state='consumed',attempt_id=? WHERE id=?",(aid,reservation))
                 c['data']['phase']='dispatching'
@@ -446,21 +494,40 @@ class ManagedOrganization:
                 reply=received['response_text'];audit=json.loads(received['diagnostic_json'])
                 if audit.get('response_sha256')!=hashlib.sha256(reply.encode('utf-8')).hexdigest():
                     raise RuntimeErrorBase('organization_receipt_corrupt')
+                if audit.get('native_receipt_key'):
+                    from .knowledge_native_store import load_receipt
+                    with self.store.connection() as db:
+                        load_receipt(db,task,aid,expected_hash=audit.get('native_receipt_sha256'))
             else:
                 from .generation_retry import _one
                 if payload.get('knowledge_processing',{}).get('stage') in ('conversation_web_decision',):
                     value=await e.routing.execute(model,payload)
                 elif payload.get('knowledge_processing',{}).get('stage') in ('conversation_search','conversation_fetch'):
-                    value=await e.processing.general.execute(model,payload)
+                    value=await e.processing.tools.execute(model,payload)
+                elif payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
+                    value=await _one(e.chat.client,model,messages,'provider_timeout',paths=self.store.paths)
+                elif payload.get('knowledge_processing',{}).get('stage')=='conversation_native':
+                    from .chat import ChatCompletionsClient
+                    client=e.client
+                    if isinstance(client,ChatCompletionsClient):
+                        from .deepseek_native_transport import DeepSeekNativeClient
+                        from .knowledge_wait import mark
+                        with self.store.connection() as db:
+                            root_turn=dict(db.execute('SELECT * FROM turns WHERE id=?',(payload['knowledge_processing']['root_turn_id'],)).fetchone())
+                        def native_progress(state):
+                            mark(e.chat.knowledge,root_turn,{'reading':'knowledge_fetch_web','searching':'knowledge_search_web','composing':'knowledge_translation'}[state])
+                        client=DeepSeekNativeClient(ssl_context=client.ssl_context,progress=native_progress)
+                    value=await _one(client,model,messages,'provider_native_unknown',paths=self.store.paths)
                 else:
-                    from .knowledge_general import reasoning_model
-                    request_model=reasoning_model(model,plan=payload.get('knowledge_processing',{}).get('stage') in ('conversation_search_plan','conversation_organize'))
-                    value=await _one(e.client,request_model|{'_json_output':task['mode'] not in ('test','proactive')},messages,'provider_timeout',paths=self.store.paths)
+                    value=await _one(e.client,model|{'_json_output':task['mode'] not in ('test','proactive')},messages,'provider_timeout',paths=self.store.paths)
                 reply,usage=value;audit=receipt(reply);audit['status']='received'
                 from .generation_retry import safe_diagnostics
                 audit['provider']=safe_diagnostics(getattr(value,'diagnostics',{}))
                 with self.store.connection(write=True) as db:
                     db.execute('UPDATE organization_attempts SET usage_json=? WHERE id=?',(encoded(usage),aid))
+                    if getattr(value,'native',None) is not None:
+                        from .knowledge_native_store import save_receipt
+                        audit.update(save_receipt(db,task,aid,value.native))
                     db.execute('INSERT INTO organization_receipts VALUES(?,?,?)',(aid,reply,encoded(audit)))
                     if self.owns(db,task['id'],generation):
                         c=self.contract(db,task['id']);c['data']['phase']='received';self.save(db,c)
@@ -492,10 +559,17 @@ class ManagedOrganization:
             diagnostics=safe_diagnostics(getattr(error,'diagnostics',None))
             tool=payload.get('knowledge_processing',{}).get('stage') in ('conversation_search','conversation_fetch')
             routing=payload.get('knowledge_processing',{}).get('stage') in ('conversation_web_decision',)
+            native=payload.get('knowledge_processing',{}).get('stage')=='conversation_native'
+            notice=payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice'
+            native_not_sent=(native or notice) and diagnostics.get('request_headers_sent') is False
             provider_completed=(not tool and not routing and diagnostics.get('response_headers_received') is True
-                and diagnostics.get('finish_reason') in ('length','content_filter','tool_calls','insufficient_system_resource','aborted'))
+                and (diagnostics.get('finish_reason') in ('length','content_filter','tool_calls','insufficient_system_resource','aborted')
+                    or diagnostics.get('native_terminal') in ('completed','failed') or diagnostics.get('provider_terminal_error') is True))
             usage=getattr(error,'usage',None) if tool else usage_fields(getattr(error,'usage',None),deepseek=True,grok=True)
             with self.store.connection(write=True) as db:
+                if getattr(error,'native',None) is not None:
+                    from .knowledge_native_store import save_receipt
+                    save_receipt(db,task,aid,error.native)
                 c=self.contract(db,task['id']);count=db.execute('SELECT count(*) FROM organization_attempts WHERE task_id=?',(task['id'],)).fetchone()[0]
                 has_receipt=db.execute('SELECT 1 FROM organization_receipts WHERE attempt_id=?',(aid,)).fetchone()
                 denied_tool=tool and code=='web_target_not_public'
@@ -508,8 +582,12 @@ class ManagedOrganization:
                     db.execute('INSERT INTO knowledge_control VALUES(?,?) ON CONFLICT(key) DO NOTHING',('knowledge.web.http_receipt.'+aid,encoded({'revision':0,'data':{'body':error.tool_response,'status':diagnostics.get('http_status')}})))
                 safe_retry=(not has_receipt and not cancelled and not denied_tool and not permanent_decision and (source_read and code=='wiki_transport_unavailable' or (tool or routing) and diagnostics.get('http_status') in (408,429,500,502,503,504) or diagnostics.get('request_headers_sent') is False or
                     code=='provider_http_429' and diagnostics.get('http_status')==429))
+                if native or notice or code=='provider_official_deepseek_required':safe_retry=False
+                known_tool=known_tool or native_not_sent
+                if code=='provider_official_deepseek_required':known_tool=True
                 unknown=not has_receipt and not safe_retry and not known_tool and not provider_completed
                 if provider_completed:c['data']['last_failure']={'code':code,'provider_completed':True,'provider':diagnostics}
+                if native_not_sent:c['data']['last_failure']={'code':code,'provider_completed':False,'not_sent':True,'provider':diagnostics}
                 state='cancelled' if c['data']['cancel_requested'] else ('blocked_unknown' if unknown else 'failed')
                 if safe_retry and count<4 and not c['data']['cancel_requested']:
                     state='queued';c['data']['next_epoch']=self.clock()+(1,2,4)[count-1]

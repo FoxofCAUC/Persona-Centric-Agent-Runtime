@@ -181,7 +181,7 @@ class CaptureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.client.complete.await_count,1);self.assertEqual(main.complete.await_count,2)
     async def test_offline_context_refuses_provider(self):
         with run.offline():
-            with self.assertRaises(run.StopRun):await run.ChatCompletionsClient().complete(self.model,self.messages)
+            with self.assertRaises(run.StopRun):await run.ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
 
 
 

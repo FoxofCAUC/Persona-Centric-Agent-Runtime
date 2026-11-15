@@ -13,7 +13,11 @@ def package_path(paths,record):return paths.home/'data/knowledge/packages'/recor
 def validate_used(conn,paths,pid,channel,knowledge):
     if not knowledge:return
     from .knowledge_general import PROFILE,validate_record
-    if knowledge.get('mode')==PROFILE:validate_record(conn,pid,channel,knowledge);return
+    if knowledge.get('mode')==PROFILE:
+        record=validate_record(conn,pid,channel,knowledge)
+        from .knowledge_native_memory import validate_live
+        validate_live(conn,pid,knowledge,record)
+        return
     meta=knowledge.get('processing')
     if meta:
         from .knowledge_processing import record_used
@@ -71,13 +75,16 @@ class KnowledgeService:
     def status(self):
         return {'state':'stopped' if self.closed.is_set() else 'available','registry':REGISTRY,'sources':self.sources(),
             'model_ready':True,'installation':None,'preparation':{},'network_refresh':{},'p95_target_seconds':None,
-            'mode':'conversational_web_v1','authority_gate_enabled':False}
+            'mode':'native_two_stage_v1','authority_gate_enabled':False}
     def prepare_turn(self,turn):
-        if self.processing:return self.processing.general.prepare(turn)
+        if self.processing:return self.processing.prepare(turn)
         return {'state':'disabled','evidence':[]}
     def recheck(self,db,turn,result):
         from .knowledge_general import PROFILE,validate_record
-        if (result or {}).get('mode')==PROFILE:validate_record(db,turn['persona_id'],turn['channel'],result)
+        if (result or {}).get('mode')==PROFILE:
+            record=validate_record(db,turn['persona_id'],turn['channel'],result)
+            from .knowledge_native_memory import validate_live
+            validate_live(db,turn['persona_id'],result,record)
         return result or {'state':'disabled','evidence':[]}
     def show_evidence(self,persona_id,turn_id,context_id=None):
         from .knowledge_general import PROFILE,validate_record
@@ -89,7 +96,10 @@ class KnowledgeService:
             if meta.get('mode')!=PROFILE:return {'state':'historical','evidence':meta.get('evidence',[])}
             record=validate_record(db,persona_id,turn['channel'],meta);ids=set(meta.get('source_ids',[]))
             return {'state':'ready','evidence':[{'kind':'conversation_source','article_title':s['title'],'url':s['url'],'source_name':s.get('kind'),
-                'quote':s.get('content') or s.get('summary') or ''} for s in record['sources'] if s['id'] in ids]}
+                'quote':s.get('content') or s.get('summary') or ''} for s in record['sources'] if s['id'] in ids],
+                'notes':record.get('organized',{}).get('notes',''),'notes_kind':'model_synthesis',
+                'material_acquired':record.get('retrieval',{}).get('material_acquired'),
+                'errors':record.get('retrieval',{}).get('errors',[])}
     def search(self,*args,**kwargs):return {'state':'use_conversation','evidence':[]}
     def prepare_package(self,*args,**kwargs):raise RuntimeErrorBase('legacy_retrieval_frozen')
     activate_package=prepare_package

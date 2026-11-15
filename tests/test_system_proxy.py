@@ -69,13 +69,13 @@ class ProxyWireTests(unittest.IsolatedAsyncioTestCase):
                     return Response({"Status": 0, "Question": [{"name": "example.com", "type": kind}],
                         "Answer": [{"name": "example.com", "type": kind, "data": "93.184.216.34" if kind == 1 else "2606:4700::1111"}]})
                 return Response({"query": {"search": []}})
-        model = {"base_url": "https://example.com/v1", "name": "fake", "encrypted_key": "", "max_tokens": 50, "timeout": 10}
+        model = {"base_url": "https://api.deepseek.com/v1", "name": "deepseek-flash", "encrypted_key": "", "max_tokens": 50, "timeout": 10}
         from persona_runtime import knowledge_web_transport as web, knowledge_wikimedia as wiki, knowledge_dns as dns
         with patch("persona_runtime.network_proxy.configured_proxy", return_value=proxy), \
                 patch("aiohttp.ClientSession", Session), patch.object(web, "unprotect", return_value="test"), \
                 patch.object(wiki, "public_target", new=AsyncMock(return_value={"via_system_proxy": True})), \
                 patch.object(dns, "public_target", new=AsyncMock(return_value={"via_system_proxy": True})):
-            await ChatCompletionsClient().complete(model, [{"role": "user", "content": "public"}])
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [{"role": "user", "content": "public"}])
             await web.request("search", {"query": "public"}, model)
             await web.request("fetch", {"url": "https://example.com/page"}, model)
             await wiki.execute("wiki_search", {"query": "public"}, 10)
@@ -86,11 +86,11 @@ class ProxyWireTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(kwargs["allow_redirects"], url)
 
     async def test_missing_proxy_never_constructs_model_http_session(self):
-        model = {"base_url": "https://example.com/v1", "name": "fake", "encrypted_key": "", "max_tokens": 50, "timeout": 10}
+        model = {"base_url": "https://api.deepseek.com/v1", "name": "deepseek-flash", "encrypted_key": "", "max_tokens": 50, "timeout": 10}
         with patch("persona_runtime.network_proxy.configured_proxy", return_value=None), \
                 patch("aiohttp.ClientSession", side_effect=AssertionError("must not connect")):
             with self.assertRaisesRegex(ModelError, "system_proxy_required"):
-                await ChatCompletionsClient().complete(model, [{"role": "user", "content": "public"}])
+                await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(model, [{"role": "user", "content": "public"}])
 
     async def test_public_target_never_uses_direct_system_dns(self):
         from persona_runtime.knowledge_dns import public_target

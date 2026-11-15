@@ -227,7 +227,7 @@ class ExpressionCandidateTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeErrorBase, 'network_blocked'):
                     await asyncio.get_running_loop().create_connection(asyncio.Protocol, '127.0.0.1', 9)
                 with self.assertRaisesRegex(RuntimeErrorBase, 'generation_blocked'):
-                    await ChatCompletionsClient().complete({}, [])
+                    await ChatCompletionsClient(allow_loopback_fixture=True, ).complete({}, [])
         asyncio.run(attempts())
 
 

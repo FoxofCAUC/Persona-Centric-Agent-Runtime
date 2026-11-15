@@ -44,10 +44,14 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
     history_rows = []
     history_items=[];initial_removed=[]
     if evidence is None:
+        from .knowledge_search_notice import read_many as read_search_notices
+        notices=read_search_notices(conn,turns[-10:])
         for previous in turns[-10:]:
             if previous['ordinal'] in covered:continue
             event=conn.execute('SELECT text FROM events WHERE id=?',(previous['reply_event_id'],)).fetchone()
-            history.append([{'role':'user','content':input_text(conn,previous)},{'role':'assistant','content':event[0]}])
+            spoken=notices.get(previous['id'])
+            reply=(''+spoken['text']+'\n\n' if spoken else '')+event[0]
+            history.append([{'role':'user','content':input_text(conn,previous)},{'role':'assistant','content':reply}])
             history_rows.append(previous['ordinal'])
     else:
         used=0
@@ -151,9 +155,19 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     if not is_minimal:base_blocks.append(PromptBlock('presentation',CONTRACT,'presentation','presentation-v1'))
     protocol=prompt_contract(reply_mode,json.loads(turn['expression_snapshot']) if turn.get('expression_snapshot') else None) if reply_mode in ('context_structured','natural_structured') else ''
     if source_voice and reply_mode=='natural_structured':protocol=bubble_contract()
+    if turn.get('_search_notice'):
+        from .knowledge_translation import SEARCH_NOTICE
+        protocol=SEARCH_NOTICE
     # Label the branch already used above; never introduce extra validation.
     expression=json.loads(turn['expression_snapshot']) if reply_mode in ('context_structured','natural_structured') and turn.get('expression_snapshot') else None
     format_renderer='plain-text'
+    from .knowledge_search_notice import read as read_search_notice, VERSION as NOTICE_VERSION
+    spoken=None if turn.get('_search_notice') else read_search_notice(conn,turn)
+    if spoken:
+        base_blocks.append(PromptBlock('search_notice',
+            '\n你本轮已对对方说过：'+json.dumps(spoken['text'],ensure_ascii=False)+
+            '。现在结合已取得的资料，接着当前对话回应对方。',
+            'knowledge_search_notice',NOTICE_VERSION))
     if reply_mode=='context_structured':format_renderer='segments-schema1-v1'
     elif reply_mode=='natural_structured':
         format_renderer='natural-schema2-v1'
@@ -320,6 +334,16 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         if read_companion(turn)['version']==PERSONA_VERSION:
             character_audit['budgets']=dict(persona_diagnostic['budgets'])
             character_manifest['input_characters']=persona_diagnostic['budgets']['total']
+    if turn.get('_search_notice'):
+        from .knowledge_translation import SEARCH_NOTICE, search_notice_input
+        from .knowledge_search_notice import VERSION as NOTICE_VERSION
+        blocks=[block for block in blocks if block.name!='reply_protocol']
+        blocks.append(PromptBlock('reply_protocol',SEARCH_NOTICE,'knowledge_translation',NOTICE_VERSION))
+        result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':search_notice_input(text)})
+        if sum(len(message['content']) for message in result)>limit:
+            raise ModelError('context_limit_exceeded')
+        format_renderer=NOTICE_VERSION
+        assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
     return result, {**({'companion':read_companion(turn)} if is_minimal else {}),'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
                     'references':reference_manifest,'reply_mode':reply_mode,'dialogue_voice':voice_meta,

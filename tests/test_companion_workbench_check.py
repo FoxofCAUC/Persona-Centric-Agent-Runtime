@@ -43,7 +43,7 @@ class FixtureBoundary(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(RuntimeErrorBase, 'external_network_blocked'):
                 socket.getaddrinfo('example.invalid', 443)
             with self.assertRaisesRegex(RuntimeErrorBase, 'real_client_blocked'):
-                await ChatCompletionsClient().complete({}, [])
+                await ChatCompletionsClient(allow_loopback_fixture=True, ).complete({}, [])
         self.assertEqual(len(fence.blocked), 4)
 
     def test_only_owned_loopback_port_can_connect(self):

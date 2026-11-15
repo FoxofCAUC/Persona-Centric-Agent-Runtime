@@ -32,7 +32,7 @@ class GrokGatewayCompatibility(unittest.IsolatedAsyncioTestCase):
         self.messages=[{'role':'system','content':'Return JSON only.'},{'role':'user','content':'Synthetic task'}]
 
     async def test_gateway_response_model_alias_is_accepted_without_rewriting_request(self):
-        result=await ChatCompletionsClient().complete(self.model,self.messages)
+        result=await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(result[0],'{"status":"sufficient"}')
         self.assertEqual(self.payloads[0],{'model':'grok-4.7','messages':self.messages,'max_tokens':512,'stream':False})
         self.assertEqual(result[1]['total_tokens'],20)
@@ -42,20 +42,20 @@ class GrokGatewayCompatibility(unittest.IsolatedAsyncioTestCase):
         # Compressed local timing, not an external latency measurement.
         self.delay=.6
         with self.assertRaises(ModelError) as caught:
-            await ChatCompletionsClient().complete(self.model|{'timeout':.5,'_request_deadline':time.monotonic()+.5},self.messages)
+            await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model|{'timeout':.5,'_request_deadline':time.monotonic()+.5},self.messages)
         self.assertEqual(str(caught.exception),'provider_timeout')
         self.assertEqual(caught.exception.diagnostics['phase'],'awaiting_headers')
         self.assertTrue(caught.exception.diagnostics['request_headers_sent'])
-        result=await ChatCompletionsClient().complete(self.model,self.messages)
+        result=await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(result[0],'{"status":"sufficient"}');self.assertEqual(len(self.payloads),2)
 
     async def test_raw_responses_api_shape_requires_an_adapter(self):
         self.response={'model':'grok-4.7-build','output':[{'type':'message','content':[{'type':'output_text','text':'ok'}]}]}
-        with self.assertRaises(ModelError) as caught:await ChatCompletionsClient().complete(self.model,self.messages)
+        with self.assertRaises(ModelError) as caught:await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(str(caught.exception),'provider_invalid_response');self.assertEqual(len(self.payloads),1)
 
     async def test_reasoning_without_final_content_is_not_shown_as_answer(self):
         self.response['choices'][0]['message']['content']=None
-        with self.assertRaises(ModelError) as caught:await ChatCompletionsClient().complete(self.model,self.messages)
+        with self.assertRaises(ModelError) as caught:await ChatCompletionsClient(allow_loopback_fixture=True, ).complete(self.model,self.messages)
         self.assertEqual(str(caught.exception),'provider_empty_response')
         self.assertEqual(len(self.payloads),1)

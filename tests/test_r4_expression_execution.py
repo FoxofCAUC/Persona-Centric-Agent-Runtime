@@ -37,7 +37,7 @@ class ContractTests(unittest.TestCase):
     def test_offline_blocks_provider_and_external_dns(self):
         with run.offline():
             with self.assertRaises(run.StopRun):socket.getaddrinfo('example.com',443)
-            with self.assertRaises(run.StopRun):asyncio.run(run.ChatCompletionsClient().complete({},[]))
+            with self.assertRaises(run.StopRun):asyncio.run(run.ChatCompletionsClient(allow_loopback_fixture=True, ).complete({},[]))
     def test_public_data_strips_only_credentials(self):
         self.assertEqual(run.public({'encrypted_key':'secret','timeout':180,'nested':[{'encrypted_key':'secret','name':'grok'}]}),{'timeout':180,'nested':[{'name':'grok'}]})
 

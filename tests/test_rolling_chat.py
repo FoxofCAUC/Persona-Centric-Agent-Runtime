@@ -146,7 +146,8 @@ class RollingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(c.execute('SELECT count(*) FROM reply_delivery_parts').fetchone()[0],0)
         from pathlib import Path
         export=json.loads(Path(self.service.export_persona(self.pid)['path']).read_text(encoding='utf-8'))
-        self.assertEqual(export['format_version'],18);self.assertEqual(len(export['reply_display_messages']),4)
+        # The published schema-27 baseline already includes knowledge export20.
+        self.assertEqual(export['format_version'],20);self.assertEqual(len(export['reply_display_messages']),4)
 
     async def test_qq_display_claim_wait_and_restart(self):
         t=await self.natural_reply('qq');self.assertEqual(t['status'],'completed',t['error_code'])
@@ -229,7 +230,7 @@ class RollingTests(unittest.IsolatedAsyncioTestCase):
             {'receipt_id':'r','batch_id':'b','turn_id':None}])
         async def follow(turn,send):await gate.wait()
         bridge._follow_submission=follow
-        with patch('persona_runtime.qq_bridge.allowed_message',return_value=payload):
+        with patch('persona_runtime.qq_bridge.allowed_message',return_value=payload),patch.dict('os.environ',{'PCAR_QQ_PERSONA_ID':self.pid}):
             self.assertTrue(await asyncio.wait_for(bridge.handle(object(),AsyncMock(),background=True),.5))
         self.assertEqual(len(bridge._followers),1)
         await bridge.close();self.assertEqual(bridge._followers,{})

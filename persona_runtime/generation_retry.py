@@ -31,13 +31,13 @@ class GenerationRetriesExhausted(RuntimeErrorBase):
 def safe_diagnostics(value):
     if not isinstance(value,dict):return {}
     result={}
-    for key in ('phase','transport_profile','response_format','thinking','reasoning_effort','finish_reason','generation_version','timeout_policy','output_limit','network_route'):
+    for key in ('phase','transport_profile','response_format','thinking','reasoning_effort','finish_reason','generation_version','timeout_policy','output_limit','network_route','native_terminal','native_protocol','upstream_error_code'):
         item=value.get(key)
         if isinstance(item,str) and re.fullmatch(r'[a-z0-9_-]{1,64}',item):result[key]=item
     for key in ('timeout_seconds','elapsed_ms','output_characters','http_status','stream_events','first_event_ms','first_content_delta_ms'):
         item=value.get(key)
         if type(item) in (int,float) and item>=0:result[key]=item
-    for key in ('request_headers_sent','response_headers_received','reasoning_present','stream','stream_complete'):
+    for key in ('request_headers_sent','response_headers_received','reasoning_present','stream','stream_complete','effect_unknown','provider_terminal_error'):
         if type(value.get(key)) is bool:result[key]=value[key]
     from .provider_compat import response_metadata
     result.update(response_metadata({'model':value.get('response_model'),'system_fingerprint':value.get('system_fingerprint')},grok=True))
@@ -47,6 +47,16 @@ def safe_diagnostics(value):
 def retryable(error):
     code = str(error)
     return code in RETRYABLE or code in ('provider_http_408','provider_http_429') or bool(re.fullmatch(r'provider_http_5\d\d',code))
+
+
+def effect_unconfirmed(error):
+    diagnostics=getattr(error,'diagnostics',None) or {}
+    if diagnostics.get('effect_unknown') is True:return True
+    if diagnostics.get('native_terminal') in ('completed','failed') or diagnostics.get('provider_terminal_error') is True:return False
+    if diagnostics.get('request_headers_sent') is not True:return False
+    if diagnostics.get('stream') is True and diagnostics.get('stream_complete') is not True:return True
+    return str(error) in ('provider_timeout','provider_connection_timeout','provider_network_error',
+        'provider_invalid_response','provider_stream_expected','provider_native_unknown')
 
 
 def aggregate(state):
@@ -110,9 +120,20 @@ async def _one(client, model, messages, timeout_code, *, paths=None):
             error=RuntimeErrorBase('provider_cancellation_unsettled');error.pending_task=task
             task.add_done_callback(lambda done:None if done.cancelled() else done.exception())
             raise error
-        if not task.cancelled():task.exception()
-        raise RuntimeErrorBase(timeout_code)
-    except asyncio.CancelledError:
+        try:
+            settled_value=task.result()
+        except BaseException as child_error:
+            from .chat import ModelError
+            diagnostics=getattr(child_error,'diagnostics',None) or {}
+            diagnostics={**diagnostics,'effect_unknown':diagnostics.get('request_headers_sent') is not False}
+            error=ModelError(timeout_code,usage=getattr(child_error,'usage',None),diagnostics=diagnostics)
+            error.native=getattr(child_error,'native',None)
+            raise error from None
+        else:
+            # A terminal receipt won the cancellation race; consume it instead
+            # of discarding a completed response and paying for it again.
+            return settled_value
+    except asyncio.CancelledError as cancelled:
         task.cancel('generation_cancelled')
         # Transport close runs before the owning turn releases its execution slot.
         # This is cleanup, not a generation deadline or another dispatch.
@@ -121,7 +142,19 @@ async def _one(client, model, messages, timeout_code, *, paths=None):
             error=RuntimeErrorBase('provider_cancellation_unsettled');error.pending_task=task
             task.add_done_callback(lambda done:None if done.cancelled() else done.exception())
             raise error
-        if not task.cancelled():task.exception()
+        # Transport cancellation may carry a partial native protocol receipt,
+        # or may race with an already received terminal response. Preserve that
+        # evidence on the owning cancellation without issuing another request.
+        try:
+            settled_value=task.result()
+        except BaseException as child_error:
+            for name in ('usage','diagnostics','native'):
+                if hasattr(child_error,name):setattr(cancelled,name,getattr(child_error,name))
+        else:
+            if isinstance(settled_value,tuple) and len(settled_value)==2:
+                cancelled.usage=settled_value[1]
+                cancelled.diagnostics=getattr(settled_value,'diagnostics',None)
+                cancelled.native=getattr(settled_value,'native',None)
         raise
 
 
@@ -150,6 +183,10 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
         except BaseException as error:
             interrupted=isinstance(error,asyncio.CancelledError)
             code='request_interrupted' if interrupted else str(error)
+            if not interrupted and effect_unconfirmed(error):
+                error.diagnostics={**(getattr(error,'diagnostics',None) or {}),
+                    'effect_unknown':True,'upstream_error_code':code}
+                code='provider_effect_unknown';error.args=(code,)
             if not re.fullmatch(r'[a-z][a-z0-9_]{0,100}',code):code=type(error).__name__
             row.update(status='interrupted' if interrupted else 'failed',error_code=code,finished_epoch=time.time())
             row['usage']=usage_fields(value[1] if value else getattr(error,'usage',None),deepseek=True,grok=True)
@@ -177,7 +214,7 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
         save(aggregate(state))
         diagnostics=dict(getattr(value,'diagnostics',{}))
         diagnostics.update(retry_count=index,provider_attempt_count=len(state['attempts']),retry_version=VERSION)
-        return ModelCompletion(value[0],aggregate(state),diagnostics)
+        return ModelCompletion(value[0],aggregate(state),diagnostics,native=getattr(value,'native',None))
 
 
 def assert_manual_retry_safe(conn,turn_id):
@@ -188,5 +225,6 @@ def assert_manual_retry_safe(conn,turn_id):
             if attempt.get('status')=='completed':raise RuntimeErrorBase('generation_already_received')
             code=attempt.get('error_code') or '';diag=attempt.get('diagnostics') or {}
             if (attempt.get('status') in ('running','interrupted') or any(k in code for k in ('unknown','unconfirmed','unsettled'))
+                or diag.get('effect_unknown') is True
                 or diag.get('request_headers_sent') is True and not diag.get('response_headers_received') and not diag.get('http_status')):
                 raise RuntimeErrorBase('generation_effect_unconfirmed')

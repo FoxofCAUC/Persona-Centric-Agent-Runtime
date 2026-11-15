@@ -315,7 +315,7 @@ class Offline(unittest.TestCase):
             with socket.socket() as sock,self.assertRaises(RuntimeError):sock.connect(('203.0.113.1',443))
             async def call():
                 from persona_runtime.chat import ChatCompletionsClient
-                with self.assertRaises(RuntimeError):await ChatCompletionsClient().complete({},[])
+                with self.assertRaises(RuntimeError):await ChatCompletionsClient(allow_loopback_fixture=True, ).complete({},[])
             asyncio.run(call())
         self.assertEqual(record['external_attempts'],1);self.assertEqual(record['http_attempts'],1)
 

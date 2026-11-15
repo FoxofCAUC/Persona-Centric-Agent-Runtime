@@ -6,6 +6,9 @@ EVENTS = {"knowledge_routing","knowledge_web_plan","knowledge_search_web","knowl
           "delivery_uncertain", "delivery_failed"}
 
 
+EVENTS.update(('knowledge_search_notice', 'search_notice_published'))
+
+
 def record(conn, turn_id, event, attempt_id=None):
     if event not in EVENTS:
         raise ValueError("Unknown progress event")
@@ -31,6 +34,8 @@ def progress(conn, turn):
         phase = {"pending": "awaiting_delivery", "sending": "delivering", "sent": "completed",
                  "uncertain": "delivery_uncertain", "failed": "delivery_failed"}[turn["delivery"]]
     if phase=='queued' and rows and rows[-1]['event'] in ('character_local','character_selection','character_fallback','knowledge_routing','knowledge_web_plan','knowledge_search_web','knowledge_fetch_web','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review','knowledge_search','knowledge_refresh','knowledge_waiting_quota','knowledge_ready','knowledge_no_matches','knowledge_unavailable'):
+        phase=rows[-1]['event']
+    if phase=='queued' and rows and rows[-1]['event'] in ('knowledge_search_notice','search_notice_published'):
         phase=rows[-1]['event']
     queued = latest.get("retry_queued", latest.get("queued"))
     knowledge_done = max((r["at_epoch"] for r in rows[start:] if r["event"] in

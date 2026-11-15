@@ -99,7 +99,7 @@ class NativeTextWire(unittest.TestCase):
 
 class NativeTextDispatch(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_contract_never_creates_http_session(self):
-        client = ChatCompletionsClient()
+        client = ChatCompletionsClient(allow_loopback_fixture=True, )
         with patch('persona_runtime.chat.aiohttp.ClientSession',
                    side_effect=AssertionError('must not connect')) as session:
             with self.assertRaisesRegex(ModelError, '^native_text_profile_conflict$'):

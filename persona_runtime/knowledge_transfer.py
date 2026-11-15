@@ -51,13 +51,19 @@ def snapshot(db, persona_id=None):
     if 'knowledge_control' in available:
         from .knowledge_web import snapshot as web_snapshot
         web=web_snapshot(db,persona_id)
-    return {**({'web':web} if web.get('documents') else {}),'version': 1, 'tables': data,
+    from .knowledge_native_memory import snapshot as readable_snapshot
+    native=readable_snapshot(db,persona_id) if 'knowledge_control' in available else {}
+    return {**({'web':web} if web.get('documents') else {}),
+            **({'native_readable':native} if native.get('records') else {}),'version': 1, 'tables': data,
             'required_packages': [{'sha256': key, 'manifest': record['manifest']}
                 for key, record in registry['packages'].items()],
             'invalidations': read(db, 'invalidations', {})['data'] if 'knowledge_control' in available else {}}
 
 
 def validate(data):
+    if isinstance(data,dict) and 'native_readable' in data:
+        from .knowledge_native_memory import validate_snapshot
+        validate_snapshot(data['native_readable'])
     if isinstance(data,dict) and 'web' in data:
         from .knowledge_web import validate_snapshot
         validate_snapshot(data['web'])
@@ -154,6 +160,9 @@ def merge_snapshot(db, data, *, imported_persona=None):
     if 'web' in data:
         from .knowledge_web import merge_snapshot as merge_web
         merge_web(db,data['web'],imported_persona)
+    if 'native_readable' in data:
+        from .knowledge_native_memory import merge_snapshot as merge_readable
+        merge_readable(db,data['native_readable'],imported_persona)
     tables = data['tables']
     mapping = {}
     def insert(table, row):

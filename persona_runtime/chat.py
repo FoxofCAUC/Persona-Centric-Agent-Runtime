@@ -24,8 +24,8 @@ class ModelError(RuntimeErrorBase):
 
 class ModelCompletion(tuple):
     """Two-value unpacking stays compatible with existing clients and tasks."""
-    def __new__(cls,text,usage,diagnostics):
-        result=super().__new__(cls,(text,usage));result.diagnostics=diagnostics
+    def __new__(cls,text,usage,diagnostics,*,native=None):
+        result=super().__new__(cls,(text,usage));result.diagnostics=diagnostics;result.native=native
         return result
 
 
@@ -42,12 +42,20 @@ def model_tls_context():
 
 
 class ChatCompletionsClient:
-    def __init__(self, *, ssl_context=None):
+    def __init__(self, *, ssl_context=None, allow_loopback_fixture=False):
         self.ssl_context=ssl_context
+        self.allow_loopback_fixture=allow_loopback_fixture
 
     async def complete(self, model, messages):
+        if '_native_web_profile' in model:
+            from .deepseek_native_transport import DeepSeekNativeClient
+            return await DeepSeekNativeClient(ssl_context=self.ssl_context).complete(model,messages)
         if not model["base_url"] or not model["name"]:
             raise ModelError("model_not_configured")
+        from .provider_policy import require_generation_provider
+        try:require_generation_provider(model,allow_loopback_fixture=self.allow_loopback_fixture)
+        except ValueError as error:
+            raise ModelError(str(error),diagnostics={'request_headers_sent':False,'response_headers_received':False}) from None
         headers = {"Content-Type": "application/json"}
         if model["encrypted_key"]:
             headers["Authorization"] = "Bearer " + unprotect(model["encrypted_key"])
@@ -110,6 +118,10 @@ class ChatCompletionsClient:
                             raise ModelError("provider_response_too_large")
                     transport['phase'] = 'parsing_response'
                     data = json.loads(raw)
+                    if isinstance(data,dict) and data.get('error') is not None:
+                        usage=usage_fields(data.get('usage'),deepseek=wire['profile']=='deepseek-chat-v1',grok=is_grok47(model))
+                        raise ModelError('provider_aborted',usage=usage,diagnostics={**diagnostic(),
+                            'http_status':response.status,'provider_terminal_error':True})
                     choice=data['choices'][0]
                     text = choice["message"]["content"]
                     finish=choice.get('finish_reason')
@@ -243,13 +255,17 @@ class ChatEngine:
                 "AND NOT EXISTS (SELECT 1 FROM channel_sessions c WHERE c.session_id=s.id AND c.channel='qq') "
                 "ORDER BY s.created_at", (persona_id, LOCAL_USER_ID))]
 
-    async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None, test_reply_mode=None):
+    async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None, test_reply_mode=None, public_task=None):
         from .migration import ensure_cloud_ready
         ensure_cloud_ready(self.store.paths)
         if self.draining:
             raise RuntimeErrorBase("service_draining")
         require_text(text, "text")
         require_text(request_id, "request_id")
+        if public_task is not None:
+            from .knowledge_native import public_task as validate_public_task
+            public_task=validate_public_task(public_task)
+            if channel!='desktop' or test:raise RuntimeErrorBase('native_public_task_channel_invalid')
         if channel not in ("desktop", "qq", "test") or (channel == "test") != test:
             raise RuntimeErrorBase("Unsupported channel")
         if test_reply_mode is not None and (not test or test_reply_mode not in ('natural_structured','context_structured')):
@@ -263,9 +279,12 @@ class ChatEngine:
         with self.store.connection(write=True) as conn:
             if conn.execute("SELECT 1 FROM ingress_receipts WHERE channel=? AND request_id=?",(channel,request_id)).fetchone():
                 raise RuntimeErrorBase("v2_submission_exists")
-            old = conn.execute("SELECT id FROM turns WHERE source_key=?", (source_key,)).fetchone()
+            old = conn.execute("SELECT id,user_event_id FROM turns WHERE source_key=?", (source_key,)).fetchone()
             if old:
                 previous = self._view(conn, old[0])
+                from .knowledge_service import read
+                prior_public=read(conn,'native.public_event.'+(old['user_event_id'] or ''),{})['data'].get('task')
+                if prior_public!=public_task:raise RuntimeErrorBase('submission_conflict')
                 if test and previous.get('reply_mode_snapshot')!=test_reply_mode:raise RuntimeErrorBase('submission_conflict')
                 if not test and (previous["text"] != text or (persona_id and previous["persona_id"] != persona_id)
                                  or (session_id and previous["session_id"] != session_id)
@@ -286,6 +305,9 @@ class ChatEngine:
                 conn.execute("INSERT INTO events (id,session_id,persona_id,user_id,role,text,created_at) "
                              "VALUES (?,?,?,?, 'user',?,?)",
                              (event_id, session_id, persona_id, LOCAL_USER_ID, text, timestamp()))
+                if public_task is not None:
+                    from .knowledge_native import bind_public_event
+                    bind_public_event(conn,event_id,persona_id,session_id,channel,text,public_task)
             turn_id = identifier()
             model = self.config.load()["model"]
             conn.execute("INSERT INTO turns (id,source_key,persona_id,session_id,channel,user_event_id,reply_event_id,status,error_code,"
@@ -375,6 +397,8 @@ class ChatEngine:
             value['presentation']['planned_wait_ms']=sum(m['wait_ms'] for m in value['display_messages'])
         delivery_stream=conn.execute('SELECT s.id,s.state,s.revision,s.blocked_reason,s.blocked_part_id,count(p.id) AS part_count,sum(CASE WHEN p.state="sent" THEN 1 ELSE 0 END) AS sent_count FROM reply_delivery_streams s JOIN reply_delivery_parts p ON p.stream_id=s.id WHERE p.turn_id=? GROUP BY s.id',(turn_id,)).fetchone()
         value['delivery_stream']=dict(delivery_stream) if delivery_stream else None
+        from .knowledge_search_notice import read as read_search_notice
+        value['search_notice']=read_search_notice(conn,value)
         context = conn.execute("SELECT details_json FROM context_uses WHERE turn_id=? ORDER BY rowid DESC LIMIT 1", (turn_id,)).fetchone()
         value['context'] = json.loads(context[0]) if context else None
         if reply_batch:
@@ -478,8 +502,6 @@ class ChatEngine:
                     evaluation=getattr(self,'evaluation_session',None)
                     if evaluation:evaluation.before_dispatch(self,turn,prepared)
                     messages=prepared['messages'];turn['_context_details']={k:v for k,v in prepared['details'].items() if k!='prompt_assembly'}
-                    from .knowledge_general import reasoning_model
-                    model=reasoning_model(model,turn['_context_details'].get('knowledge'))
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
@@ -718,6 +740,8 @@ class ChatEngine:
         task = self.tasks.get(turn_id)
         if task:
             task.cancel()
+        if self.knowledge.processing:
+            self.knowledge.processing.engine.managed.cancel_native_dependents(turn_id)
         return result
 
     def claim_notice(self, turn_id, kind):

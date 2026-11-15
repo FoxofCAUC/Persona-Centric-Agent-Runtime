@@ -48,6 +48,12 @@ def native_text_profile(model):
 
 
 def request_timeout(model):
+    if '_native_web_profile' in model:
+        # Foreground native work is observed until terminal/cancel; progress is
+        # not a latency deadline. Isolated probes may set their own HTTP budget.
+        from .deepseek_native_contract import describe
+        describe(model)
+        return None
     return None if generation_profile(model) else model['timeout']
 
 
@@ -97,6 +103,9 @@ def _format(model):
 
 
 def describe_request(model):
+    if '_native_web_profile' in model:
+        from .deepseek_native_contract import describe
+        return describe(model)
     native=native_text_profile(model)
     generation=generation_profile(model)
     fmt=_format(model);deepseek=is_deepseek(model)
@@ -116,6 +125,9 @@ def describe_request(model):
 
 
 def build_request(model,messages):
+    if '_native_web_profile' in model:
+        from .deepseek_native_contract import build_request as native_request
+        return native_request(model,messages)
     contract=describe_request(model);fmt=_format(model)
     if contract['profile']=='deepseek-chat-v1' and fmt and not any(
             m.get('role') in ('system','user') and isinstance(m.get('content'),str) and 'json' in m['content'].lower() for m in messages):
@@ -144,6 +156,11 @@ def usage_fields(value,*,deepseek=False,grok=False):
         for outer,inner in (('prompt_tokens_details','cached_tokens'),('completion_tokens_details','reasoning_tokens')):
             item=value.get(outer)
             if isinstance(item,dict) and type(item.get(inner)) is int and item[inner]>=0:result[outer]={inner:item[inner]}
+    if deepseek and 'server_tool_use' in value:
+        from .deepseek_native_contract import TOOL_COUNTS,DISPLAY_COUNTS
+        supplied=value['server_tool_use'] if isinstance(value['server_tool_use'],dict) else {}
+        result['server_tool_use']={key:number for key,number in supplied.items()
+            if key in TOOL_COUNTS+DISPLAY_COUNTS and type(number) is int and number>=0}
     return result
 
 
