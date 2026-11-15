@@ -26,7 +26,7 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
     for name in policy['excluded_modules']:files.pop(name,None)
     files.update({n:SOURCE/n for n in ROOT_FILES})
     files.update({'scripts/'+n:SOURCE/'scripts'/n for n in SCRIPTS})
-    for name in ('__init__.py','m9r_comparison.py','m9r_comparison_materials.py','m9r_native_probe.py','m9r_fatigue_materials.py'):
+    for name in ('__init__.py','m9r_comparison.py','m9r_comparison_materials.py','m9r_native_probe.py','m9r_fatigue_materials.py','recall_preparation.py'):
         path=SOURCE/'experiments'/name
         if path.is_file():files['experiments/'+name]=path
     files.update({p.relative_to(SOURCE).as_posix():p for p in (SOURCE/'docs').rglob('*') if p.is_file() and p.suffix.lower() in ('.md','.docx','.txt')})

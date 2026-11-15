@@ -14,6 +14,9 @@ BUSINESS_TABLES=('personas','sessions','events','raw_events','input_batches','in
     'attempts','organization_attempts','organization_receipts')
 BUSINESS_KEYS=('knowledge.conversation.record.','knowledge.processing.result.','knowledge.native.receipt.',
     'knowledge.native.source_state.','knowledge.native.imported.')
+# Keep the read-only checker standalone, including when an old runtime cannot import.
+BUSINESS_TABLES+=('recall_support_policies','recall_support_clock','recall_support_units',
+    'recall_support_locations','recall_support_terms','recall_support_events','recall_support_searches','recall_support_sync')
 
 
 def digest(value):
@@ -56,10 +59,14 @@ def snapshot(home):
     return result
 
 
-def compare(before,after):
+def compare(before,after,*,allow_schema_upgrade=False):
     if before.get('format')!=FORMAT or after.get('format')!=FORMAT:raise ValueError('upgrade_evidence_invalid')
     failures=[]
-    if before['schema_version']!=after['schema_version']:failures.append({'check':'schema_changed'})
+    if before['schema_version']!=after['schema_version']:
+        expected={'recall_support_policies','recall_support_clock','recall_support_units','recall_support_locations',
+            'recall_support_terms','recall_support_events','recall_support_searches','recall_support_sync'}
+        if not (allow_schema_upgrade and (before['schema_version'],after['schema_version'])==(27,28)
+                and expected.issubset(after['tables'])):failures.append({'check':'schema_changed'})
     for table,rows in before['tables'].items():
         new=after['tables'].get(table,{})
         for key,value in rows.items():
@@ -76,12 +83,13 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='action',required=True)
     take=sub.add_parser('snapshot');take.add_argument('--home',type=Path,required=True);take.add_argument('--out',type=Path,required=True)
     check=sub.add_parser('compare');check.add_argument('before',type=Path);check.add_argument('after',type=Path)
+    check.add_argument('--allow-schema-upgrade',action='store_true',help='Allow the declared additive 27 to 28 upgrade; existing rows still must match.')
     args=parser.parse_args()
     if args.action=='snapshot':
         value=snapshot(args.home);args.out.parent.mkdir(parents=True,exist_ok=True)
         with args.out.open('x',encoding='utf-8') as output:json.dump(value,output,ensure_ascii=False,indent=2)
         result={'saved':True,'schema_version':value['schema_version'],'business_rows':sum(map(len,value['tables'].values())),'model_calls':0}
-    else:result=compare(json.loads(args.before.read_text(encoding='utf-8-sig')),json.loads(args.after.read_text(encoding='utf-8-sig')))
+    else:result=compare(json.loads(args.before.read_text(encoding='utf-8-sig')),json.loads(args.after.read_text(encoding='utf-8-sig')),allow_schema_upgrade=args.allow_schema_upgrade)
     print(json.dumps(result,ensure_ascii=False,indent=2));return 0 if result.get('passed',True) else 1
 
 
