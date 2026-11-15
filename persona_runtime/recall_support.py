@@ -4,17 +4,22 @@ This package is callable on isolated instances. Production default activation an
 continuous human review are package .3; no independent scheduler/model is created.
 """
 from datetime import datetime,timezone
-import json,time,sqlite3
+import json,time,sqlite3,re
 from .archive import fingerprint
 from .models import RuntimeErrorBase
 from . import recall_policy as policy
 from .recall_sources import material,normalize_scope,scan,unavailable_reason
 
 def encoded(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
+INDEX_VERSION='cjk-unigram-and-existing-terms-v1'
 
-def tokens(text):
+def tokens(text,*,query=False):
     from .chat import terms
-    return sorted(t for t in terms(text) if len(t)<=128)
+    found=terms(text)
+    if query:
+        if re.fullmatch(r'[\u3400-\u9fff]',text.strip()):found.add(text.strip())
+    else:found.update(re.findall(r'[\u3400-\u9fff]',text))
+    return sorted(t for t in found if len(t)<=128)
 
 class RecallSupport:
     def __init__(self,store,*,clock=time.time):self.store=store;self.clock=clock
@@ -35,10 +40,17 @@ class RecallSupport:
             now,anomaly=self._time(db,confirm_jump=True)
             return {'effective_epoch':now,'anomaly':anomaly}
 
-    def _register(self,db,kind,ref,data,now):
+    def _register(self,db,kind,ref,data,now,*,rebuild_index=False):
         selected=data['scope'];key=fingerprint(selected)
         ident=fingerprint([policy.VERSION,key,kind,data['canonical_id'],ref['offset'],data['version']])
-        if db.execute('SELECT 1 FROM recall_support_units WHERE id=?',(ident,)).fetchone():
+        existing=db.execute('SELECT metadata_json FROM recall_support_units WHERE id=?',(ident,)).fetchone()
+        if existing:
+            meta=json.loads(existing[0])
+            if rebuild_index or meta.get('index_version')!=INDEX_VERSION:
+                db.execute('DELETE FROM recall_support_terms WHERE unit_id=?',(ident,))
+                db.executemany('INSERT INTO recall_support_terms VALUES(?,?)',[(t,ident) for t in tokens(data['text'])])
+                meta['index_version']=INDEX_VERSION
+                db.execute('UPDATE recall_support_units SET metadata_json=? WHERE id=?',(encoded(meta),ident))
             db.execute('INSERT OR IGNORE INTO recall_support_locations VALUES(?,?,?,?,?)',
                 (ident,fingerprint(ref),encoded(ref),data['session_id'],now))
             return ident
@@ -49,7 +61,7 @@ class RecallSupport:
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (ident,selected['persona_id'],key,encoded(selected),kind,data['canonical_id'],data['version'],ref['offset'],data['lineage'],
              data['session_id'],encoded(ref),now,data['origin_epoch'],policy.VERSION,p,p,now,policy.due(kind,p,now),data['text'],
-             encoded({'source_type':data['source_type'],'offset':ref['offset'],'historical_usage':'unknown'})))
+             encoded({'source_type':data['source_type'],'offset':ref['offset'],'historical_usage':'unknown','index_version':INDEX_VERSION})))
         db.executemany('INSERT INTO recall_support_terms VALUES(?,?)',[(t,ident) for t in tokens(data['text'])])
         # Historical versions and their ledger stay, but superseded postings must
         # not consume the current candidate budget after an explicit resync.
@@ -65,18 +77,19 @@ class RecallSupport:
         with self.store.connection(write=True) as db:
             now,_=self._time(db);ref=dict(reference);ref.setdefault('offset',0)
             data=material(db,kind,ref,now=max(now,policy.finite(self.clock())))
-            if not data:raise RuntimeErrorBase('recall_source_unavailable')
+            if not data or data.get('skip_fragment'):raise RuntimeErrorBase('recall_source_unavailable')
             if data['scope']!=selected:raise RuntimeErrorBase('recall_scope_denied')
             return self._register(db,kind,ref,data,now)
 
-    def synchronize(self,pid,kind,*,limit=64,restart=False):
+    def synchronize(self,pid,kind,*,limit=64,restart=False,rebuild_index=False):
         if type(limit) is not int or not 1<=limit<=256:raise RuntimeErrorBase('recall_sync_budget_invalid')
+        if type(restart) is not bool or type(rebuild_index) is not bool:raise RuntimeErrorBase('recall_sync_options_invalid')
         with self.store.connection(write=True) as db:
             now,anomaly=self._time(db)
             row=db.execute('SELECT cursor FROM recall_support_sync WHERE persona_id=? AND kind=?',(pid,kind)).fetchone()
             cursor=[0,0] if restart or not row else json.loads(row[0])
             entries,next_cursor,complete=scan(db,pid,kind,cursor,limit,max(now,policy.finite(self.clock())))
-            ids=[self._register(db,kind,ref,data,now) for ref,data in entries]
+            ids=[self._register(db,kind,ref,data,now,rebuild_index=rebuild_index) for ref,data in entries if not data.get('skip_fragment')]
             db.execute('INSERT INTO recall_support_sync VALUES(?,?,?,?) ON CONFLICT(persona_id,kind) DO UPDATE SET cursor=excluded.cursor,completed=excluded.completed',(pid,kind,encoded(next_cursor),int(complete)))
             return {'registered':len(ids),'ids':ids,'cursor':next_cursor,'completed':complete,'clock_anomaly':anomaly}
 
@@ -118,7 +131,8 @@ class RecallSupport:
         if type(limit) is not int or not 1<=limit<=32 or type(candidate_budget) is not int or not limit<=candidate_budget<=256:
             raise RuntimeErrorBase('recall_candidate_budget_invalid')
         if type(deep) is not bool or len(required_ids)>min(32,candidate_budget):raise RuntimeErrorBase('recall_search_options_invalid')
-        ts=tokens(query)[:32];request=fingerprint([selected,query,root_id,session_id,kinds,limit,candidate_budget,deep,required_ids])
+        query_tokens=tokens(query,query=True);ts=query_tokens[:32]
+        request=fingerprint([selected,query,root_id,session_id,kinds,limit,candidate_budget,deep,required_ids])
         with self.store.connection(write=True) as db:
             now,anomaly=self._time(db);items=[];excluded={};read=0;layers=[];seen=set()
             def accept(row,hits,required=False):
@@ -178,7 +192,7 @@ class RecallSupport:
                 'selected':[dict(i, text_hash=fingerprint(i['text'])) for i in chosen],
                 'searched_layers':layers,'deep_reason':reason,'cold_status':cold,'excluded':excluded,
                 'candidate_rows_materialized':read,'candidate_budget':candidate_budget,'query_terms':len(ts),
-                'query_terms_omitted':max(0,len(tokens(query))-len(ts)),'clock_anomaly':anomaly}
+                'query_terms_omitted':max(0,len(query_tokens)-len(ts)),'clock_anomaly':anomaly}
             # Store explanations without source prose; raw content remains canonical.
             saved=dict(audit,selected=[{k:v for k,v in i.items() if k!='text'} for i in audit['selected']])
             db.execute('INSERT OR IGNORE INTO recall_support_searches VALUES(?,?,?,?,?,?,?)',(ident,root_id,key,request,fingerprint(query),now,encoded(saved)))

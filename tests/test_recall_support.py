@@ -392,6 +392,32 @@ class Recall(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(Exception,'output_evidence_required'):
             self.recall.record(unit,turn['id'],self.scope,kind='supported_recall',status='completed',occurred_at=when,evidence=ref|{'source_quote':'不存在的输出'})
 
+    async def test_whitespace_only_fragment_does_not_end_source_sync(self):
+        self.setup_recall();await self.memory('起始乌龙茶'+' '*9000+'尾部咖啡线索')
+        for _ in range(10):
+            result=self.recall.synchronize(self.persona['id'],'memory',limit=1)
+            if result['completed']:break
+        self.assertTrue(result['completed'])
+        found=self.recall.select(self.scope,'咖啡',deep=True)
+        self.assertTrue(any('尾部咖啡' in i['text'] for i in found['selected']))
+        with self.store.connection() as db:self.assertEqual(db.execute('SELECT count(*) FROM recall_support_units').fetchone()[0],2)
+
+    async def test_single_cjk_character_query_is_indexed(self):
+        self.setup_recall();unit,_,_=await self.register_memory('周末喜欢喝茶')
+        result=self.recall.select(self.scope,'茶')
+        self.assertIn(unit,[i['id'] for i in result['selected']])
+
+    async def test_derived_index_rebuild_does_not_refresh_attention(self):
+        self.setup_recall();unit,_,_=await self.register_memory('周末喜欢喝茶')
+        self.advance(3);before=self.recall.inspect(unit,self.scope)['priority']
+        with self.store.connection(write=True) as db:db.execute('DELETE FROM recall_support_terms WHERE unit_id=?',(unit,))
+        self.assertFalse(self.recall.select(self.scope,'茶')['selected'])
+        result=self.recall.synchronize(self.persona['id'],'memory',restart=True,rebuild_index=True)
+        while not result['completed']:result=self.recall.synchronize(self.persona['id'],'memory',rebuild_index=True)
+        self.assertEqual(self.recall.inspect(unit,self.scope)['priority'],before)
+        self.assertIn(unit,[i['id'] for i in self.recall.select(self.scope,'茶')['selected']])
+        with self.store.connection() as db:self.assertEqual(db.execute('SELECT count(*) FROM recall_support_events').fetchone()[0],0)
+
     async def test_27_upgrade_backup_and_old_business_unchanged(self):
         self.setup_recall();_,turn=await self.memory()
         from persona_runtime.schema_recall_support import TABLES

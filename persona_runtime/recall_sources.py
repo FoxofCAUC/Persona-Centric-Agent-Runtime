@@ -115,8 +115,9 @@ def material(db,kind,ref,*,now):
     else:raise RuntimeErrorBase('recall_kind_invalid')
     offset=ref.get('offset',0)
     if type(offset) is not int or offset<0 or offset%CHUNK_CHARS:raise RuntimeErrorBase('recall_fragment_invalid')
+    if offset>=len(data['text']):return None
     data['text']=data['text'][offset:offset+CHUNK_CHARS]
-    if not data['text'].strip():return None
+    data['skip_fragment']=not data['text'].strip()
     data['scope']=normalize_scope(data['scope'])
     data['lineage']=fingerprint([kind,data['lineage'],offset])
     return data
