@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="440" viewBox="0 0 720 440" role="img" aria-labelledby="title desc">
+<title id="title">同一个人格，接着生活</title>
+<desc id="desc">设计方向：身份与关系、过去的经历、关切与计划、生活状态和未完成的事情，围绕同一个持续的人格组织。</desc>
+<rect width="720" height="440" rx="14" fill="#F3F7FA"/>
+<g fill="none" stroke="#8BAFBE" stroke-width="2">
+<path d="M360 100V144M360 296V337"/>
+<path d="M187 220H276M444 220H535" stroke-dasharray="5 6"/>
+</g>
+<circle cx="360" cy="220" r="80" fill="#173F5F"/>
+<g text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+<g fill="#173F5F" font-size="29" font-weight="600">
+<text x="360" y="65">过去的经历</text>
+<text x="111" y="214">身份</text><text x="111" y="252">与关系</text>
+<text x="609" y="214">关切</text><text x="609" y="252">与计划</text>
+<text x="360" y="375">生活状态与未完成的事</text>
+</g>
+<g fill="#526B78" font-size="19">
+<text x="360" y="94">发生过什么，怎样走到今天</text>
+<text x="360" y="406">保存进展，在恢复后接续</text>
+</g>
+<g fill="#FFFFFF" font-size="32" font-weight="600">
+<text x="360" y="213">同一个</text><text x="360" y="256">人格</text>
+</g>
+</g>
+</svg>

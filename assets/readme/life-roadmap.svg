@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="354" viewBox="0 0 900 354" role="img" aria-labelledby="title desc">
+<title id="title">从持续的经历，走向生活与成长</title>
+<desc id="desc">已有基础：人物、会话与记忆。近期建设：表达、工作台与持续运行。远期探索：虚拟生活、认知与成长。</desc>
+<rect width="900" height="354" rx="12" fill="#F3F7FA"/>
+<path d="M62 63V171" stroke="#2E7088" stroke-width="3"/>
+<path d="M62 171V289" stroke="#8AA7B4" stroke-width="3" stroke-dasharray="6 9"/>
+<circle cx="62" cy="63" r="9" fill="#2E7088"/>
+<circle cx="62" cy="177" r="9" fill="#F3F7FA" stroke="#2E7088" stroke-width="3"/>
+<circle cx="62" cy="291" r="9" fill="#F3F7FA" stroke="#8AA7B4" stroke-width="3"/>
+<g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+<g font-size="26" fill="#526B78">
+<text x="99" y="73">已有基础</text><text x="99" y="187">近期建设</text><text x="99" y="301">远期探索</text>
+</g>
+<g font-size="35" font-weight="600" fill="#173F5F">
+<text x="295" y="75">人物、会话与记忆</text><text x="295" y="189">表达、工作台与持续运行</text><text x="295" y="303">虚拟生活、认知与成长</text>
+</g></g>
+<path d="M99 118H842M99 232H842" stroke="#D6E2E8"/>
+</svg>

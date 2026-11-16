@@ -1,0 +1,128 @@
+{
+  "date": "2026-11-16",
+  "source_baseline": "6a3b3d55151f2bd5f034cb996323badd66006304",
+  "files": [
+    {
+      "file": "continuity-concept.png",
+      "bytes": 85772,
+      "sha256": "c8c5622ce30b19b166934bf7c2e5782dca5955087d3b0bce63a304500abfa6a0",
+      "active_homepage": true
+    },
+    {
+      "file": "continuity-concept.svg",
+      "bytes": 1315,
+      "sha256": "80228c9f4b3df6c6e5fb56c051f26251201623d4704ee59536eff33184abee9b",
+      "active_homepage": false
+    },
+    {
+      "file": "daily-life-vision.png",
+      "bytes": 2597524,
+      "sha256": "faad3f3666a86b49a133315130c36b121e69ef25a4345ffff6439c807e61f096",
+      "active_homepage": false
+    },
+    {
+      "file": "daily-life-vision.webp",
+      "bytes": 2018626,
+      "sha256": "4e25b9c14c46b65b12f60c27866f50dd3fc85b0d1fa44dcc6ce77e5e8565e5a1",
+      "active_homepage": true
+    },
+    {
+      "file": "desktop-main.png",
+      "bytes": 178938,
+      "sha256": "e117d62bc0f78254006d48456c93d92e2d92d9515f51c108e9a5c310d3c1c45a",
+      "active_homepage": false
+    },
+    {
+      "file": "life-roadmap.svg",
+      "bytes": 1284,
+      "sha256": "fa5e2dc9b62063b7a77896f4e395f12ba62cf36160a23d3520ebb18ed7e19ee4",
+      "active_homepage": false
+    },
+    {
+      "file": "memory-overview.png",
+      "bytes": 178969,
+      "sha256": "b6da0d197e930fb5f03f900ee4b57a8bb517717bcbde9a12096dc0438c8d7ae8",
+      "active_homepage": false
+    },
+    {
+      "file": "persona-versions.png",
+      "bytes": 195649,
+      "sha256": "fe4535ba34869b6b5c1dc409cb383f0044a1e0143472d24aaed2ef1f723ed870",
+      "active_homepage": false
+    },
+    {
+      "file": "superfish-vision.png",
+      "bytes": 2172999,
+      "sha256": "493c030d795875d051abcb0e1fe8cc5dfa112c47fbeac85ced5207715f643239",
+      "active_homepage": false
+    },
+    {
+      "file": "superfish-vision.webp",
+      "bytes": 1656606,
+      "sha256": "e91026eb1c625215cb215aed61399fcd9d8a8e7c8868c33e20c3954cfc86ea8d",
+      "active_homepage": true
+    }
+  ],
+  "generated_asset": {
+    "file": "superfish-vision.png",
+    "tool": "built-in imagegen",
+    "reference": "https://github.com/YunYueSama/codex-deepseek-pet/blob/7661c8b304c5400701f91da01b1a643a207331de/design/character-standard.png",
+    "reference_sha256": "75972692391d451a8302b6aed9fcbe300fb5fbbc60db643127d15d6067f64019",
+    "prompt": "superfish-vision.prompt.md",
+    "modification": "New daily-life room scene preserving reference character and costume",
+    "license": "CC-BY-NC-SA-4.0 with retained upstream attribution obligations"
+  },
+  "screenshots": {
+    "version": "v0.1 / 0.1.0",
+    "kind": "Unedited real Windows workbench capture; preloaded artificial UI data; zero model calls",
+    "active_promotion": false
+  },
+  "presentation": "No real workbench screenshots. Character illustrations and concept diagram only.",
+  "daily_life_asset": {
+    "file": "daily-life-vision.webp",
+    "source_png": "daily-life-vision.png",
+    "tool": "built-in imagegen",
+    "prompt": "daily-life-vision.prompt.md",
+    "references": [
+      "YunYueSama character-standard.png at 7661c8b304c5400701f91da01b1a643a207331de",
+      "superfish-vision.png"
+    ],
+    "status": "far-future vision",
+    "license": "CC-BY-NC-SA-4.0 with retained upstream attribution obligations"
+  },
+  "lossless_encodings": [
+    {
+      "source": "superfish-vision.png",
+      "delivery": "superfish-vision.webp",
+      "pixels_identical": true,
+      "dimensions": [
+        2172,
+        724
+      ],
+      "source_bytes": 2172999,
+      "delivery_bytes": 1656606
+    },
+    {
+      "source": "daily-life-vision.png",
+      "delivery": "daily-life-vision.webp",
+      "pixels_identical": true,
+      "dimensions": [
+        1448,
+        1086
+      ],
+      "source_bytes": 2597524,
+      "delivery_bytes": 2018626
+    }
+  ],
+  "concept_export": {
+    "file": "continuity-concept.png",
+    "source": "continuity-concept.svg",
+    "method": "Headless Edge rasterization at 2x density with transparent canvas",
+    "size": [
+      1440,
+      880
+    ],
+    "display_width": 720,
+    "purpose": "Reliable painting in both themes"
+  }
+}
