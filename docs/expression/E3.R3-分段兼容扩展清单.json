@@ -1,0 +1,34 @@
+{
+  "version": "expression-R3-segment-transport-extension-v1",
+  "prior_manifest_sha256": "6e1fc2a33c0f90d995aef61f3569ad410f327c67041308c6f8322a772f7130e3",
+  "declared_changes": [
+    {
+      "path": "persona_runtime/expression_persona_draft.py",
+      "baseline_sha256": "f9c26942f65694bf372add217974fd98f8ff1e94f47516d01f2c215342709f24",
+      "accepted_sha256": "a36a9cfda57b9bfe0c6e7730ce4182e414dd50084bf49d1d2148a290f4db99a2",
+      "reason": "versioned text-object segmentation decoder; old frozen policies keep string decoder, old publications are not rewritten; model prompt and two-material assembler unchanged"
+    },
+    {
+      "path": "persona_runtime/expression_runtime.py",
+      "baseline_sha256": "2b5b3d3b7be6a3aeea69bb256886707475dbe0f5497ed7330c90cf6a9db9700e",
+      "accepted_sha256": "ce73f493877f81f9e86f1eadb496d14ed5f51d4b9b79797e5e391dcbae078311",
+      "reason": "versioned text-object segmentation decoder; old frozen policies keep string decoder, old publications are not rewritten; model prompt and two-material assembler unchanged"
+    },
+    {
+      "path": "persona_runtime/expression_utterance.py",
+      "baseline_sha256": "5cca20cc74d191a3586b2bc3c7f8248927042cee550283c757909ceedcf41147",
+      "accepted_sha256": "33924375d501ce987a15fedecf65397d1d39e819c1318d2bfd45528a9a6b3078",
+      "reason": "versioned text-object segmentation decoder; old frozen policies keep string decoder, old publications are not rewritten; model prompt and two-material assembler unchanged"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_expression_segment_preflight.py",
+      "accepted_sha256": "2cdae56b813794d2e405bfd98a9aafe7f88d6d4712b28602b86994b5290aa922"
+    }
+  ],
+  "model_request_assembler_AST_unchanged": true,
+  "model_task_AST_unchanged": true,
+  "new_model_calls": 0,
+  "old_published_plans_rewritten": false
+}

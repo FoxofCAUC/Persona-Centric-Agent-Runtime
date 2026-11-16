@@ -1,0 +1,118 @@
+{
+  "version": "expression-E2-core-extension-v1",
+  "baseline_commit": "7e8c1cc2284c6e3587ccd7bf5cf157bc4c3e1cdd",
+  "baseline_manifest_sha256": "4c28c014d90b0b4d5f8653980451b667fc0c52cbc4607622dbff728a071108da",
+  "candidate_program": "0.2.0rc5",
+  "candidate_schema": 30,
+  "declared_changes": [
+    {
+      "path": "persona_runtime/__init__.py",
+      "baseline_sha256": "7ca43ae74a66bf9312719a9d3830cf42b4b722c1b8009b7a00f4fbaee0448f7d",
+      "accepted_sha256": "48486ffef8f56ac6884c79850da6d34a5e3cfee03aa963a792e30cdaab796a65",
+      "reason": "candidate version metadata"
+    },
+    {
+      "path": "persona_runtime/migration.py",
+      "baseline_sha256": "736fb7f753555da0f27c5be3b48bb6530242fc6a63b46c9871f00ccaef65bb5d",
+      "accepted_sha256": "f8db02f9f8d95fd35ffc402732dbd1748fc005973f829ac0ff018d582317c094",
+      "reason": "pause new expression policies and pending work on migration"
+    },
+    {
+      "path": "persona_runtime/recall_rollback.py",
+      "baseline_sha256": "4b060766cb397e57159bbbeeeb27302984eed5a172bbeba2948188792723d768",
+      "accepted_sha256": "ed1d6939ead8bb887d894f43536988cb4ba67269ce7d33352ddb58d1a4af2640",
+      "reason": "compatible29 option, paused expression controls and preserved receipts"
+    },
+    {
+      "path": "persona_runtime/storage.py",
+      "baseline_sha256": "101ad5043883d4d8d573fe1b3da4db45142cd23040f58509e4b499c6f7e23bd2",
+      "accepted_sha256": "15d7e4198b21d5c1b1ad10ef4047ba771116715690942b35e375fadfff73ae95",
+      "reason": "additive schema30 registration/check; message acceptance and generation unchanged"
+    },
+    {
+      "path": "pyproject.toml",
+      "baseline_sha256": "5ee2bdbdc05907ecfadbaf49385f5ef3ed5224970c01c068bc086c2c54102842",
+      "accepted_sha256": "3da1655e228e8ef2e4dfa16f93a5f8b0f80707f675d9ef6141361156c73774b7",
+      "reason": "candidate version metadata"
+    },
+    {
+      "path": "scripts/pcar_recall_preflight.py",
+      "baseline_sha256": "f3f13a0070b1db085efd26a217bd19ff393c53ea5cf2dce0e79330a8d130ed55",
+      "accepted_sha256": "a2d0839ed15a7f4a0f194dac86eed6810612b809dd1a4bca194fe0c5cdd8a50b",
+      "reason": "read-only support for declared schema30"
+    },
+    {
+      "path": "scripts/pcar_upgrade_check.py",
+      "baseline_sha256": "e2bc7b7a4272f9ae0b3085e5ca883cf0a319bf41a78288c2e8016b39f86528f0",
+      "accepted_sha256": "b520515b70dced4e33645ae034ae235745b1778306aaa02f80f6c4ab8130e703",
+      "reason": "standalone read-only schema30 row/attempt evidence"
+    },
+    {
+      "path": "uv.lock",
+      "baseline_sha256": "c5771d544532e7619ebcb3bd2f3095951f46aba3cda393d06bfcf94afef73744",
+      "accepted_sha256": "f83e500ed121c889f9d20d9b2f024f71ac3ffaf83c101ecf41c32b810f3e90a2",
+      "reason": "project version only; third-party dependencies unchanged"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/schema_expression_assets.py",
+      "accepted_sha256": "51d7f7d3cf5270b3746d1cd71e6b93bdb29316b80c05fc8b37de34427a281b41"
+    },
+    {
+      "path": "persona_runtime/expression_assets.py",
+      "accepted_sha256": "8ab22f6e9990b8325c681558a1a18325be4eec3e2cef7b3d7f0b579d118ba69a"
+    },
+    {
+      "path": "persona_runtime/expression_candidates.py",
+      "accepted_sha256": "76622de338a7b3085aff23904edf4810dfa0ed8f636ea24e94c2b072548bf164"
+    },
+    {
+      "path": "persona_runtime/expression_learning.py",
+      "accepted_sha256": "d1a354166306d9fb72b8d0d2679de1ecaf946f8ad9ed1d2521f1d4d85a85fb81"
+    },
+    {
+      "path": "persona_runtime/expression_transport.py",
+      "accepted_sha256": "a74c5ff1ec162528cde27e28df0d9a045c801b8de3e6c1c9d6f2c2d3ad55ed1d"
+    },
+    {
+      "path": "persona_runtime/expression_compat.py",
+      "accepted_sha256": "ed5c571e2df540bcfa1e0e79863f31b82296c26b5ec77337284473b859058754"
+    },
+    {
+      "path": "persona_runtime/vendor/maibot_expression_style.py",
+      "accepted_sha256": "3e50b3d1809d9f456dcb69e2fbbdf189c9bf59d6310cb77769d529fcc03633d8"
+    },
+    {
+      "path": "persona_runtime/vendor/maibot_expression_learning_prompt.py",
+      "accepted_sha256": "a191f8c739b15e9a73e81e2bb2c7389ed2b15e6c5e867ec66277c2e98b6ecb4c"
+    },
+    {
+      "path": "scripts/pcar_expression_assets.py",
+      "accepted_sha256": "99857067922471499f8498178bf1dec415e01a77e58cb441169de6a3de067b20"
+    },
+    {
+      "path": "scripts/pcar_expression_assets_preflight.py",
+      "accepted_sha256": "0c6809c0c6e982d9e2da4de1c1876348c01257c7306a95dab82bc3d53766b9d5"
+    }
+  ],
+  "E0_extensions": [
+    {
+      "path": "persona_runtime/expression_contract.py",
+      "accepted_sha256": "c10a34ee26b519ff4691302133f1d4170ee0799f066c05ca6453dc40f3726f2d"
+    },
+    {
+      "path": "scripts/pcar_expression_preflight.py",
+      "accepted_sha256": "b43a5c548ba8b49168fb13fbe87d3d6f81dae509d79f5af0bb4885e9478dec01"
+    }
+  ],
+  "main_message_or_web_chain_changes": false,
+  "post_learning_local_changes": [
+    {
+      "path": "persona_runtime/expression_candidates.py",
+      "generation_time_sha256": "dfe091fdfd2698baaccfab475adac5cd9465840d05dd10d374f53b2f4375227f",
+      "current_sha256": "76622de338a7b3085aff23904edf4810dfa0ed8f636ea24e94c2b072548bf164",
+      "reason": "local candidate retrieval only: ignore generic subject tokens and retain explicit one-character tags; no learning request or model dispatch changes"
+    }
+  ]
+}

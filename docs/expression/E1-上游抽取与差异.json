@@ -1,0 +1,106 @@
+{
+  "upstream_commit": "478f671e64467121fd3e39205c8d3507b5ce0bd6",
+  "copied_sources": [
+    {
+      "path": "src/chat/replyer/maisaka_expression_selector.py",
+      "blob": "99f7afbd02fb57e18c88da976797989e96cf3875",
+      "sha256": "f20685f39e02d3907db1449df120659d69cd57f79e4851171fbfdea24005247a"
+    },
+    {
+      "path": "src/chat/utils/utils.py",
+      "blob": "84127c9b9b3c74bea507e9671defacf0d744e558",
+      "sha256": "2c014b628cb13f9a483307894ed942fe7cc21b72ed04a9afebe5923d836d995f"
+    },
+    {
+      "path": "src/chat/utils/llm_sentence_splitter.py",
+      "blob": "b787f5c3fad2de4c5ef28aa1590db9579e782cd2",
+      "sha256": "e6e2bda6306a28698b2d87ddd743855ed7c1a80c6214d1aeceafd2c6ed20212b"
+    },
+    {
+      "path": "LICENSE",
+      "blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    }
+  ],
+  "local_target": "experiments/expression_e1/maibot_components.py",
+  "upstream_services_started": false,
+  "version": "expression-e1-extraction-v1",
+  "local_sha256_at_freeze": "f23fc6fccc2fbe08b2a852b7f405473b774dfd95219281871442bdb8b95a5e66",
+  "symbols": [
+    {
+      "local_symbol": "_is_no_split_marker",
+      "local_start": 32,
+      "local_end": 34,
+      "mode": "direct_extract_with_documented_changes"
+    },
+    {
+      "local_symbol": "_strip_whitespace",
+      "local_start": 37,
+      "local_end": 39,
+      "mode": "direct_extract_with_documented_changes"
+    },
+    {
+      "local_symbol": "_map_sentences_to_original",
+      "local_start": 42,
+      "local_end": 64,
+      "mode": "direct_extract_with_documented_changes"
+    },
+    {
+      "local_symbol": "_extract_trailing_comma",
+      "local_start": 67,
+      "local_end": 73,
+      "mode": "direct_extract_with_documented_changes"
+    },
+    {
+      "local_symbol": "ProcessedResponseSegment",
+      "local_start": 77,
+      "local_end": 85,
+      "mode": "direct_extract_with_documented_changes"
+    },
+    {
+      "local_symbol": "calculate_typing_time",
+      "local_start": 88,
+      "local_end": 126,
+      "mode": "direct_extract_with_documented_changes"
+    },
+    {
+      "local_symbol": "build_expression_habits_block",
+      "local_start": 129,
+      "local_end": 136,
+      "mode": "direct_extract_with_documented_changes"
+    },
+    {
+      "local_symbol": "normalize_selected_ids",
+      "local_start": 139,
+      "local_end": 158,
+      "mode": "direct_extract_with_documented_changes"
+    }
+  ],
+  "changes": [
+    "_map_sentences_to_original保留全部句间空白，移除原删除分支",
+    "候选ID由整数改为PCAR字符串来源ID，返回字段接selected_expression_ids",
+    "表达习惯块保留情境—说法结构，移除研发自由度式标题",
+    "typing_speed由全局配置改为显式参数，E1仅计算计划",
+    "分段对象保留text与separator，映射为E0正文区间",
+    "JSON解包与HTTP调用在PCAR适配器执行，无上游服务依赖"
+  ],
+  "request_assembly": {
+    "source": "src/chat/replyer/maisaka_generator_base.py:_build_request_messages/_build_history_messages",
+    "mode": "architecture_adaptation",
+    "local": "experiments/expression_e1/core.py:build_messages",
+    "changes": "角色投影、实际历史、习惯及当前任务按上游职责装配，去Planner和SessionBacked类型依赖；主稿和已说内容作为明确输入。"
+  },
+  "prompt_template": {
+    "source": "prompts/zh-CN/main/maisaka_replyer.prompt",
+    "mode": "direct_extract_and_adapt",
+    "local": "experiments/expression_e1/core.py:REPLYER_TEMPLATE",
+    "changes": "保留人物、读真实语境及口语回复结构，增加独立主稿再制与JSON运输；去群聊注意块及泛用参考信息段。"
+  },
+  "independent_stage": {
+    "source": "src/chat/replyer/maisaka_generator_base.py:_translate_super_creative_reply/_persist_super_creative_stage",
+    "mode": "stage_design_adaptation",
+    "changes": "保持主稿只读、独立转换及用量；使用冻结官方模型和新表达位置，保留完整HTTP首次回执；不采用往返翻译或成功再生钩子。"
+  },
+  "production_runtime_modified": false,
+  "dependencies_added": []
+}

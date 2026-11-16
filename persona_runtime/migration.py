@@ -181,6 +181,9 @@ def _sanitize_database(path):
             for rowid,raw in db.execute('SELECT rowid,data_json FROM recall_runtime_policies').fetchall():
                 value=json.loads(raw);value['enabled']=False
                 db.execute('UPDATE recall_runtime_policies SET revision=revision+1,data_json=? WHERE rowid=?',(json.dumps(value,ensure_ascii=False),rowid))
+        if 'expression_asset_policies' in tables:
+            from .expression_compat import pause as pause_expression
+            changes.update(pause_expression(db))
         if db.execute('PRAGMA integrity_check').fetchone()[0]!='ok' or db.execute('PRAGMA foreign_key_check').fetchone():raise RuntimeErrorBase('migration_database_invalid')
         counts={t:db.execute('SELECT count(*) FROM "'+t.replace('"','""')+'"').fetchone()[0] for t in ('personas','sessions','events','memories','knowledge_control') if t in tables}
         # Rebuild pages so overwritten DPAPI values do not survive in freelists.

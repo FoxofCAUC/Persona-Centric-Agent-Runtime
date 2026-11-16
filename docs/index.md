@@ -29,7 +29,8 @@
 | 接续当前开发 | [协作约定](../AGENTS.md) · [当前状态](STATUS.md) · [交接](HANDOFF.md) |
 | 部署开发候选 | [当前候选手册](../AGENT_INSTALL.md) · [模型供应商支持总则](模型供应商支持总则.md) |
 | 理解持久化与运行结构 | [架构说明](architecture.md) · [命令行操作](usage.md) |
-| 了解消息与表达改造 | [表达改造方案](PCAR-MaiBot表达改造施工方案.md) |
+| 接续人物回复重构 | [E.N0—E.N6开发指导](expression/E阶段重构-人物回复链路开发指导.md) · [MaiBot机制研究](research/MaiBot-活人感机制深读-20261116.md) |
+| 追溯此前表达方案 | [原表达施工方案](PCAR-MaiBot表达改造施工方案.md) · [原最小输入转译路线](expression/E3R-成稿转译修订路线.md) |
 | 了解记忆与召回 | [自动记忆实施](M8.D-自动记忆实施记录.md) · [召回接入与验证](召回配套.3-实施与验证.md) |
 | 运行相关检查 | [分级验证原则](开发验证与验收分级原则.md) · [验收目录](acceptance/README.md) |
 | 更新 README 与接续其他窗口 | [README 维护与跨窗口交接指南](product/readme-maintenance.md) |

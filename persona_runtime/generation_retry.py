@@ -95,7 +95,7 @@ def call_count(conn, table, since, *, automatic_only=False):
         ELSE CASE WHEN started_epoch>? THEN 1 ELSE 0 END END),0) FROM '''+table+' AS counted'+condition,(since,since)).fetchone()[0]
 
 
-async def _one(client, model, messages, timeout_code, *, paths=None):
+async def _one(client, model, messages, timeout_code, *, paths=None, received=None):
     from .maintenance import require_writable_storage
     from .paths import RuntimePaths
     try:
@@ -110,7 +110,11 @@ async def _one(client, model, messages, timeout_code, *, paths=None):
     from .provider_compat import request_timeout
     budget=request_timeout(model)
     request=model|{'_request_deadline':time.monotonic()+budget} if budget is not None else {k:v for k,v in model.items() if k!='_request_deadline'}
-    task=asyncio.create_task(client.complete(request,messages))
+    async def receive():
+        result=await client.complete(request,messages)
+        if received is not None:received(result)
+        return result
+    task=asyncio.create_task(receive() if received is not None else client.complete(request,messages))
     try:
         done,_=await asyncio.wait({task},timeout=budget)
         if done:return task.result()
@@ -159,7 +163,7 @@ async def _one(client, model, messages, timeout_code, *, paths=None):
 
 
 async def audited_complete(client, model, messages, *, validate, save, before_attempt,
-                           prior_failures=0, timeout_code='provider_timeout', sleep=None, paths=None):
+                           prior_failures=0, timeout_code='provider_timeout', sleep=None, paths=None, save_completion=None):
     from .archive import fingerprint
     from .provider_compat import build_request,usage_fields,request_timeout
     from .chat import ModelCompletion
@@ -174,13 +178,41 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
              'request_hash':request_hash,'timeout_seconds':request_timeout(model)}
         state['attempts'].append(row);save(aggregate(state))
         value=None
+        terminal_seen=False
+        receipt_saved=False
+        def received(result):
+            nonlocal terminal_seen,receipt_saved
+            terminal_seen=True
+            validation_error=None
+            try:
+                finish=getattr(result,'diagnostics',{}).get('finish_reason')
+                if finish=='length':raise RuntimeErrorBase('provider_output_truncated')
+                if finish=='content_filter':raise RuntimeErrorBase('provider_content_filtered')
+                validate(result[0])
+            except Exception as error:validation_error=error
+            row.update(status='completed',finished_epoch=time.time(),usage=usage_fields(result[1],deepseek=True,grok=True))
+            row['usage_known']=row['usage'] is not None
+            row['diagnostics']=safe_diagnostics(getattr(result,'diagnostics',None))
+            row['output_fingerprint']=hashlib.sha256(result[0].encode('utf-8')).hexdigest()
+            if validation_error is not None:row['validation']=getattr(validation_error,'output_validation',None) or {'status':'rejected','reason':str(validation_error)}
+            save_completion(result,aggregate(state),row,validation_error)
+            receipt_saved=True
+            if validation_error is not None:raise validation_error
         try:
-            value=await _one(client,model,messages,timeout_code,paths=paths)
+            value=await _one(client,model,messages,timeout_code,paths=paths,**({'received':received} if save_completion is not None else {}))
             finish=getattr(value,'diagnostics',{}).get('finish_reason')
             if finish=='length':raise RuntimeErrorBase('provider_output_truncated')
             if finish=='content_filter':raise RuntimeErrorBase('provider_content_filtered')
-            validate(value[0])
+            if save_completion is None:validate(value[0])
         except BaseException as error:
+            if save_completion is not None and terminal_seen:
+                # 外部完整结果已收到。本地持久化、校验或取消失败不成为第二次模型请求。
+                if not receipt_saved:
+                    try:save(aggregate(state))
+                    except Exception:pass
+                error.usage=aggregate(state);error.diagnostics=row.get('diagnostics',{})
+                error.output_fingerprint=row.get('output_fingerprint')
+                raise
             interrupted=isinstance(error,asyncio.CancelledError)
             code='request_interrupted' if interrupted else str(error)
             if not interrupted and effect_unconfirmed(error):
@@ -211,7 +243,7 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
         row['usage_known']=row['usage'] is not None
         row['diagnostics']=safe_diagnostics(getattr(value,'diagnostics',None))
         row['output_fingerprint']=hashlib.sha256(value[0].encode('utf-8')).hexdigest()
-        save(aggregate(state))
+        if save_completion is None:save(aggregate(state))
         diagnostics=dict(getattr(value,'diagnostics',{}))
         diagnostics.update(retry_count=index,provider_attempt_count=len(state['attempts']),retry_version=VERSION)
         return ModelCompletion(value[0],aggregate(state),diagnostics,native=getattr(value,'native',None))

@@ -1,0 +1,60 @@
+{
+  "version": "expression-punctuation-extension-v1",
+  "e3_manifest_sha256": "b53ac24ea1bda10b772172b1194088635eed5cf31afb4fc328c34b71dfc6274f",
+  "author_requested_narrow_unfreeze": "Move IM punctuation guidance from v8 to the actually enabled draft translator; retain original v8 comparison baseline",
+  "expression_profile": "expression-persona-draft-v2",
+  "original_first_batch_profile": "expression-persona-draft-v1",
+  "schema_changed": false,
+  "formal_configuration_changed": false,
+  "model_calls": 0,
+  "declared_changes": [
+    {
+      "path": "persona_runtime/companion_im.py",
+      "baseline_sha256": "2e0d354eab5305f0875b01215ca2fa166e12a8fdcbe15f55584542867405c444",
+      "accepted_sha256": "ff6e5caded39a11ee50391e54b1f46cca7f1a896ea113ec920ef8fe8295f4c0b",
+      "reason": "factor the existing exact v8 punctuation guidance and expose a source prefix without it; original v8 instruction bytes unchanged"
+    },
+    {
+      "path": "persona_runtime/companion_selective_reply.py",
+      "baseline_sha256": "ee4e18425f3ba8db7896c485c37128305e36e9e426b742eb1b1eaa6787e594c4",
+      "accepted_sha256": "55fe82e2a7f024195a5a96e91fd2ee267328060dfe231fbdf1ad34a9005fc2b7",
+      "reason": "preserve inherited v9 baseline while providing the same punctuation delegation boundary"
+    },
+    {
+      "path": "persona_runtime/context_m4.py",
+      "baseline_sha256": "f3604d03a09a62deed2d3ba2ba23ca7ac07683207ddf8554420baf819307dc15",
+      "accepted_sha256": "98d65b594151bcb1473199f5cb9315fb35d3799d1c7a3966fc27e84750109a67",
+      "reason": "select punctuation owner from frozen per-turn profile only; preserve all other blocks and source text"
+    },
+    {
+      "path": "persona_runtime/expression_runtime.py",
+      "baseline_sha256": "ca3d5162c4112146e9d8cb924f95879d44dc3da9268cb062d591fe091dfd5d59",
+      "accepted_sha256": "1604215ac85bf219cad1f3535704c78de7c68a127b93faec4241104697f77398",
+      "reason": "dispatch explicitly selected v2 to two-input protocol; retain frozen legacy decoder and separate permissions/receipts"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/im_punctuation.py",
+      "accepted_sha256": "048cc4975ace6438b3b9d559912ec0d677844d5595d277527ff7dd049988df25"
+    },
+    {
+      "path": "persona_runtime/expression_persona_draft.py",
+      "accepted_sha256": "22e418ab33e34f3989b1718ae4251cb238fc7dec8ad3a71228e57d572c229871"
+    },
+    {
+      "path": "scripts/pcar_expression_punctuation_preflight.py",
+      "accepted_sha256": "a99a38ffe32e324aa0e1075c9d11a1370923447121babcfdc2156b0deb7a5a34"
+    }
+  ],
+  "research_files": [
+    {
+      "path": "experiments/expression_persona_draft/protocol_v2.py",
+      "accepted_sha256": "611bf5c83d2efb470b380022295e32cb00ac5f4c006ac82161ff7264dd96df2c"
+    }
+  ],
+  "source_notice_delegated": false,
+  "source_notice_reason": "No post-draft translator on notice path before planned uniform utterance outlet; do not remove its only guidance",
+  "default_expression_enabled": false,
+  "default_expression_protocol_changed": false
+}

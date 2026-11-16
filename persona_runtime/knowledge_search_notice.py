@@ -73,6 +73,12 @@ class SearchNotice:
         manifest.update(task_type='reflection', purpose='persona_search_notice',
             organization_task_id=task['id'], search_notice_version=VERSION)
         manifest['hard_constraints'] += ['jev_web_precedes_notice', 'notice_precedes_search', 'one_saved_utterance']
+        runtime=self.processor.engine.chat.expression
+        from .expression_runtime import accepted
+        from .expression_persona_draft import PROFILE
+        policy=accepted(db,root['id'])['data']
+        if runtime.outlet.available(db) and policy.get('enabled') and policy.get('protocol')==PROFILE:
+            runtime.outlet.freeze_notice(db,dict(root),task,runtime.capture_context(db,dict(root),details))
         return {'messages': messages, 'manifest': manifest}
 
     def publish(self, db, task, payload, response, audit):

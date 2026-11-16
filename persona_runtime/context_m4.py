@@ -308,6 +308,7 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         consumption['final_input_hash']=assembly['input_snapshot_hash']
         assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer,
                         character_consumption=consumption)
+    punctuation_delegated=False
     if is_minimal and read_companion(turn)['version'] in (EXPERIENCE_VERSION,*NATIVE_VERSIONS):
         from .companion_prompt_light import render_blocks, INSTRUCTION_VERSION, FORMAT_RENDERER
         from .companion_chat_contract import chat_contract
@@ -318,6 +319,10 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
             if read_companion(turn)['version']==SELECTIVE_VERSION:
                 from .companion_selective_reply import render_blocks as render_selective, INSTRUCTION_VERSION
                 blocks=render_selective(blocks)
+            from .im_punctuation import delegated_for_turn,delegate_blocks
+            if delegated_for_turn(conn,turn):
+                blocks,INSTRUCTION_VERSION=delegate_blocks(blocks,read_companion(turn)['version'])
+                punctuation_delegated=True
         result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
         if sum(len(m['content']) for m in result)>limit:
             raise ModelError('companion_light_input_limit_exceeded')
@@ -354,6 +359,9 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
             raise ModelError('context_limit_exceeded')
         format_renderer=NOTICE_VERSION
         assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
+    if punctuation_delegated:
+        from .im_punctuation import VERSION as PUNCTUATION_VERSION
+        assembly.update(punctuation_owner='expression',punctuation_policy=PUNCTUATION_VERSION)
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
     recall_meta=({'version':'recall-runtime-v1','query_version':QUERY_VERSION,'selection_id':recall_plan['id'],
         'root_id':turn['id'],'selected_ids':[i['id'] for i in recall_items],

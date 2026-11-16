@@ -1,0 +1,29 @@
+{
+  "version": "expression-readme-integration-v1",
+  "prior_manifest_sha256": "34040a0a4cf90c2a1c54521496b723d8b853a1bf3987b0d72538e99a34fa3420",
+  "approved_upstream_commit": "f21c0c7bed11d861b3fb2687f56134312bec7eee",
+  "declared_changes": [
+    {
+      "path": "persona_runtime/private_personas.py",
+      "baseline_sha256": "db040f8f087bd0a55eb46a768ce400ee571a466de77c262509b328f0b53b65fd",
+      "accepted_sha256": "ca5f87cfb36dba45c7c759fb07749947c02a994616cf747754c8aa47324aa346",
+      "reason": "Merge exact README image path/SHA256 publication exceptions already approved in f21c0c7; retain all expression and expression_learning purpose grants"
+    },
+    {
+      "path": "persona_runtime/expression_realizer.py",
+      "baseline_sha256": "34ed37a0beada7d68936a5ab79c0f8a369b91c56bf48e24ff73f88a0ddd4d587",
+      "accepted_sha256": "c8531a7e7d74311fc2e491fe8657abab06c8c2487e4b3176104c25d86d2213dc",
+      "reason": "Remove one extra blank line at EOF caught by staged diff check; AST and model protocol unchanged"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_expression_handoff_preflight.py",
+      "accepted_sha256": "48cd0da92db8f212f1de1590adb25549082fa06e867fcb338fcaa803a76ec1d0"
+    }
+  ],
+  "candidate": "0.2.0rc7",
+  "schema": 32,
+  "new_E_route_is_plan_only": true,
+  "formal_instance_modified": false
+}

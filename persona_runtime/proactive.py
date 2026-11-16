@@ -128,6 +128,8 @@ class ProactiveService:
             'guidance':'companion-im-instruction-v1','examples':False,'guard':guard}
 
     def check(self,db,task,payload):
+        from .expression_utterance import require_supported_channel
+        require_supported_channel(db,task['persona_id'],'qq')
         from .persona_management import active
         active(db,task['persona_id']);p=payload['proactive']
         policy=self.policy(db,task['persona_id'])

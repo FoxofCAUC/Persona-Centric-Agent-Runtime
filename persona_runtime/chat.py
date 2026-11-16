@@ -180,7 +180,7 @@ def recall(query, memories):
 
 
 class ChatEngine:
-    def __init__(self, store, config, client=None, *, assist_admission=None, live_admission=None, dialogue_pipeline=None, generation_audit_sink=None, generation_executor=None):
+    def __init__(self, store, config, client=None, *, assist_admission=None, live_admission=None, dialogue_pipeline=None, generation_audit_sink=None, generation_executor=None, expression_runtime=None):
         self.store, self.config = store, config
         self.generation_audit_sink = generation_audit_sink
         self.generation_executor = generation_executor
@@ -208,6 +208,8 @@ class ChatEngine:
         self.preparations = set()
         self.locks = defaultdict(asyncio.Lock)
         self.draining = False
+        from .expression_runtime import ExpressionRuntime
+        self.expression = expression_runtime or ExpressionRuntime(store)
 
     def recover(self):
         with self.store.connection(write=True) as conn:
@@ -223,6 +225,7 @@ class ChatEngine:
             conn.execute("UPDATE deliveries SET state='uncertain', updated_at=? WHERE state='sending'", (timestamp(),))
         from .delivery import DeliveryService
         DeliveryService(self.store).recover()
+        self.expression.recover()
 
     @staticmethod
     def _session(conn, persona_id, channel, session_id=None, fresh=False, origin=None):
@@ -292,6 +295,9 @@ class ChatEngine:
                     raise RuntimeErrorBase("submission_conflict")
                 return previous
             persona_id = None if test else self.service._persona(conn, persona_id)["id"]
+            if channel=='qq':
+                from .expression_utterance import require_supported_channel
+                require_supported_channel(conn,persona_id,channel)
             from .private_personas import guard_acceptance_write
             guard_acceptance_write(self.store,persona_id)
             waiting = conn.execute("SELECT count(*) FROM turns WHERE persona_id IS ? AND status='queued'",
@@ -379,6 +385,13 @@ class ChatEngine:
         value["delivery"] = delivery[0] if delivery else None
         value['selection_attempts']=[{k:v for k,v in dict(r).items() if k!='model_snapshot'} for r in conn.execute('SELECT * FROM character_selection_attempts WHERE turn_id=? ORDER BY rowid',(turn_id,))]
         value["attempt_count"] = conn.execute("SELECT count(*) FROM attempts WHERE turn_id=?", (turn_id,)).fetchone()[0]
+        from .expression_runtime import enabled as expression_enabled
+        if expression_enabled(conn,turn_id):
+            mode=conn.execute('SELECT policy_json FROM expression_runtime_turns WHERE turn_id=?',(turn_id,)).fetchone()
+            draft=conn.execute('SELECT id,valid,body_hash FROM expression_main_receipts WHERE turn_id=?',(turn_id,)).fetchone()
+            run=conn.execute('SELECT id,state,attempt_id,usage_json,error_code FROM expression_runs WHERE turn_id=?',(turn_id,)).fetchone()
+            publication=conn.execute('SELECT id,revision,state,producer_kind,reason FROM expression_publications WHERE turn_id=?',(turn_id,)).fetchone()
+            value['expression']={'draft':dict(draft) if draft else None,'run':dict(run) if run else None,'publication':dict(publication) if publication else None}
         reply_batch=conn.execute('SELECT * FROM reply_batches WHERE turn_id=? ORDER BY created_at DESC LIMIT 1',(turn_id,)).fetchone()
         if reply_batch:
             batch=dict(reply_batch)
@@ -478,6 +491,7 @@ class ChatEngine:
             try:
                 latest=self.get(turn_id)
                 if latest['status']!='queued' or latest['execution_revision']!=initial['execution_revision']:return
+                await self.expression.wait_prior(latest)
                 with self.store.connection() as conn:
                     accepted_turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
                 from .companion import read as companion_read
@@ -499,6 +513,9 @@ class ChatEngine:
                     from .private_personas import guard_cloud_dispatch
                     guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
                     prepared=self.cognitive.finalize(conn,turn,prepared)
+                    from .expression_runtime import enabled as expression_enabled
+                    expression_on=expression_enabled(conn,turn_id)
+                    if expression_on and self.generation_executor is not None:raise ModelError('expression_completion_receipt_executor_required')
                     evaluation=getattr(self,'evaluation_session',None)
                     if evaluation:evaluation.before_dispatch(self,turn,prepared)
                     messages=prepared['messages'];turn['_context_details']={k:v for k,v in prepared['details'].items() if k!='prompt_assembly'}
@@ -513,6 +530,7 @@ class ChatEngine:
                                  (attempt_id, turn_id, time.time(), turn["model_snapshot"]))
                     context_id=self.cognitive.persist(conn,prepared['manifest'],turn=turn,attempt_id=attempt_id)
                     turn['_context_details']['context_id']=context_id
+                    expression_context=self.expression.capture_context(conn,turn,turn['_context_details']) if expression_on else None
                     conn.execute("INSERT INTO context_uses VALUES (?,?,?,?,?,?)", (attempt_id, turn_id, turn["persona_id"], LOCAL_USER_ID,
                                  json.dumps(turn["_context_details"], ensure_ascii=False), timestamp()))
                     conn.execute("UPDATE turns SET status='running', updated_at=? WHERE id=?", (timestamp(), turn_id))
@@ -544,12 +562,24 @@ class ChatEngine:
                         error.output_validation=validation_failure(text,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
                         raise
                 generation_executor = self.generation_executor or audited_complete
+                def save_main_completion(value,audit,physical,validation_error):
+                    nonlocal usage
+                    usage=audit
+                    self.expression.save_main(turn,attempt_id,value,audit,physical,expression_context,validation_error)
+                    if self.generation_audit_sink:self.generation_audit_sink(audit)
                 completion = await generation_executor(self.client,
                     dict(model,_reply_mode=turn.get('reply_mode_snapshot'),_expression_snapshot=turn.get('expression_snapshot')),messages,
                     validate=validate_generation,
                     save=save_generation_audit,before_attempt=before_generation_attempt,
-                    **({'paths':self.store.paths} if self.generation_executor is None else {}))
+                    **({'paths':self.store.paths} if self.generation_executor is None else {}),
+                    **({'save_completion':save_main_completion} if expression_on else {}))
                 raw_reply, usage = completion
+                if expression_on:
+                    outcome=await self.expression.execute(turn_id,model)
+                    if outcome['state'] in ('blocked','cancelled'):
+                        raise ModelError(outcome.get('reason') or 'expression_request_stopped',usage=usage)
+                    if outcome['state']=='unknown':raise ModelError('expression_result_unknown',usage=usage)
+                    return
                 provider_diagnostics=getattr(completion,'diagnostics',{'finish_reason':'unreported'})
                 validation_error=None
                 try:
@@ -704,6 +734,13 @@ class ChatEngine:
         self._schedule(turn_id)
         return self.get(turn_id)
 
+    async def resume_expression(self, turn_id):
+        from .expression_runtime import enabled as expression_enabled
+        with self.store.connection() as db:
+            if not expression_enabled(db,turn_id):raise RuntimeErrorBase('expression_turn_not_enabled')
+        await self.expression.execute(turn_id,self.config.load()['model'])
+        return self.get(turn_id)
+
     async def cancel(self, turn_id):
         """New companion turns support explicit in-flight cancellation."""
         with self.store.connection() as conn:
@@ -715,6 +752,17 @@ class ChatEngine:
             if task:await asyncio.gather(task,return_exceptions=True)
             return self.get(turn_id)
         if raw.get('cancelled_at'):return self.get(turn_id)
+        from .expression_runtime import enabled as expression_enabled
+        with self.store.connection() as conn:expression_on=expression_enabled(conn,turn_id)
+        if expression_on:
+            from .expression_publication import ExpressionPublication
+            result=ExpressionPublication(self.expression).cancel(turn_id)
+            if result.get('already_done'):return self.get(turn_id)
+            task=self.tasks.get(turn_id)
+            if task:
+                task.cancel('cancelled_by_user')
+                await asyncio.gather(task,return_exceptions=True)
+            return self.get(turn_id)
         from .companion import read as companion_read
         if raw['status']!='running' or companion_read(raw) is None:
             raise RuntimeErrorBase('only_queued_can_cancel')
@@ -741,6 +789,7 @@ class ChatEngine:
                          (now, now, turn_id))
             record_progress(conn, turn_id, "cancelled")
             result = self._view(conn, turn_id)
+        self.expression.outlet.cancel_root(turn_id)
         task = self.tasks.get(turn_id)
         if task:
             task.cancel()

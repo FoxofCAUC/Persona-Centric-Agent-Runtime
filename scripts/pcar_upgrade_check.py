@@ -18,6 +18,15 @@ BUSINESS_KEYS=('knowledge.conversation.record.','knowledge.processing.result.','
 BUSINESS_TABLES+=('recall_support_policies','recall_support_clock','recall_support_units',
     'recall_support_locations','recall_support_terms','recall_support_events','recall_support_searches','recall_support_sync')
 BUSINESS_TABLES+=('recall_runtime_policies','recall_runtime_turns','recall_runtime_dirty','recall_runtime_feedback')
+EXPRESSION_TABLES=('expression_asset_policies','expression_asset_operations','expression_asset_sources',
+    'expression_asset_source_versions','expression_assets','expression_asset_versions','expression_asset_supports',
+    'expression_asset_terms','expression_asset_vectors','expression_candidate_snapshots','expression_learning_jobs',
+    'expression_asset_proposals','expression_asset_observations','expression_learning_scan')
+BUSINESS_TABLES+=EXPRESSION_TABLES
+EXPRESSION_RUNTIME_TABLES=('expression_runtime_policies','expression_runtime_turns','expression_main_receipts',
+    'expression_runs','expression_publications','expression_publication_versions',
+    'expression_presentation_items','expression_utterances','expression_presentation_receipts')
+BUSINESS_TABLES+=EXPRESSION_RUNTIME_TABLES
 
 
 def digest(value):
@@ -56,6 +65,12 @@ def snapshot(home):
             for row in db.execute('SELECT a.id,t.id AS task_id,t.payload_json FROM organization_attempts a JOIN organization_tasks t ON t.id=a.task_id'):
                 payload=json.loads(row['payload_json']);root=payload.get('knowledge_processing',{}).get('root_turn_id') or 'task:'+row['task_id']
                 result['attempts_by_root'].setdefault(digest(root),[]).append(digest(['organization_attempts',row['id']]))
+        if 'expression_learning_jobs' in tables:
+            for ident,attempt in db.execute('SELECT id,attempt_id FROM expression_learning_jobs WHERE attempt_id IS NOT NULL'):
+                result['attempts_by_root'].setdefault(digest('expression-learning:'+ident),[]).append(digest(['expression_learning',attempt]))
+        if 'expression_runs' in tables:
+            for root,attempt in db.execute('SELECT turn_id,attempt_id FROM expression_runs WHERE attempt_id IS NOT NULL'):
+                result['attempts_by_root'].setdefault(digest(root),[]).append(digest(['expression',attempt]))
     for values in result['attempts_by_root'].values():values.sort()
     return result
 
@@ -66,8 +81,11 @@ def compare(before,after,*,allow_schema_upgrade=False):
     if before['schema_version']!=after['schema_version']:
         expected={'recall_support_policies','recall_support_clock','recall_support_units','recall_support_locations',
             'recall_support_terms','recall_support_events','recall_support_searches','recall_support_sync'}
-        if after['schema_version']==29:expected.update(('recall_runtime_policies','recall_runtime_turns','recall_runtime_dirty','recall_runtime_feedback'))
-        if not (allow_schema_upgrade and (before['schema_version'],after['schema_version']) in ((27,28),(27,29),(28,29))
+        if after['schema_version']>=29:expected.update(('recall_runtime_policies','recall_runtime_turns','recall_runtime_dirty','recall_runtime_feedback'))
+        if after['schema_version']>=30:
+            expected.update(EXPRESSION_TABLES)
+        if after['schema_version']>=31:expected.update(EXPRESSION_RUNTIME_TABLES)
+        if not (allow_schema_upgrade and 27<=before['schema_version']<after['schema_version']<=31
                 and expected.issubset(after['tables'])):failures.append({'check':'schema_changed'})
     for table,rows in before['tables'].items():
         new=after['tables'].get(table,{})
@@ -85,7 +103,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='action',required=True)
     take=sub.add_parser('snapshot');take.add_argument('--home',type=Path,required=True);take.add_argument('--out',type=Path,required=True)
     check=sub.add_parser('compare');check.add_argument('before',type=Path);check.add_argument('after',type=Path)
-    check.add_argument('--allow-schema-upgrade',action='store_true',help='Allow declared additive upgrades among 27, 28 and 29; existing rows still must match.')
+    check.add_argument('--allow-schema-upgrade',action='store_true',help='Allow declared additive upgrades from 27 through 31; existing rows still must match.')
     args=parser.parse_args()
     if args.action=='snapshot':
         value=snapshot(args.home);args.out.parent.mkdir(parents=True,exist_ok=True)

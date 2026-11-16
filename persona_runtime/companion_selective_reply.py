@@ -2,14 +2,16 @@
 from .companion_im import INSTRUCTION as PREVIOUS_INSTRUCTION, GUIDANCE as PREVIOUS_GUIDANCE
 from .models import RuntimeErrorBase
 from .prompt_assembly import PromptBlock
+from .im_punctuation import GUIDANCE as PUNCTUATION_GUIDANCE
 
 INSTRUCTION_VERSION = 'companion-im-instruction-v2'
-GUIDANCE = (
+_CONTENT_GUIDANCE = (
     '就着眼前具体的事和自己的反应聊天，闲聊可以停留在分享本身，不必概括成一类事的道理，也不必安排下一步；'
-    '对方结束话题时，就自然道别。表达量随内容展开，意思到了就收住。建议和解释按当前话题与对方意愿取舍；'
-    '普通闲聊的句尾通常留空，标点随语气和意思使用。'
+    '对方结束话题时，就自然道别。表达量随内容展开，意思到了就收住。建议和解释按当前话题与对方意愿取舍'
 )
+GUIDANCE = _CONTENT_GUIDANCE + '；' + PUNCTUATION_GUIDANCE
 INSTRUCTION = PREVIOUS_INSTRUCTION.replace(PREVIOUS_GUIDANCE, GUIDANCE, 1)
+INSTRUCTION_WITHOUT_PUNCTUATION = PREVIOUS_INSTRUCTION.replace(PREVIOUS_GUIDANCE, _CONTENT_GUIDANCE+'。', 1)
 
 
 def render_blocks(blocks):

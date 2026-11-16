@@ -352,7 +352,10 @@ class ManagedOrganization:
                 owner=db.execute('SELECT persona_id FROM turns WHERE id=?',(root,)).fetchone()
                 if not owner or owner[0]!=row['persona_id']:continue
                 c=self.contract(db,row['id'])
-                if not c or c['data']['phase']=='received':continue
+                if not c:continue
+                if c['data']['phase']=='received':
+                    from .expression_utterance import CharacterOutlet
+                    if not CharacterOutlet.available(db) or not db.execute('SELECT 1 FROM expression_speech_contexts WHERE task_id=?',(row['id'],)).fetchone():continue
                 targets.append(row['id'])
                 if not exiting:
                     c['data']['cancel_requested']=True;self.save(db,c)
@@ -531,7 +534,9 @@ class ManagedOrganization:
                     db.execute('INSERT INTO organization_receipts VALUES(?,?,?)',(aid,reply,encoded(audit)))
                     if self.owns(db,task['id'],generation):
                         c=self.contract(db,task['id']);c['data']['phase']='received';self.save(db,c)
-            # A durable receipt is the recovery boundary. Publication remains the existing transaction.
+            if payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
+                await e.chat.expression.outlet.organization_received(task['id'],aid,e.config.load()['model'])
+            # 原始回执和人物呈现均在事务外完成，提交时再核对任务租约。
             with self.store.connection(write=True) as db:
                 if not self.owns(db,task['id'],generation):raise RuntimeErrorBase('organization_lease_lost')
                 c=self.contract(db,task['id']);self.check(db,task,c,payload)

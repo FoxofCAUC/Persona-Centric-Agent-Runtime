@@ -135,7 +135,7 @@ class PrivatePersonas:
         from .config import ConfigStore
         from .persona_management import active
         if not operation_id:raise RuntimeErrorBase('operation_id_required')
-        if kind not in ('main','organization','proactive','knowledge_router','selector'):raise RuntimeErrorBase('private_permission_kind_invalid')
+        if kind not in ('main','organization','proactive','knowledge_router','selector','expression','expression_learning'):raise RuntimeErrorBase('private_permission_kind_invalid')
         self.root.mkdir(parents=True,exist_ok=True)
         lock=InstanceLock(self.root/'registry.lock')
         try:
@@ -145,11 +145,11 @@ class PrivatePersonas:
                 policy=self.record_for_persona(persona_id)
                 if policy is None:
                     policy=self.acceptance_copy_policy(persona_id)
-                    if policy is not None and kind not in ('main','knowledge_router'):
+                    if policy is not None and kind not in ('main','knowledge_router','expression','expression_learning'):
                         raise RuntimeErrorBase('private_copy_permission_kind_not_allowed')
                 if policy is None:raise RuntimeErrorBase('private_scope_mismatch')
                 cfg=ConfigStore(self.paths).load()
-                model=cfg['model'] if kind in ('main','proactive') or cfg['organization']['reuse_chat'] else cfg['organization']['model']
+                model=cfg['model'] if kind in ('main','proactive','expression','expression_learning') or cfg['organization']['reuse_chat'] else cfg['organization']['model']
                 if kind=='knowledge_router':
                     from .knowledge_routing import configured_model
                     model=configured_model(self.paths)
@@ -316,7 +316,7 @@ def guard_cloud_dispatch(store,persona_id,kind,model):
     ensure_cloud_ready(store.paths)
     private=PrivatePersonas(store.paths)
     policy=private.record_for_persona(persona_id)
-    if policy is not None and kind in ('main','organization','proactive','knowledge_router','selector') and private.model_authorized(persona_id,policy,kind,model):return
+    if policy is not None and kind in ('main','organization','proactive','knowledge_router','selector','expression','expression_learning') and private.model_authorized(persona_id,policy,kind,model):return
     if policy is not None and policy.get('_migration_binding'):
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')
     with store.connection() as db:
@@ -335,7 +335,7 @@ def guard_cloud_dispatch(store,persona_id,kind,model):
             if candidate.get('copy_scope')=='visible_only_v1':
                 raise RuntimeErrorBase('private_cloud_provider_not_authorized')
             policy=candidate
-    if policy is not None and kind in ('organization','proactive','knowledge_router'):
+    if policy is not None and kind in ('organization','proactive','knowledge_router','expression','expression_learning'):
         # Background disclosure always requires a role-specific grant. Neither
         # ancestor registry approvals nor copied acceptance policies transfer it.
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')

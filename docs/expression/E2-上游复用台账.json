@@ -1,0 +1,71 @@
+{
+  "version": "expression-E2-reuse-v1",
+  "repository": "Mai-with-u/MaiBot",
+  "commit": "478f671e64467121fd3e39205c8d3507b5ce0bd6",
+  "source_files": [
+    {
+      "path": "src/chat/replyer/maisaka_expression_selector.py",
+      "blob": "99f7afbd02fb57e18c88da976797989e96cf3875",
+      "sha256": "f20685f39e02d3907db1449df120659d69cd57f79e4851171fbfdea24005247a",
+      "bytes": 27585
+    },
+    {
+      "path": "src/learners/expression_learner.py",
+      "blob": "bcf4356b069b16307bcc1fec1990c93ed0911805",
+      "sha256": "53a168187485581aadc9bdd8c9dd880b521a38c1f66fdcb9af89924432c1fb37",
+      "bytes": 43399
+    },
+    {
+      "path": "src/learners/expression_style_utils.py",
+      "blob": "b9b3a10f03bf22d0cf5b9a3ccfb18eac38e588f0",
+      "sha256": "a05e8bca6b2209c90b260492818b9b59f0432ab757e868dc502a9640ef94e6bf",
+      "bytes": 945
+    },
+    {
+      "path": "prompts/zh-CN/main/text_learning_expression.prompt",
+      "blob": "79fb157d904cf2f372ca9064ad1248f56070d93f",
+      "sha256": "e3d8f2d64a526e3031b063419b94a1a17da30fd2099d55de599f593fb82564d9",
+      "bytes": 1102
+    }
+  ],
+  "components": [
+    {
+      "source": "src/learners/expression_style_utils.py",
+      "target": "persona_runtime/vendor/maibot_expression_style.py",
+      "mode": "direct_copy_with_provenance_header",
+      "change": "原函数和集合不改，限资产入库"
+    },
+    {
+      "source": "prompts/zh-CN/main/text_learning_expression.prompt",
+      "target": "persona_runtime/vendor/maibot_expression_learning_prompt.py",
+      "mode": "direct_template_copy",
+      "change": "保存原文；调用时将可选source_id改为有效来源必需并明确JSON任务"
+    },
+    {
+      "source": "src/learners/expression_learner.py:575-635,669-745",
+      "target": "persona_runtime/expression_learning.py",
+      "mode": "extract_design_and_adapt_pure_filter",
+      "change": "PCAR权威来源和范围；编号、SELF、名称与污染过滤；学习先为提案，不循环学习系统自己的产物"
+    },
+    {
+      "source": "src/chat/replyer/maisaka_expression_selector.py:72-113,255-282",
+      "target": "persona_runtime/expression_candidates.py; E1 offered candidate codec",
+      "mode": "scope_and_candidate_contract_adaptation",
+      "change": "无默认全局分享；本地小库及空选择，PCAR版本/授权快照"
+    },
+    {
+      "source": "PCAR E1 single-request transport",
+      "target": "persona_runtime/expression_transport.py",
+      "mode": "promoted_implementation",
+      "change": "保持单次官方/代理/TLS/原始回执，发送前失败明确诊断"
+    }
+  ],
+  "license": "upstream GPLv3 retained; PCAR AGPL-3.0-only",
+  "new_dependencies": [],
+  "not_adopted": [
+    {
+      "component": "full upstream vector/ORM/group service",
+      "reason": "小库使用PCAR已有离线模型与权威主库，避免建立第二套角色/来源权威"
+    }
+  ]
+}

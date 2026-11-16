@@ -1,0 +1,125 @@
+{
+  "version": "expression-E3-core-extension-v1",
+  "e0_manifest_sha256": "4c28c014d90b0b4d5f8653980451b667fc0c52cbc4607622dbff728a071108da",
+  "e2_manifest_sha256": "31a4a5c5948b255707e41a45637014308b8d811cd89d1a3c66088bb30e867988",
+  "E2_candidate": "0.2.0rc5/schema30",
+  "candidate_program": "0.2.0rc6",
+  "candidate_schema": 31,
+  "baseline_files": 413,
+  "unchanged_E2_files": 401,
+  "declared_changes": [
+    {
+      "path": "persona_runtime/__init__.py",
+      "baseline_sha256": "48486ffef8f56ac6884c79850da6d34a5e3cfee03aa963a792e30cdaab796a65",
+      "accepted_sha256": "bf0fb30c68f3c939e90877373ddfbff2d3b6653df5fbfdd827fbc23695386802",
+      "reason": "candidate version metadata only"
+    },
+    {
+      "path": "persona_runtime/chat.py",
+      "baseline_sha256": "1b7b491a8784d6b7689ed95053b59ee9264207808aabdb5dd8499028edc002bd",
+      "accepted_sha256": "140ad279003999e3f766535523a6269584d9fedf6afe19784be40d0da6c57d63",
+      "reason": "persist complete main before expression; metadata-only state; wait for prior actual presentation; recovery without replay"
+    },
+    {
+      "path": "persona_runtime/expression_compat.py",
+      "baseline_sha256": "ed5c571e2df540bcfa1e0e79863f31b82296c26b5ec77337284473b859058754",
+      "accepted_sha256": "ce13ed4e61ae8423f3861f1c7551769f33d5f81df22db7a1572b93604812d467",
+      "reason": "pause expression authority; preserve raw receipts and only project confirmed presentation prefix on migration"
+    },
+    {
+      "path": "persona_runtime/generation_retry.py",
+      "baseline_sha256": "783a6c672dd8ab1d76fc5bade9d7489a1a77ae9f5105607169518e02c6c11d75",
+      "accepted_sha256": "62e4f03b130ca44ba1b1f84555bd3e732d7e159c873215bdd2e99ac08ab83557",
+      "reason": "optional terminal-receipt sink inside provider task; completed/cancel race cannot repeat paid main"
+    },
+    {
+      "path": "persona_runtime/private_personas.py",
+      "baseline_sha256": "2a5ded6d1c3300bcdeca0e03117a8d74f0eb28cdb0c4c1b61aeecd1967a34694",
+      "accepted_sha256": "db040f8f087bd0a55eb46a768ce400ee571a466de77c262509b328f0b53b65fd",
+      "reason": "separate expression and expression_learning role/provider grants"
+    },
+    {
+      "path": "persona_runtime/recall_rollback.py",
+      "baseline_sha256": "ed1d6939ead8bb887d894f43536988cb4ba67269ce7d33352ddb58d1a4af2640",
+      "accepted_sha256": "25cb391c84d0f7014f7a7dedef404832d017369399b2046e5144110618f39a32",
+      "reason": "schema30 compatibility copy; refuse unsettled presentation; preserve model receipts and immutable business rows"
+    },
+    {
+      "path": "persona_runtime/server.py",
+      "baseline_sha256": "7002c7228e3fc6e968eb727adbd0063fb057219bdfe587311b32498926ed65ac",
+      "accepted_sha256": "56bdf5152a271d1a6e2857b5f4b4f8c7756f2238c70b1cd5ef5bd2f98b1b6651",
+      "reason": "authenticated admin expression policy/state/plan/offer/receipt/local fallback/cancel/resume endpoints"
+    },
+    {
+      "path": "persona_runtime/storage.py",
+      "baseline_sha256": "15d7e4198b21d5c1b1ad10ef4047ba771116715690942b35e375fadfff73ae95",
+      "accepted_sha256": "7d6f0310d8b2ab558aff51de78e4ce6aa5a7b9e704fd8670b6acd05c511a0c7e",
+      "reason": "additive schema31 with protected backup and idempotent registration/check"
+    },
+    {
+      "path": "pyproject.toml",
+      "baseline_sha256": "3da1655e228e8ef2e4dfa16f93a5f8b0f80707f675d9ef6141361156c73774b7",
+      "accepted_sha256": "618c6cd05a617ca2206f5aae29e3e998515a280b3e32e097e23ee58656d0be8a",
+      "reason": "candidate version metadata only"
+    },
+    {
+      "path": "scripts/pcar_recall_preflight.py",
+      "baseline_sha256": "a2d0839ed15a7f4a0f194dac86eed6810612b809dd1a4bca194fe0c5cdd8a50b",
+      "accepted_sha256": "b822c9fadeba9153923bd4f8736273e4a6102deed9fb1e4a50399d06dcc8966f",
+      "reason": "read-only recognition of additive schema31"
+    },
+    {
+      "path": "scripts/pcar_upgrade_check.py",
+      "baseline_sha256": "b520515b70dced4e33645ae034ae235745b1778306aaa02f80f6c4ab8130e703",
+      "accepted_sha256": "d80c71e8a41e97b0e2ae66764aa76d657df8f1ce1aeb8eada3ace739add2cd17",
+      "reason": "standalone read-only schema31 and expression attempt identity evidence"
+    },
+    {
+      "path": "uv.lock",
+      "baseline_sha256": "f83e500ed121c889f9d20d9b2f024f71ac3ffaf83c101ecf41c32b810f3e90a2",
+      "accepted_sha256": "bf5f0e9419d0c961c9d78607cdd870ef6cf55719f981696fe855f74178e57a73",
+      "reason": "candidate version only; dependencies unchanged"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/expression_protocol.py",
+      "accepted_sha256": "a62d08b7fb646a67e45c28a7a55fdac5585e9a111b51476d6e26e8c52f5488d7"
+    },
+    {
+      "path": "persona_runtime/expression_publication.py",
+      "accepted_sha256": "47e76c10772ef15011193eb8742afa54a4a2bc51e282e9c05ad07e4b9889fd85"
+    },
+    {
+      "path": "persona_runtime/expression_realizer.py",
+      "accepted_sha256": "34ed37a0beada7d68936a5ab79c0f8a369b91c56bf48e24ff73f88a0ddd4d587"
+    },
+    {
+      "path": "persona_runtime/expression_runtime.py",
+      "accepted_sha256": "ca3d5162c4112146e9d8cb924f95879d44dc3da9268cb062d591fe091dfd5d59"
+    },
+    {
+      "path": "persona_runtime/expression_sources.py",
+      "accepted_sha256": "e24ddfe7bbc9a03467d43ddcca0d955ce2844c541259929bf8873be2aafa3d6e"
+    },
+    {
+      "path": "persona_runtime/schema_expression_runtime.py",
+      "accepted_sha256": "a2ec20199ea59cd3d479b3a929eb4d2f6ce6c48e3f51baa78df5c5c588560c21"
+    },
+    {
+      "path": "persona_runtime/vendor/maibot_expression_components.py",
+      "accepted_sha256": "5f38cb081e6c52f61c6ad60dedd9bbc90fc55637489067ec20e8cf89ccf75103"
+    },
+    {
+      "path": "scripts/pcar_expression_runtime.py",
+      "accepted_sha256": "595e6431c2383d1b7950135847bdb4458256e8bc72f47bfe795f8795b473da65"
+    },
+    {
+      "path": "scripts/pcar_expression_runtime_preflight.py",
+      "accepted_sha256": "2520bf0ed436814314ccee72d2b525129b94a0f6900b2137f02feeb75573e405"
+    }
+  ],
+  "main_message_chain_changes": "explicit E3 terminal receipt and actual-presentation boundary only",
+  "jev_notice_native_search_v8_prompt_orchestration_changed": false,
+  "dependencies_added": []
+}

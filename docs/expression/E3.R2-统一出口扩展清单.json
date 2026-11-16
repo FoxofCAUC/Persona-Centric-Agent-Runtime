@@ -1,0 +1,122 @@
+{
+  "version": "expression-speech-R2-extension-v1",
+  "prior_manifest_sha256": "4dd3228363d06e29e6d71eb82ab8de21f0dfb87bc427ebcb9bf0e6cb712a7654",
+  "declared_changes": [
+    {
+      "path": "persona_runtime/__init__.py",
+      "baseline_sha256": "bf0fb30c68f3c939e90877373ddfbff2d3b6653df5fbfdd827fbc23695386802",
+      "accepted_sha256": "6b8f29c6ad714cd9a9aed92d2da08ef82824aa6ee2b8e1704d156bc5dac2e407",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/chat.py",
+      "baseline_sha256": "140ad279003999e3f766535523a6269584d9fedf6afe19784be40d0da6c57d63",
+      "accepted_sha256": "590071f57f3b3a0f140de1e90f32a032581ea22f3ba5d3d910a679ca9b2da455",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/expression_compat.py",
+      "baseline_sha256": "ce13ed4e61ae8423f3861f1c7551769f33d5f81df22db7a1572b93604812d467",
+      "accepted_sha256": "9cbaa8a6ab272468cdcb9ac1098f6762a1996dacc98d7140df296279c0a675a1",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/expression_publication.py",
+      "baseline_sha256": "47e76c10772ef15011193eb8742afa54a4a2bc51e282e9c05ad07e4b9889fd85",
+      "accepted_sha256": "ff83a252008677ac3c3fbc89b501a140554c78983b593bf3b7e851898e7e766c",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/expression_runtime.py",
+      "baseline_sha256": "1604215ac85bf219cad1f3535704c78de7c68a127b93faec4241104697f77398",
+      "accepted_sha256": "2b5b3d3b7be6a3aeea69bb256886707475dbe0f5497ed7330c90cf6a9db9700e",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/im_punctuation.py",
+      "baseline_sha256": "048cc4975ace6438b3b9d559912ec0d677844d5595d277527ff7dd049988df25",
+      "accepted_sha256": "13c4663d897cc8a86bb32827df5ab1c8d0f48b4862291c76c752a4b063f7c98c",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/knowledge_search_notice.py",
+      "baseline_sha256": "1c7657a8754833d22c37bca89443090bb3273d4ff46874149b225b072684526c",
+      "accepted_sha256": "08bd98a3d58d9dc5fe3c55b88c624def6d6fd48ec7ba4b7aea36bf7c071d3a3f",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/managed_organization.py",
+      "baseline_sha256": "7d6292cae176e186220c5efddb519fd91a62c63096271f1ad72eb6fe3263a698",
+      "accepted_sha256": "bcb6d7dd83285cbc51afa7d951d3170f69f55f971d94898b9fc62ed4ac45cc10",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/proactive.py",
+      "baseline_sha256": "4763dcee800d5b23c400f181ad4f2bfe84b81100c0667a40885b02ef660905bd",
+      "accepted_sha256": "e8de86dcf0c351f7d0f2adb86da04718a43df256317d89342921621694d8b591",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/recall_rollback.py",
+      "baseline_sha256": "25cb391c84d0f7014f7a7dedef404832d017369399b2046e5144110618f39a32",
+      "accepted_sha256": "7f9110694436d833937f2a561f3c78dd6f1b4c301fb1bb65658bab0ce556c23c",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/server.py",
+      "baseline_sha256": "56bdf5152a271d1a6e2857b5f4b4f8c7756f2238c70b1cd5ef5bd2f98b1b6651",
+      "accepted_sha256": "8a62f7c4031336922602f45dfc8b1569c1ebf8dfad1ea37950672dc9f85d0241",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "persona_runtime/storage.py",
+      "baseline_sha256": "7d6f0310d8b2ab558aff51de78e4ce6aa5a7b9e704fd8670b6acd05c511a0c7e",
+      "accepted_sha256": "7175240393428ec4f018f811dce32ac4003b229ddbe38e32dd698a2f68a59a9e",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "pyproject.toml",
+      "baseline_sha256": "618c6cd05a617ca2206f5aae29e3e998515a280b3e32e097e23ee58656d0be8a",
+      "accepted_sha256": "684431f5cf3747566639e198b0e68c4f496019a99dac55dbab7f230ee6ac4bcd",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    },
+    {
+      "path": "uv.lock",
+      "baseline_sha256": "bf5f0e9419d0c961c9d78607cdd870ef6cf55719f981696fe855f74178e57a73",
+      "accepted_sha256": "e12e4e3b87ff27904579e7b8d56decc8542ecf34a9ec24d29ea73bf6c282276b",
+      "reason": "R2 character-utterance persistence, sequencing, permission or version adapter; see E3.R2 unified outlet document"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/expression_utterance.py",
+      "accepted_sha256": "5cca20cc74d191a3586b2bc3c7f8248927042cee550283c757909ceedcf41147"
+    },
+    {
+      "path": "persona_runtime/expression_utterance_publication.py",
+      "accepted_sha256": "1e5b60d18f85e3f07ed0c7ce7d5952adff70704030cfe62fe47b951a87dc7316"
+    },
+    {
+      "path": "persona_runtime/schema_expression_utterance.py",
+      "accepted_sha256": "b44be2ae7690fde187cee0a385a85a0d49d3694729a7b3e6d13139e21093c371"
+    },
+    {
+      "path": "scripts/pcar_expression_utterance_preflight.py",
+      "accepted_sha256": "79305bb3995bf1af69eec3a974105cec33c5076356d70feff1ce148c2ef6fdd3"
+    }
+  ],
+  "extra_files": [
+    {
+      "path": "pyproject.toml",
+      "accepted_sha256": "684431f5cf3747566639e198b0e68c4f496019a99dac55dbab7f230ee6ac4bcd"
+    },
+    {
+      "path": "uv.lock",
+      "accepted_sha256": "e12e4e3b87ff27904579e7b8d56decc8542ecf34a9ec24d29ea73bf6c282276b"
+    }
+  ],
+  "candidate": "0.2.0rc7",
+  "schema": 32,
+  "formal_instance_schema": 27,
+  "no_formal_deployment": true
+}

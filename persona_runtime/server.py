@@ -419,6 +419,32 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         }
         if action in organization_handlers:
             return web.json_response(organization_handlers[action](**args))
+        from .expression_publication import ExpressionPublication
+        expression_publication=ExpressionPublication(engine.expression)
+        from .expression_utterance_publication import SpeechPublication
+        speech_publication=SpeechPublication(engine.expression.outlet)
+        expression_handlers={
+            'expression.policy.current':engine.expression.policy,
+            'expression.policy.update':engine.expression.configure,
+            'expression.status':engine.expression.inspect,
+            'expression.presentation.plan':expression_publication.plan,
+            'expression.presentation.offer':expression_publication.offer,
+            'expression.presentation.ack':expression_publication.acknowledge,
+            'expression.presentation.visible':expression_publication.visible,
+            'expression.presentation.pending_receipts':expression_publication.pending_receipts,
+            'expression.fallback':expression_publication.fallback,
+            'expression.cancel':expression_publication.cancel,
+            'expression.v2.list':speech_publication.list,
+            'expression.v2.status':speech_publication.status,
+            'expression.v2.plan':speech_publication.plan,
+            'expression.v2.offer':speech_publication.offer,
+            'expression.v2.ack':speech_publication.acknowledge,
+            'expression.v2.visible':speech_publication.visible,
+            'expression.v2.pending_receipts':speech_publication.pending_receipts,
+            'expression.v2.cancel':speech_publication.cancel,
+        }
+        if action in expression_handlers:return web.json_response(expression_handlers[action](**args))
+        if action=='expression.resume':return web.json_response(await engine.resume_expression(**args))
         if action in ("inbox.check", "inbox.submit"):
             journal = SubmissionJournal(paths, "qq")
             cfg = config.load()

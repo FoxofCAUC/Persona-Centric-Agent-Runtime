@@ -1,0 +1,12 @@
+{
+  "version": "expression-persona-R1-continuation-extension-v1",
+  "punctuation_manifest_sha256": "bb42334b0ab9fb29fa02cccab3b48840bab10a17f22890e73b8c15d9f362a262",
+  "declared_changes": [
+    {
+      "path": "persona_runtime/expression_persona_draft.py",
+      "baseline_sha256": "22e418ab33e34f3989b1718ae4251cb238fc7dec8ad3a71228e57d572c229871",
+      "accepted_sha256": "f9c26942f65694bf372add217974fd98f8ff1e94f47516d01f2c215342709f24",
+      "reason": "complete valid body with boolean no_split outside agreed segment shape uses full-body fallback; original body and protection validation remain"
+    }
+  ]
+}

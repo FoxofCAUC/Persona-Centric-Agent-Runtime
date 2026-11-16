@@ -1,0 +1,57 @@
+{
+  "version": "expression-E3-runtime-reuse-v1",
+  "upstream": "Mai-with-u/MaiBot",
+  "upstream_commit": "478f671e64467121fd3e39205c8d3507b5ce0bd6",
+  "historical_sources": [
+    "docs/expression/E0-upstream-reuse.json",
+    "docs/expression/E1-上游抽取与差异.json",
+    "docs/expression/E2-上游复用台账.json"
+  ],
+  "upstream_license": "GNU GPL version 3; docs/licenses/MaiBot-GPL-3.0.txt",
+  "PCAR_license": "AGPL-3.0-only",
+  "promoted_components": [
+    {
+      "E1_source": "experiments/expression_e1/maibot_components.py",
+      "E1_sha256": "5f38cb081e6c52f61c6ad60dedd9bbc90fc55637489067ec20e8cf89ccf75103",
+      "runtime_target": "persona_runtime/vendor/maibot_expression_components.py",
+      "runtime_sha256": "5f38cb081e6c52f61c6ad60dedd9bbc90fc55637489067ec20e8cf89ccf75103",
+      "change": "exact copy; source/license/provenance retained"
+    },
+    {
+      "E1_source": "experiments/expression_e1/core.py",
+      "E1_sha256": "867f410cf8500b8c540f8a5ca778a932ae1699fec9316fdbb435db1f60c24fe9",
+      "runtime_target": "persona_runtime/expression_protocol.py",
+      "runtime_sha256": "a62d08b7fb646a67e45c28a7a55fdac5585e9a111b51476d6e26e8c52f5488d7",
+      "change": "vendor import target only"
+    },
+    {
+      "E1_source": "experiments/expression_e1/repair_protocol.py",
+      "E1_sha256": "94ef4896ae951782e6e6063edc134594830f408d388eecf40e01d6c4c64982f3",
+      "runtime_target": "persona_runtime/expression_realizer.py",
+      "runtime_sha256": "34ed37a0beada7d68936a5ab79c0f8a369b91c56bf48e24ff73f88a0ddd4d587",
+      "change": "runtime import target; remove experiment model_for helper"
+    }
+  ],
+  "frozen_E1_materials_equivalence_verified": 24,
+  "new_dependencies": [],
+  "independent_stage_design": {
+    "upstream": "maisaka_generator_base.py:_translate_super_creative_reply/_persist_super_creative_stage",
+    "implementation": "persona_runtime/expression_runtime.py + expression_publication.py",
+    "adaptation": "PCAR-owned durable main receipt, one expression attempt, publication lease/ack state; no upstream service/session/planner identity"
+  },
+  "E2_assets": "reuse current E2 authorized sources and candidate snapshot; verify owner/scope/hash/source again before dispatch and presentation",
+  "not_imported": [
+    "upstream global model service",
+    "Planner and SessionBacked objects",
+    "own upstream persona/memory database",
+    "round-trip translation or successful-generation rerun hooks"
+  ],
+  "jev_notice_native_v8_orchestration_changed": false,
+  "upstream_services_started": false,
+  "proof": [
+    "E1-runtime-parity.json",
+    "expression-checks.log",
+    "presenter-recovery-checks.log",
+    "real-runtime-v1/physical-call-ledger.json"
+  ]
+}

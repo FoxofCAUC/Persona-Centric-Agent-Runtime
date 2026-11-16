@@ -1,0 +1,21 @@
+{
+  "version": "expression-persona-draft-R1-materials-v1",
+  "role_order": ["qinghe", "xiazhi", "ningzhou", "linchuan"],
+  "authored_drafts": [
+    {"id":"S01","title":"工程腔闲聊稿","draft":"从你描述的情况来看，今天连续开会使你感到疲惫。建议先停止额外任务并休息。如果你不想解释原因，可以暂时不谈。"},
+    {"id":"S02","title":"工程腔认真稿","draft":"目前只确认备份文件存在，还没有确认能否打开。现在不要覆盖原文件。先打开备份并检查内容，确认可用后再覆盖。"}
+  ],
+  "saved_cases": [
+    {"id":"G01-3","persona":"xiazhi"},
+    {"id":"G08-1","persona":"xiazhi"},
+    {"id":"G02-1","persona":"qinghe"},
+    {"id":"G02-2","persona":"qinghe"},
+    {"id":"G03-2","persona":"ningzhou"},
+    {"id":"G09-2","persona":"ningzhou"},
+    {"id":"G10-2","persona":"linchuan"},
+    {"id":"G13-2","persona":"linchuan"}
+  ],
+  "first_batch_max_physical_calls": 16,
+  "full_research_max_new_expression_calls": 56,
+  "author_gate_before_remaining_40": true
+}
