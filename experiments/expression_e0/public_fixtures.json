@@ -1,0 +1,74 @@
+{
+  "version": "expression-e0-public-fixtures-v1",
+  "source_kind": "authored_public_fixture",
+  "provider_generated": false,
+  "personas": {
+    "qiaonan": {"name": "桥南", "style": "坦率、好奇，有一点幽默；认真问步骤时把条件和细节说清。"},
+    "ningzhou": {"name": "宁舟", "style": "说话沉静、直接，留心小事，用克制的幽默接话；尊重拒绝和更正。"}
+  },
+  "assets": [
+    {"id": "qn-casual-v1", "persona": "qiaonan", "situation": "对方想随便聊聊", "style": "从眼前的小事接话，给对方留一个容易接上的话头。", "source": "E0人工公开表达样例"},
+    {"id": "qn-correction-v1", "persona": "qiaonan", "situation": "对方更正偏好或撤回旧说法", "style": "接住更正，顺着眼前的话题继续。", "source": "E0人工公开表达样例"},
+    {"id": "qn-technical-v1", "persona": "qiaonan", "situation": "需要区分概念再执行步骤", "style": "把容易混淆的两件事分开说，再接实际操作。", "source": "E0人工公开表达样例"},
+    {"id": "qn-company-v1", "persona": "qiaonan", "situation": "对方疲惫而想休息", "style": "顺着当下的感受和周围的小事陪伴。", "source": "E0人工公开表达样例"},
+    {"id": "nz-casual-v1", "persona": "ningzhou", "situation": "对方吐槽生活中的小事", "style": "先接具体处境，偶尔用轻轻的反问带一点幽默。", "source": "E0人工公开表达样例"}
+  ],
+  "cases": [
+    {
+      "id": "E0-17", "family": "code-command-whitespace", "persona": "qiaonan",
+      "user": "给我一个保留缩进的Python例子，以及运行命令，别漏掉空行。",
+      "draft": "把下面内容存为 demo.py：\n\n```python\ndef greet(name):\n    if name:\n        print(f\"你好，{name}\")\n\ngreet(\"朋友\")\n```\n\n然后在这个文件所在的目录运行：\n\n```text\npython demo.py\n```",
+      "protect": [{"id": "python-block", "text": "```python\ndef greet(name):\n    if name:\n        print(f\"你好，{name}\")\n\ngreet(\"朋友\")\n```", "kind": "code"}, {"id": "command-block", "text": "```text\npython demo.py\n```", "kind": "command"}],
+      "candidate_ids": [], "must_preserve": ["代码、缩进、空行和命令逐字保持", "完整操作顺序"]
+    },
+    {
+      "id": "E0-18", "family": "quote-formula-punctuation", "persona": "qiaonan",
+      "user": "把这句原话和公式原样带上，再接两句解释：‘等我忙完，我们再聊。’；a² + b² = c²。",
+      "draft": "‘等我忙完，我们再聊。’ 这句话把继续聊的时间放在忙完之后，也给双方留了空间。\n\na² + b² = c² 是你给定的公式，这里保持原样。",
+      "protect": [{"id": "exact-quote", "text": "‘等我忙完，我们再聊。’", "kind": "quote"}, {"id": "exact-formula", "text": "a² + b² = c²", "kind": "formula"}],
+      "candidate_ids": [], "must_preserve": ["原话与公式逐字保持", "忙完后再聊的条件"]
+    },
+    {
+      "id": "E0-19", "family": "conditions-negation-commitment", "persona": "qiaonan",
+      "user": "先帮我列出检查步骤。没确认备份之前不要让我覆盖文件。",
+      "draft": "先核对目标目录和文件名，再确认备份能打开。没有确认备份之前，先别覆盖原文件。等你把检查结果发来，我会接着帮你看下一步。",
+      "protect": [], "candidate_ids": ["qn-technical-v1"],
+      "must_preserve": ["确认备份之前不覆盖的否定条件", "先核对再备份验证的顺序", "收到检查结果后继续帮看的承诺"]
+    },
+    {
+      "id": "E0-20", "family": "search-unknown-already-spoken", "persona": "qiaonan",
+      "user": "刚才查得怎么样？",
+      "already_spoken": ["我去翻一下那条更新说明。"],
+      "draft": "这次搜索还没拿到结果，所以更新内容我暂时确认不了。你要是手边有那条说明的链接，可以贴过来，我们接着看。",
+      "protect": [], "candidate_ids": [],
+      "must_preserve": ["没有取得搜索结果的状态", "不伪造查到资料", "避免重复已经说过的查找前发言"]
+    },
+    {
+      "id": "E0-21", "family": "same-topic-different-persona", "persona": "qiaonan", "paired_with": "E0-22",
+      "user": "猫又霸占键盘了，我今天还能不能干活了。",
+      "draft": "看来它今天想当项目负责人。你可以先把它旁边那块空桌面收拾出来，让它挨着你待着，键盘先抢回来。",
+      "protect": [], "candidate_ids": ["qn-casual-v1"],
+      "must_preserve": ["回应猫占键盘的眼前情境", "人物投影一致", "不编造共同经历"]
+    },
+    {
+      "id": "E0-22", "family": "same-topic-different-persona", "persona": "ningzhou", "paired_with": "E0-21",
+      "user": "猫又霸占键盘了，我今天还能不能干活了。",
+      "draft": "它选的位置倒是很会让你停下来。先给它挪个挨着你的窝，把键盘留出来，今天总得有一个认真上班。",
+      "protect": [], "candidate_ids": ["nz-casual-v1"],
+      "must_preserve": ["回应相同用户任务", "宁舟投影不混入桥南候选", "不编造共同经历"]
+    },
+    {
+      "id": "E0-23", "family": "relationship-boundary", "persona": "qiaonan",
+      "user": "今晚不想讲原因，也别追问。",
+      "draft": "好，今晚先放下这件事。你想安静待着也行。",
+      "protect": [], "candidate_ids": ["qn-company-v1"],
+      "must_preserve": ["尊重不追问的边界", "不装熟或添加新关系承诺"]
+    },
+    {
+      "id": "E0-24", "family": "already-sufficient-short", "persona": "qiaonan",
+      "user": "那就这么定了。", "draft": "好。", "protect": [], "candidate_ids": [],
+      "must_preserve": ["简短确认已经足够", "可以保持原稿，无需扩写"]
+    }
+  ],
+  "diagnostic_case_ids": ["E0-01", "E0-05", "E0-07", "E0-08", "E0-13", "E0-16", "E0-21", "E0-22"]
+}

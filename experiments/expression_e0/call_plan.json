@@ -1,0 +1,74 @@
+{
+  "version": "expression-e1-finite-plan-v1",
+  "frozen_date": "2026-11-16",
+  "execution_phase": "E1",
+  "e0_paid_calls": 0,
+  "provider": "deepseek_official",
+  "endpoint": "https://api.deepseek.com/chat/completions",
+  "model": "deepseek-flash",
+  "observed_model_version": "DeepSeek-V4.1-Flash-1017",
+  "thinking": {"type": "disabled"},
+  "response_format": {"type": "json_object"},
+  "tools": [],
+  "temperature": 1.0,
+  "max_tokens": 8192,
+  "max_input_characters": 60000,
+  "positions": {
+    "C_with_assets": 24,
+    "C_without_assets_diagnostic": 8,
+    "new_primary": 0,
+    "paid_selector": 0,
+    "paid_splitter": 0,
+    "total_physical_calls_max": 32
+  },
+  "arms": {
+    "A": "只读复用保存的主稿；真实v8与人工边界稿分别标明来源",
+    "B": "本地原文分段和节奏计划，保护片段与全部字符保留",
+    "C": "一次独立表达调用，同时提供表达正文与分段建议",
+    "C0": "八个诊断场景移除表达候选；人物身份及必要表达设定保持"
+  },
+  "wire_contract": {
+    "version": "expression-model-payload-v1",
+    "fields": ["body", "segments", "protected_ranges", "selected_expression_ids"],
+    "segments": "正文的有序半开字符区间；kind、required、delay_ms为呈现建议",
+    "protected_ranges": "引用输入保护片段ID并给出其在表达正文中的半开区间",
+    "host_owned_fields": ["interaction_ref", "draft_id", "attempt_id", "artifact_id", "context_sha256", "usage", "publication_id", "presentation_receipt"],
+    "transport_invalid": "保留首次返回证据，候选记不可用；运行接入时采用已保存主稿",
+    "body_valid_plan_invalid": "保留完整表达正文，单块呈现；分段失败另记",
+    "semantic_review": "条件、否定、承诺和事实状态由固定材料审阅，不另加在线裁判模型"
+  },
+  "failure_budget": {
+    "automatic_retry_per_position": 0,
+    "unknown_result": "保留原attempt并暂停整批；不重新发送该位置",
+    "consecutive_known_request_failures_stop": 2,
+    "invalid_successful_content": "保存首次内容和合同错误，不再生成同位置",
+    "quality_failure": "保留用于成对审阅，不追加抽样挑选"
+  },
+  "stop_between_requests": {
+    "known_tokens": 800000,
+    "conservative_estimated_cny": "5.00",
+    "unknown_usage_or_cost_estimate": "pause",
+    "source_or_scope_changed": "pause",
+    "supplier_model_or_price_changed": "refresh freeze before dispatch",
+    "input_over_capacity": "pause without dropping required material",
+    "hard_money_ceiling": null
+  },
+  "price_snapshot": {
+    "currency": "CNY",
+    "unit": "1000000 tokens",
+    "input_cache_hit_peak": "0.04",
+    "input_cache_hit_off_peak": "0.02",
+    "input_cache_miss_peak": "2.00",
+    "input_cache_miss_off_peak": "1.00",
+    "output_peak": "8.00",
+    "output_off_peak": "4.00",
+    "estimate_policy": "峰值价格且输入全部按未命中保守估算；实际账单金额独立记录，未知为null",
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "json_output_source": "https://api-docs.deepseek.com/zh-cn/guides/json_mode/",
+    "checked_date": "2026-11-16"
+  },
+  "accounting": "主稿旧账只读；每个C/C0独立attempt、首次完整返回、用量和等待；网络工具调用为0",
+  "presentation_measurement": "E1测表达新增等待并展示分段计划；逐条桌面体验在E4/E5验证",
+  "review": "匿名成对全文，允许都不好、无区别，作者意见保持原文；不预填通过",
+  "E5_holdout": "另建12个新场景和两段各15轮；E0不创建或消耗"
+}

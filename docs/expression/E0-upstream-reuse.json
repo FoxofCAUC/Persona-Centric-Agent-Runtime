@@ -1,0 +1,609 @@
+{
+  "version": "maibot-expression-reuse-v1",
+  "repository": "Mai-with-u/MaiBot",
+  "commit": "478f671e64467121fd3e39205c8d3507b5ce0bd6",
+  "license": {
+    "upstream_root": "GPL-3.0 LICENSE at pinned commit",
+    "pcar": "AGPL-3.0-only",
+    "direct_reuse_authorized_by_user": true,
+    "procedure": "移植时保留原作者/文件头、固定提交链接、原文许可及本地改动说明；E0没有复制上游可执行实现。",
+    "license_file_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  "verified_files": [
+    {
+      "path": "src/chat/replyer/maisaka_generator.py",
+      "blob": "20d4828e8cb75356f6fe1f8a86eb15787f8c74bb",
+      "sha256": "d5863b42285329b800d69573a8ea26ebf7dd8fe460217671930f384f0b607fc4",
+      "bytes": 855
+    },
+    {
+      "path": "src/chat/replyer/maisaka_generator_base.py",
+      "blob": "e09df10ff267f4fc3d9bdbf6b8b3d5a36fa116cc",
+      "sha256": "c5b068afa59cf9ab090c74dfdb189a31111378eeb5ddb4ee68715907626b55f8",
+      "bytes": 84949
+    },
+    {
+      "path": "src/chat/replyer/maisaka_expression_selector.py",
+      "blob": "99f7afbd02fb57e18c88da976797989e96cf3875",
+      "sha256": "f20685f39e02d3907db1449df120659d69cd57f79e4851171fbfdea24005247a",
+      "bytes": 27585
+    },
+    {
+      "path": "src/chat/replyer/creative_language.py",
+      "blob": "11b7a87ce7af404bd809ae2ad51e6e4cd314f420",
+      "sha256": "e7e841de43e3c8f0110de7267d0bcb9dedd8894213bb1f576d46fd91a64757d8",
+      "bytes": 18192
+    },
+    {
+      "path": "src/chat/replyer/replyer_manager.py",
+      "blob": "e3d6d6859897967807672cc63aa3ea036e547742",
+      "sha256": "3bccfac9584afeda23aeee040ad1f912ec2b84e03690db7419033084ea92dbe5",
+      "bytes": 2184
+    },
+    {
+      "path": "src/chat/replyer/expression_vector_index.py",
+      "blob": "d67cf19c33e3e861279e2cc4fdfdd43862d972d9",
+      "sha256": "38dd85ada85f00493eb94c33c0ba62c3aa0eec3e3c2a12fd887d9d7d12950a2a",
+      "bytes": 149554
+    },
+    {
+      "path": "src/chat/utils/utils.py",
+      "blob": "84127c9b9b3c74bea507e9671defacf0d744e558",
+      "sha256": "2c014b628cb13f9a483307894ed942fe7cc21b72ed04a9afebe5923d836d995f",
+      "bytes": 32073
+    },
+    {
+      "path": "src/chat/utils/llm_sentence_splitter.py",
+      "blob": "b787f5c3fad2de4c5ef28aa1590db9579e782cd2",
+      "sha256": "e6e2bda6306a28698b2d87ddd743855ed7c1a80c6214d1aeceafd2c6ed20212b",
+      "bytes": 5870
+    },
+    {
+      "path": "src/maisaka/builtin_tool/reply.py",
+      "blob": "113407b8de402be8f89f8689ffff0ea31cbcb564",
+      "sha256": "99def941490846735be3b163a109b1c9f85bfa7eeb776bfb75f0d6624da45aa9",
+      "bytes": 44405
+    },
+    {
+      "path": "src/learners/expression_learner.py",
+      "blob": "bcf4356b069b16307bcc1fec1990c93ed0911805",
+      "sha256": "53a168187485581aadc9bdd8c9dd880b521a38c1f66fdcb9af89924432c1fb37",
+      "bytes": 43399
+    },
+    {
+      "path": "src/learners/expression_style_utils.py",
+      "blob": "b9b3a10f03bf22d0cf5b9a3ccfb18eac38e588f0",
+      "sha256": "a05e8bca6b2209c90b260492818b9b59f0432ab757e868dc502a9640ef94e6bf",
+      "bytes": 945
+    },
+    {
+      "path": "src/config/official_configs.py",
+      "blob": "f34f478b1c9ed756f20c1b297df85ea9f4b53362",
+      "sha256": "ac53b33d5d9c7cd244017da00964c1c5f1c2e2e29b5d66075d7f7a478165a519",
+      "bytes": 188820
+    },
+    {
+      "path": "docs/replyer-prompt-profiles.md",
+      "blob": "7174c8c86520843b32e9c1a1d5dd8f58c8f9fdb4",
+      "sha256": "59b1adc7cc825a48da082907ec4c2a54ef312d53c5fb9e3f59617562c3a40fd4",
+      "bytes": 7024
+    },
+    {
+      "path": "docs/expression-vector-storage.md",
+      "blob": "ea78499154778aa1110070ed295578cbbdfc0c3d",
+      "sha256": "bd22ba87b60d87bf3cffd4420a2d49725381859dd5bdee18bcdbef7a315ab4f4",
+      "bytes": 5006
+    },
+    {
+      "path": "prompts/zh-CN/main/maisaka_replyer.prompt",
+      "blob": "e11ba64e70bdd4fccad9e3be9b847f044d5da7df",
+      "sha256": "79fc57654b27d88c9c322c080bcce8b79d949f5aaf886fd2759c47879f5d4122",
+      "bytes": 292
+    },
+    {
+      "path": "prompts/zh-CN/main/maisaka_expression_selector.prompt",
+      "blob": "3b092f91fa6bcda56153f433337acb1d091d9e4e",
+      "sha256": "45f3152ff0b2099edc25fb0d0a8d34b815297cda677aa3c2ce934d7fb2a2fb7f",
+      "bytes": 418
+    },
+    {
+      "path": "prompts/zh-CN/main/text_learning_expression.prompt",
+      "blob": "79fb157d904cf2f372ca9064ad1248f56070d93f",
+      "sha256": "e3d8f2d64a526e3031b063419b94a1a17da30fd2099d55de599f593fb82564d9",
+      "bytes": 1102
+    },
+    {
+      "path": "prompts/zh-CN/main/expression_evaluation.prompt",
+      "blob": "e0d4c3cc4ee382fa4d5abf28a55bc5496cc3740d",
+      "sha256": "1c82474c8fc5cf3678bbcb570bd032d3b049590751b9653020ad1543da8f78d3",
+      "bytes": 425
+    },
+    {
+      "path": "pytests/maisaka/test_replyer_expression_selection.py",
+      "blob": "4a9e2b88321b8163a90e9d1737d83a08958f29e1",
+      "sha256": "2f67a91299632c7985f07898c22ca1c3c6609fe9762db1c72dd87aede7f6a788",
+      "bytes": 4456
+    },
+    {
+      "path": "pytests/maisaka/test_replyer_history_filter.py",
+      "blob": "215b8ecc76d84bdd472a6402ac05ed46141e5bc0",
+      "sha256": "c5c2c450a9c63470b53cbe111d58bdcd8e7cd5545ef0fd4ab2c2ecfe9b317b4e",
+      "bytes": 6167
+    },
+    {
+      "path": "pytests/maisaka/test_super_creative_replyer.py",
+      "blob": "1bae45eec609c5b78ac52127d24d31d92f60c51c",
+      "sha256": "4b57572e58c41d05b8a6a50dbe424642582150df0b733f89622ec7ddab45af65",
+      "bytes": 23529
+    },
+    {
+      "path": "LICENSE",
+      "blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "bytes": 35149
+    },
+    {
+      "path": "pyproject.toml",
+      "blob": "df17717367622ad0dff603db89cc14cb9720c0cf",
+      "sha256": "f1e5f3d2d02f68d8042a1577dd5e86ab93b3180d76eb53ca919d8d6131109d43",
+      "bytes": 4077
+    },
+    {
+      "path": "src/chat/replyer/retro_prompt.py",
+      "blob": "3cde0a6899bbe245fd9cfbdfec93a0023a7e0e9e",
+      "sha256": "39d52f8789c537e27067d50a8987c8acd6bd23591290363b2d5cc97500a36814",
+      "bytes": 23781
+    },
+    {
+      "path": "src/chat/message_receive/uni_message_sender.py",
+      "blob": "3c48e62fd3daf6eea568d130c5057c39d3c05692",
+      "sha256": "3462b05a5d987c42f8ab77d1cf83e83e466d31b0cc23076e82cee681747db39d",
+      "bytes": 13656
+    },
+    {
+      "path": "src/services/send_service.py",
+      "blob": "a285f9db223c499c51496eebce6df8964ab79d03",
+      "sha256": "7295b2b693431c9ac9d14c33e6be2efcc0965547883b2f1a83dbeea1e3c66908",
+      "bytes": 56436
+    },
+    {
+      "path": "src/common/data_models/reply_generation_data_models.py",
+      "blob": "0da0cc27147f7db7da9cf47806ff19a02b965d41",
+      "sha256": "b13e0de62a6e996ea1221d87f80e32b2140c912c55d3b961802a71d192ea665f",
+      "bytes": 10727
+    },
+    {
+      "path": "prompts/zh-CN/main/reply_private.prompt",
+      "blob": "832a526a65b66697fa5973f99dfef0409a5cb108",
+      "sha256": "a87f9b2a88c05312cc1a6b6d9d172f22e86d9b7f5b347e64dd747ded5e6749b6",
+      "bytes": 489
+    },
+    {
+      "path": "prompts/zh-CN/main/reply_private_mai_replier.prompt",
+      "blob": "755a370907f0cd70500aca1c7f97d53ab4153030",
+      "sha256": "777842cda2a6cf12706020b18521be41d6847ac70ea0857f3e9fba56c69efc35",
+      "bytes": 676
+    },
+    {
+      "path": "src/common/reply_effect_record_codec.py",
+      "blob": "41de18f732a6a85cc4df093e02f8d2509c3810d9",
+      "sha256": "8b1ad3b1a8719bc9efd1085fc70b576948f751f13b95d4371ed1f026694a9410",
+      "bytes": 1330
+    }
+  ],
+  "components": [
+    {
+      "id": "style-ingest",
+      "source": "src/learners/expression_style_utils.py",
+      "phase": "E2",
+      "mode": "direct_extract",
+      "target": "persona_runtime/vendor/maibot_expression_style.py",
+      "locations": [
+        {
+          "name": "strip_expression_style_usage_prefix",
+          "start": 13,
+          "end": 19
+        },
+        {
+          "name": "normalize_expression_style_for_learning",
+          "start": 22,
+          "end": 25
+        },
+        {
+          "name": "is_prompt_example_expression_style",
+          "start": 28,
+          "end": 32
+        }
+      ],
+      "upstream_dependencies": [
+        "typing.Final"
+      ],
+      "adaptation": "保留上游示例污染集合与来源，只用于资产入库；不变成回复禁词替换。",
+      "required_checks": [
+        "example-prefix cleanup",
+        "prompt example contamination",
+        "self-output exclusion at caller"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "candidate-ids",
+      "source": "src/chat/replyer/maisaka_expression_selector.py",
+      "phase": "E1/E2",
+      "mode": "extract_and_adapt",
+      "target": "experiments/expression_e1/selector.py",
+      "locations": [
+        {
+          "name": "_parse_selected_ids",
+          "start": 255,
+          "end": 282
+        },
+        {
+          "name": "_build_expression_candidate_pool",
+          "start": 453,
+          "end": 492
+        }
+      ],
+      "upstream_dependencies": [
+        "LLM JSON parser",
+        "global_config",
+        "expression repository",
+        "vector retriever"
+      ],
+      "adaptation": "抽取合法ID、去重、上限及空选择；ID映射至PCAR版本化来源。拆除全局配置和Planner读取；首版本地预选，不新增每轮选择调用。",
+      "required_checks": [
+        "unoffered ID",
+        "duplicate ID",
+        "empty choice",
+        "revoked or foreign role source"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "candidate-scope",
+      "source": "src/chat/replyer/maisaka_expression_selector.py",
+      "phase": "E2",
+      "mode": "extract_and_adapt",
+      "target": "persona_runtime/expression_assets.py",
+      "locations": [
+        {
+          "name": "_load_all_expression_candidates",
+          "start": 72,
+          "end": 113
+        },
+        {
+          "name": "_normalize_candidate_list",
+          "start": 345,
+          "end": 368
+        }
+      ],
+      "upstream_dependencies": [
+        "expression database",
+        "global sharing groups"
+      ],
+      "adaptation": "由PCAR授权源提供角色与范围；共享须显式授权，不默认搬上游全局分享组。",
+      "required_checks": [
+        "role isolation",
+        "source revocation",
+        "versioned candidate snapshot"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "reply-context",
+      "source": "src/chat/replyer/maisaka_generator_base.py",
+      "phase": "E1/E3",
+      "mode": "extract_and_adapt",
+      "target": "experiments/expression_e1/context.py",
+      "locations": [
+        {
+          "name": "_build_history_messages",
+          "start": 562,
+          "end": 597
+        },
+        {
+          "name": "_build_request_messages",
+          "start": 608,
+          "end": 684
+        },
+        {
+          "name": "_should_keep_replyer_history_message",
+          "start": 913,
+          "end": 916
+        }
+      ],
+      "upstream_dependencies": [
+        "SessionBackedLLMClient",
+        "prompt loader",
+        "global_config",
+        "expression selector"
+      ],
+      "adaptation": "保留角色、任务、真实历史和表达装配结构；历史来自实际呈现回执，主稿另作材料，删除上游Planner及默认人格依赖。",
+      "required_checks": [
+        "real history only",
+        "current task retained",
+        "already spoken notice",
+        "role projection grant"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "independent-transform",
+      "source": "src/chat/replyer/maisaka_generator_base.py",
+      "phase": "E1/E3",
+      "mode": "adapt_stage_design",
+      "target": "experiments/expression_e1/transform.py",
+      "locations": [
+        {
+          "name": "_translate_super_creative_reply",
+          "start": 993,
+          "end": 1025
+        },
+        {
+          "name": "_persist_super_creative_stage",
+          "start": 940,
+          "end": 971
+        },
+        {
+          "name": "generation receipt sections",
+          "start": 1350,
+          "end": 1405
+        }
+      ],
+      "upstream_dependencies": [
+        "LLM service",
+        "super creative locale settings",
+        "generation metrics"
+      ],
+      "adaptation": "默认一次DeepSeek表达调用并返回正文和分段；沿用独立阶段/用量设计，不采用跨语言往返或成功主稿重新生成钩子。",
+      "required_checks": [
+        "distinct attempt",
+        "saved primary fallback",
+        "unknown retained",
+        "late result not republished"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "sentence-map",
+      "source": "src/chat/utils/llm_sentence_splitter.py",
+      "phase": "E1/E4",
+      "mode": "extract_and_adapt",
+      "target": "persona_runtime/vendor/maibot_sentence_map.py",
+      "locations": [
+        {
+          "name": "_strip_whitespace",
+          "start": 50,
+          "end": 52
+        },
+        {
+          "name": "_map_sentences_to_original",
+          "start": 55,
+          "end": 79
+        },
+        {
+          "name": "_extract_trailing_comma",
+          "start": 82,
+          "end": 88
+        },
+        {
+          "name": "split_text_with_llm",
+          "start": 91,
+          "end": 142
+        }
+      ],
+      "upstream_dependencies": [
+        "typing",
+        "JSON parser",
+        "LLM service wrapper"
+      ],
+      "adaptation": "抽取no_split和原文映射/分隔符逻辑；适配必须保留全部空白，以字符区间表达；保护块不切开。C同次调用给分段，B默认本地，不开启第三次收费调用。",
+      "required_checks": [
+        "no_split",
+        "whitespace loss regression",
+        "protected code",
+        "invalid split whole expression fallback"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "segment-shape",
+      "source": "src/chat/utils/utils.py",
+      "phase": "E1/E4",
+      "mode": "extract_and_adapt",
+      "target": "persona_runtime/expression_presentation.py",
+      "locations": [
+        {
+          "name": "ProcessedResponseSegment",
+          "start": 28,
+          "end": 36
+        },
+        {
+          "name": "_merge_processed_segments_to_max_count",
+          "start": 360,
+          "end": 415
+        },
+        {
+          "name": "process_llm_response_segments_async",
+          "start": 518,
+          "end": 549
+        }
+      ],
+      "upstream_dependencies": [
+        "random",
+        "global_config",
+        "splitter",
+        "logger"
+      ],
+      "adaptation": "复用文本/分隔符可还原及失败整块回退；PCAR冻结为原文区间。不上随机兜底、括号删除、固定超限截尾或固定气泡数规则。",
+      "required_checks": [
+        "exact reconstruction",
+        "whole body fallback",
+        "no deleted tail"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "typing-rhythm",
+      "source": "src/chat/utils/utils.py",
+      "phase": "E4",
+      "mode": "extract_and_adapt",
+      "target": "persona_runtime/expression_presentation.py",
+      "locations": [
+        {
+          "name": "calculate_typing_time",
+          "start": 557,
+          "end": 607
+        }
+      ],
+      "upstream_dependencies": [
+        "global_config typing speed"
+      ],
+      "adaptation": "抽取字符类别估时；首条就绪即显示，后续等待按实际就绪计，UI政策另冻结；不叠加完整生成等待。",
+      "required_checks": [
+        "first visible wait",
+        "remaining delays",
+        "restart no replayed typing"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "send-receipts",
+      "source": "src/services/send_service.py",
+      "phase": "E3/E4",
+      "mode": "adapt_receipt_design",
+      "target": "persona_runtime/expression_presentation.py",
+      "locations": [
+        {
+          "name": "selected expression metadata",
+          "start": 560,
+          "end": 575
+        },
+        {
+          "name": "send and callbacks",
+          "start": 848,
+          "end": 1012
+        }
+      ],
+      "upstream_dependencies": [
+        "platform sender",
+        "session history",
+        "memory callbacks"
+      ],
+      "adaptation": "平台发送成功改为桌面已呈现回执，保存主稿与再制稿；仅实际发言进入聊天和记忆，同根消费不重复。",
+      "required_checks": [
+        "partial display",
+        "publish claim race",
+        "role switch",
+        "one root consumption"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "expression-learning",
+      "source": "src/learners/expression_learner.py",
+      "phase": "E2",
+      "mode": "extract_and_adapt",
+      "target": "persona_runtime/expression_assets.py",
+      "locations": [
+        {
+          "name": "_prepare_learning_messages",
+          "start": 575,
+          "end": 587
+        },
+        {
+          "name": "_build_multi_learning_messages",
+          "start": 589,
+          "end": 635
+        },
+        {
+          "name": "_filter_expressions",
+          "start": 669,
+          "end": 745
+        },
+        {
+          "name": "_update_existing_expression",
+          "start": 865,
+          "end": 897
+        }
+      ],
+      "upstream_dependencies": [
+        "message store",
+        "LLM service",
+        "expression ORM",
+        "vector sync"
+      ],
+      "adaptation": "复用来源ID校验、SELF/黑名单筛选和去重；学习范围由PCAR授权，自己的输出不循环学习。上游count是合并学习频次，不冒充已发强化。",
+      "required_checks": [
+        "source ID validity",
+        "SELF exclusion",
+        "no persona fact import",
+        "duplicate frequency meaning"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "large-vector-index",
+      "source": "src/chat/replyer/expression_vector_index.py",
+      "phase": "E2+按规模",
+      "mode": "defer_full_subsystem",
+      "target": "persona_runtime/expression_assets.py",
+      "locations": [
+        {
+          "name": "scoped retrieval and MMR",
+          "start": 3141,
+          "end": 3270
+        }
+      ],
+      "upstream_dependencies": [
+        "embedding model space",
+        "vector storage generations",
+        "global configuration"
+      ],
+      "adaptation": "小库先用PCAR已有本地检索；保留相关性/多样化思路。全量索引和不可变存储在规模需要时单独抽取，E0仅核对索引与存储设计文档。",
+      "required_checks": [
+        "model space mismatch",
+        "source invalidation",
+        "generation atomicity when adopted"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    },
+    {
+      "id": "effect-record",
+      "source": "src/common/reply_effect_record_codec.py",
+      "phase": "E3按体积",
+      "mode": "defer_codec_keep_shape",
+      "target": "persona_runtime/expression_receipts.py",
+      "locations": [
+        {
+          "name": "encode_record_payload",
+          "start": 13,
+          "end": 22
+        },
+        {
+          "name": "decode_record_payload",
+          "start": 25,
+          "end": 40
+        }
+      ],
+      "upstream_dependencies": [
+        "json",
+        "zlib",
+        "base64"
+      ],
+      "adaptation": "记录形状可借用；当前SQLite原稿/产物先用PCAR现有存储，不为压缩引入第二套权威。编码不是自然度评价器。",
+      "required_checks": [
+        "lossless round trip if codec adopted"
+      ],
+      "implementation_status": "frozen_for_later_phase"
+    }
+  ],
+  "excluded_defaults": [
+    "global Planner and group-chat silence decisions",
+    "random typo or stock fallback",
+    "successful main generation replay hooks",
+    "automatic cross-role expression sharing",
+    "unapproved specialist model supplier",
+    "cross-language round trip as default"
+  ]
+}

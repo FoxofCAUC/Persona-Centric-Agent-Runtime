@@ -1,0 +1,509 @@
+{
+  "version": "expression-e0-materials-manifest-v1",
+  "baseline_commit": "7e8c1cc2284c6e3587ccd7bf5cf157bc4c3e1cdd",
+  "development_cases": 24,
+  "approved_actual_drafts": 16,
+  "authored_boundary_drafts": 8,
+  "cases": [
+    {
+      "id": "E0-01",
+      "family": "tired-company",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-01.json",
+      "sha256": "59c42cecea67f687c72ed2efe95f6c1b4ed5bacff9ebfcae9b2262299e3b1ac8",
+      "origin_position": "RC-1-two_stage",
+      "origin_result_sha256": "5103874065678e48b599c54c8aa5a79ba77992f41009c7c38f00b40fac8cb126",
+      "candidate_ids": [
+        "qn-company-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-02",
+      "family": "old-preference",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-02.json",
+      "sha256": "29c50700c79ccc9cce2eb2292bf97fcb00fe5ec85ef8a24f1e0a53a38c557867",
+      "origin_position": "RC-2-two_stage",
+      "origin_result_sha256": "8425d7dff4c334bbba2f066e6aea73b6048d3dad5cd25009aa85168c2342008e",
+      "candidate_ids": [],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-03",
+      "family": "daily-plan",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-03.json",
+      "sha256": "1a335dcbd80cd1896021cbb51ccfa4c2fae33e9ee640db4806def8e59082358a",
+      "origin_position": "RC-4-two_stage",
+      "origin_result_sha256": "75ce73b24a568d67743f8edc997f5af1c97c890ff535d1504acb8a32a9d96763",
+      "candidate_ids": [],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-04",
+      "family": "followup-conditions",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-04.json",
+      "sha256": "e74caf00340fa5c6e53b16af5de6fa823cf03abe23924c34e01c1b820f456c33",
+      "origin_position": "RC-5-two_stage",
+      "origin_result_sha256": "73ab87fa6d1c2f4d6f32e14b9f02e74dc1eb21d3d887a46254d4936d647c6283",
+      "candidate_ids": [],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-05",
+      "family": "preference-correction",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-05.json",
+      "sha256": "528781f19b8b7144842f3416a367f8bf4a0909d241870677bab6d32601a8b212",
+      "origin_position": "RC-6-two_stage",
+      "origin_result_sha256": "feb7614866483778476aced55fdd0a0e53314f8ce485b6600ccdf7311f82d2c6",
+      "candidate_ids": [
+        "qn-correction-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-06",
+      "family": "casual-humor",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-06.json",
+      "sha256": "f9ce2de94f78517b6b77820cbde383d8b9c7daccad4952bc9545bb92cf14d458",
+      "origin_position": "RC-7-two_stage",
+      "origin_result_sha256": "f7cd888446bfaad17f92d9a83f9bb8c8b13bb4d9047fdbac5f2b267c289ae4c1",
+      "candidate_ids": [
+        "qn-casual-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-07",
+      "family": "technical-context",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-07.json",
+      "sha256": "a51447c008a42d48c66743df7a04ae5556061a51d600b63d92f2519cd26911ab",
+      "origin_position": "RC-8-two_stage",
+      "origin_result_sha256": "1c48af9014c56eeb1d5cc83afd40fb5d3925afba7c0b570c2da61bddeba6afac",
+      "candidate_ids": [
+        "qn-technical-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-08",
+      "family": "technical-followup",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-08.json",
+      "sha256": "4e9b89d780ef5e670e52735a87239ff34aec745ce069c1c647270d4fa56b3286",
+      "origin_position": "RC-9-two_stage",
+      "origin_result_sha256": "0d9a81375d51fb462fcd865792f15eaa8f526c062d6e2c8188ebce4bbf837fef",
+      "candidate_ids": [
+        "qn-technical-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-09",
+      "family": "corrected-memory",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-09.json",
+      "sha256": "1eefb9faf23d3656d5e381b84ec76c96cbf9544c4ea0a7473bb064b0b25410a3",
+      "origin_position": "RC-10-two_stage",
+      "origin_result_sha256": "d7dbde785ccd7f345432073754b444988e337e16e24577d8e5f2e935de40a1c5",
+      "candidate_ids": [],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-10",
+      "family": "search-after-notice",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-10.json",
+      "sha256": "cd9255f899ddf1efc9b94f43854714fefbd59088fb36c183161000289c12aba5",
+      "origin_position": "RC-12-two_stage",
+      "origin_result_sha256": "9751e0cc110c665e7ef1b6c78835a993ea989a4aceb6fbda11d2ff795e66d675",
+      "candidate_ids": [],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-11",
+      "family": "reuse-search-followup",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-11.json",
+      "sha256": "6c05b384ca058f2160b59a91ebc267891b216ab3609f8488c4ead5a60f18d7c8",
+      "origin_position": "RC-13-two_stage",
+      "origin_result_sha256": "533333621fda97d1bc12124143614e682c797c687666de1ee2678edd815d0d59",
+      "candidate_ids": [],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-12",
+      "family": "stop-giving-advice",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-12.json",
+      "sha256": "c38afe97eb5a69d56ecf1141270e84d78a8521e14bda79955d9ba17230eaf0bb",
+      "origin_position": "RC-14-two_stage",
+      "origin_result_sha256": "8411327c35e790625d5af522856a36bb7a5eee0f04a655c0786d627da8ed225d",
+      "candidate_ids": [
+        "qn-company-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-13",
+      "family": "withdrawn-preference",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-13.json",
+      "sha256": "5dbebc49ee20ca6949e4834ec5dbe80e4e2347cb49cbb252b164f6ea808cdfd9",
+      "origin_position": "RC-16-two_stage",
+      "origin_result_sha256": "7c2c037716f89e9df31487feebd75bd777a1db80f1343c6d3b519ed6f82fd81b",
+      "candidate_ids": [
+        "qn-correction-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-14",
+      "family": "correction-followup",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-14.json",
+      "sha256": "277b8272387b64ad2bc1a00910dee9d670ce784bc8a4402867001f304ebb65ba",
+      "origin_position": "RC-19-two_stage",
+      "origin_result_sha256": "84de7acda06227936aaff279070eff98643a63e41b51b8cb03e25d036ccfaf5b",
+      "candidate_ids": [
+        "qn-correction-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-15",
+      "family": "avoid-rule-summary",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-15.json",
+      "sha256": "fb4aa57c2cd73f949adf0936d9ed3089e8f894001f9e92a970ccc5ed340d60ac",
+      "origin_position": "RC-21-two_stage",
+      "origin_result_sha256": "dedcd87e317ae11a1df0314573916c3d64d96e7aff168d28c1771d8c8492153b",
+      "candidate_ids": [
+        "qn-company-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-16",
+      "family": "natural-goodbye",
+      "persona": "qiaonan",
+      "source_kind": "approved_first_v8_reply",
+      "store": "local_approved_receipt",
+      "file": "E0-16.json",
+      "sha256": "af65823da3088b6e4d0d9f5071c9cf3875f99352188f33f20fbf9e946b716c3d",
+      "origin_position": "RC-24-two_stage",
+      "origin_result_sha256": "6df1870f4460471c064092e684c55805ed899fa2a66bb1315c55d9ba95f4f173",
+      "candidate_ids": [
+        "qn-casual-v1"
+      ],
+      "review_status": "author_passed_original_draft; expression_not_generated"
+    },
+    {
+      "id": "E0-17",
+      "family": "code-command-whitespace",
+      "persona": "qiaonan",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-17.json",
+      "sha256": "a22bd1462e595c98be45fc6e5e5bf509e95e92b5b87872022462f845a56f3adb",
+      "candidate_ids": [],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    },
+    {
+      "id": "E0-18",
+      "family": "quote-formula-punctuation",
+      "persona": "qiaonan",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-18.json",
+      "sha256": "eb1e5296637d961af0ab98aa8714c10a3ea1680549ec012f0b67467c3eb125b3",
+      "candidate_ids": [],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    },
+    {
+      "id": "E0-19",
+      "family": "conditions-negation-commitment",
+      "persona": "qiaonan",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-19.json",
+      "sha256": "1c230b03955f7eb0cba52993e87933270c510e3a1f6ff58a50eaabd394e1c25b",
+      "candidate_ids": [
+        "qn-technical-v1"
+      ],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    },
+    {
+      "id": "E0-20",
+      "family": "search-unknown-already-spoken",
+      "persona": "qiaonan",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-20.json",
+      "sha256": "be85c576e07e63042b4f4521b4a104c9c96660662244b991be6ce952e88d3859",
+      "candidate_ids": [],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    },
+    {
+      "id": "E0-21",
+      "family": "same-topic-different-persona",
+      "persona": "qiaonan",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-21.json",
+      "sha256": "cb7935d57843a97ae39290d16a2dfa5dc66d143fa5f042cdcfecab7e8233b1a8",
+      "candidate_ids": [
+        "qn-casual-v1"
+      ],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    },
+    {
+      "id": "E0-22",
+      "family": "same-topic-different-persona",
+      "persona": "ningzhou",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-22.json",
+      "sha256": "0f68722ed5f325284787c9aa7a5f0d5ce1017cf60abbf99b0b3c131907a31b89",
+      "candidate_ids": [
+        "nz-casual-v1"
+      ],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    },
+    {
+      "id": "E0-23",
+      "family": "relationship-boundary",
+      "persona": "qiaonan",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-23.json",
+      "sha256": "4137d12a1c6c921acbe2a103d503958fb44a45ef9cc48647c8cdc8eaea4fc4ac",
+      "candidate_ids": [
+        "qn-company-v1"
+      ],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    },
+    {
+      "id": "E0-24",
+      "family": "already-sufficient-short",
+      "persona": "qiaonan",
+      "source_kind": "authored_public_fixture",
+      "store": "public_fixture",
+      "file": "E0-24.json",
+      "sha256": "a34b7d5a41050cff5d7bef41c311749a236b86731af8cdc9688fe8c163f5c80b",
+      "candidate_ids": [],
+      "review_status": "engineering_fixture; no provider return or quality approval claimed"
+    }
+  ],
+  "diagnostic_case_ids": [
+    "E0-01",
+    "E0-05",
+    "E0-07",
+    "E0-08",
+    "E0-13",
+    "E0-16",
+    "E0-21",
+    "E0-22"
+  ],
+  "positions": [
+    {
+      "id": "E0-01-C",
+      "case_id": "E0-01",
+      "arm": "C"
+    },
+    {
+      "id": "E0-02-C",
+      "case_id": "E0-02",
+      "arm": "C"
+    },
+    {
+      "id": "E0-03-C",
+      "case_id": "E0-03",
+      "arm": "C"
+    },
+    {
+      "id": "E0-04-C",
+      "case_id": "E0-04",
+      "arm": "C"
+    },
+    {
+      "id": "E0-05-C",
+      "case_id": "E0-05",
+      "arm": "C"
+    },
+    {
+      "id": "E0-06-C",
+      "case_id": "E0-06",
+      "arm": "C"
+    },
+    {
+      "id": "E0-07-C",
+      "case_id": "E0-07",
+      "arm": "C"
+    },
+    {
+      "id": "E0-08-C",
+      "case_id": "E0-08",
+      "arm": "C"
+    },
+    {
+      "id": "E0-09-C",
+      "case_id": "E0-09",
+      "arm": "C"
+    },
+    {
+      "id": "E0-10-C",
+      "case_id": "E0-10",
+      "arm": "C"
+    },
+    {
+      "id": "E0-11-C",
+      "case_id": "E0-11",
+      "arm": "C"
+    },
+    {
+      "id": "E0-12-C",
+      "case_id": "E0-12",
+      "arm": "C"
+    },
+    {
+      "id": "E0-13-C",
+      "case_id": "E0-13",
+      "arm": "C"
+    },
+    {
+      "id": "E0-14-C",
+      "case_id": "E0-14",
+      "arm": "C"
+    },
+    {
+      "id": "E0-15-C",
+      "case_id": "E0-15",
+      "arm": "C"
+    },
+    {
+      "id": "E0-16-C",
+      "case_id": "E0-16",
+      "arm": "C"
+    },
+    {
+      "id": "E0-17-C",
+      "case_id": "E0-17",
+      "arm": "C"
+    },
+    {
+      "id": "E0-18-C",
+      "case_id": "E0-18",
+      "arm": "C"
+    },
+    {
+      "id": "E0-19-C",
+      "case_id": "E0-19",
+      "arm": "C"
+    },
+    {
+      "id": "E0-20-C",
+      "case_id": "E0-20",
+      "arm": "C"
+    },
+    {
+      "id": "E0-21-C",
+      "case_id": "E0-21",
+      "arm": "C"
+    },
+    {
+      "id": "E0-22-C",
+      "case_id": "E0-22",
+      "arm": "C"
+    },
+    {
+      "id": "E0-23-C",
+      "case_id": "E0-23",
+      "arm": "C"
+    },
+    {
+      "id": "E0-24-C",
+      "case_id": "E0-24",
+      "arm": "C"
+    },
+    {
+      "id": "E0-01-C0",
+      "case_id": "E0-01",
+      "arm": "C0"
+    },
+    {
+      "id": "E0-05-C0",
+      "case_id": "E0-05",
+      "arm": "C0"
+    },
+    {
+      "id": "E0-07-C0",
+      "case_id": "E0-07",
+      "arm": "C0"
+    },
+    {
+      "id": "E0-08-C0",
+      "case_id": "E0-08",
+      "arm": "C0"
+    },
+    {
+      "id": "E0-13-C0",
+      "case_id": "E0-13",
+      "arm": "C0"
+    },
+    {
+      "id": "E0-16-C0",
+      "case_id": "E0-16",
+      "arm": "C0"
+    },
+    {
+      "id": "E0-21-C0",
+      "case_id": "E0-21",
+      "arm": "C0"
+    },
+    {
+      "id": "E0-22-C0",
+      "case_id": "E0-22",
+      "arm": "C0"
+    }
+  ],
+  "material_body_policy": "real receipt bodies and needed actual context remain outside source Git; public fixtures explicitly authored",
+  "main_calls_replayed": false,
+  "expression_calls_started": 0,
+  "user_expression_review": "not_started"
+}
