@@ -32,12 +32,12 @@ def record_completed(store,turn_id,*,clock=None):
             ORDER BY a.rowid DESC LIMIT 1''',(turn_id,)).fetchone()
         if not use:return []
         meta=json.loads(use['details_json']).get('recall_support')
-        if not meta:return []
+        if not meta or not meta.get('selection_id'):return []
         record=db.execute('SELECT * FROM recall_support_searches WHERE id=?',(meta['selection_id'],)).fetchone()
         if not record or record['root_id']!=turn_id:raise RuntimeErrorBase('recall_selection_identity_invalid')
         data=json.loads(record['result_json']);selected=turn_scope(db,dict(turn))
-        ids=[i['id'] for i in data['selected']]
-        if ids!=meta['selected_ids'] or record['scope_key']!=fingerprint(selected):raise RuntimeErrorBase('recall_selection_identity_invalid')
+        all_ids={i['id'] for i in data['selected']};ids=meta['selected_ids']
+        if not set(ids)<=all_ids or record['scope_key']!=fingerprint(selected):raise RuntimeErrorBase('recall_selection_identity_invalid')
         when=epoch(turn['created_at']);aid=use['attempt_id']
     return [service.record(ident,turn_id,selected,kind='context_adopted',status='completed',occurred_at=when,
         evidence={'attempt_id':aid,'selection_id':meta['selection_id'],'observable_proxy':'successful_context_adoption'}) for ident in ids]

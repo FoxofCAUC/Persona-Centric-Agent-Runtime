@@ -119,11 +119,14 @@ class CognitiveService:
         if 'knowledge' in details:
             manifest['knowledge']=details['knowledge']
             manifest['evidence_refs'].extend(details['knowledge'].get('evidence',[]))
+        if details.get('recall_support'):manifest['recall_support']=details['recall_support']
         return attach(manifest,turn,details,selection_record)
 
     def prepare(self,turn_id,character_selection=None,observation=None):
         started=time.perf_counter()
         with self.store.connection() as conn:turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
+        from .recall_runtime import RecallRuntime
+        recall=RecallRuntime(self.store).prepare(turn)
         from .companion import minimal
         is_minimal=minimal(turn)
         try:character=self.characters.prepare(turn,character_selection,behavior_cues=False) if is_minimal else self.characters.prepare(turn,character_selection)
@@ -135,7 +138,9 @@ class CognitiveService:
         voice=read_voice(turn)
         if decision is not None and voice:decision={**decision,'_voice_version':voice['version']}
         from .decision_capsule import capsule
-        evidence=self.dialogue.evidence(turn)
+        if recall is not None:
+            with self.store.connection() as conn:evidence=self.dialogue.basic_evidence(conn,turn)
+        else:evidence=self.dialogue.evidence(turn)
         knowledge=self.engine.knowledge.prepare_turn(turn)
         with self.store.connection() as conn:
             if evidence is not None:
@@ -164,6 +169,8 @@ class CognitiveService:
         return decision|{'applied_to_prompt':bool(text),'capsule':meta}
 
     def finalize(self,conn,turn,prepared):
+        from .recall_runtime import validate as validate_recall
+        validate_recall(conn,turn,prepared.get('details',{}).get('recall_support'))
         if prepared.get('_conversation_frozen'):return prepared
         if prepared.get('_dialogue_pipeline'):
             from .chat import ModelError

@@ -46,8 +46,8 @@ def inspect(home,preparation):
         'database_migrated':False,'services_started':False,'formal_activation':False}
     report['data']['upgrade_required_for_candidate']=report['data'].get('schema_version')!=SCHEMA_VERSION
     report['passed']=all(report['providers'].values()) and report['system_https_proxy_configured'] and (
-        report['data'].get('schema_version') in (27,28) and SCHEMA_VERSION==28 and
-        fixture.get('schema_version')==28 and fixture.get('public_fixture_units')==7
+        report['data'].get('schema_version') in (27,28,29) and SCHEMA_VERSION in (28,29) and
+        fixture.get('schema_version') in (28,29) and fixture.get('public_fixture_units')==7
         and report['preparation']['public_artificial'] and report['preparation']['continuous_turns']==24)
     return report
 

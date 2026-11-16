@@ -285,6 +285,8 @@ class Recall(unittest.IsolatedAsyncioTestCase):
 
     async def test_context_packet_adapter_actual_model_input_and_success_feedback(self):
         self.setup_recall();unit,_,_=await self.register_memory('云雾乌龙茶是保留给周末的话题')
+        from persona_runtime.recall_runtime import RecallRuntime
+        runtime=RecallRuntime(self.store);runtime.update(self.persona['id'],True,0,identifier())
         from persona_runtime.recall_context import prepare,record_completed
         original=self.chat.cognitive.prepare
         captured=[]
@@ -429,7 +431,8 @@ class Recall(unittest.IsolatedAsyncioTestCase):
         self.store.initialize()
         with self.store.connection() as db:
             self.assertEqual([tuple(r) for r in db.execute('SELECT * FROM memories')],before)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],28)
+            from persona_runtime.storage import SCHEMA_VERSION
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],SCHEMA_VERSION)
         self.assertTrue(list((self.paths.home/'backups').glob('before-recall-support-*.sqlite3')))
 
 if __name__=='__main__':unittest.main()

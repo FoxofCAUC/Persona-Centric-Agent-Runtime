@@ -4,6 +4,7 @@ This package is callable on isolated instances. Production default activation an
 continuous human review are package .3; no independent scheduler/model is created.
 """
 from datetime import datetime,timezone
+from contextlib import nullcontext
 import json,time,sqlite3,re
 from .archive import fingerprint
 from .models import RuntimeErrorBase
@@ -124,15 +125,18 @@ class RecallSupport:
                 'clock_anomaly':anomaly,'text':data['text']}
 
     def select(self,scope,query,*,root_id=None,session_id=None,kinds=policy.KINDS,limit=8,
-               candidate_budget=64,deep=False,required_ids=()):
+               candidate_budget=64,deep=False,required_ids=(),lexical_terms=None):
         selected=normalize_scope(scope);key=fingerprint(selected)
         if not isinstance(query,str) or len(query)>16000:raise RuntimeErrorBase('recall_query_invalid')
         if not kinds or not set(kinds)<=set(policy.KINDS):raise RuntimeErrorBase('recall_kind_invalid')
         if type(limit) is not int or not 1<=limit<=32 or type(candidate_budget) is not int or not limit<=candidate_budget<=256:
             raise RuntimeErrorBase('recall_candidate_budget_invalid')
         if type(deep) is not bool or len(required_ids)>min(32,candidate_budget):raise RuntimeErrorBase('recall_search_options_invalid')
-        query_tokens=tokens(query,query=True);ts=query_tokens[:32]
-        request=fingerprint([selected,query,root_id,session_id,kinds,limit,candidate_budget,deep,required_ids])
+        if lexical_terms is not None and (not isinstance(lexical_terms,(list,tuple)) or len(lexical_terms)>256 or any(not isinstance(t,str) or not 1<=len(t)<=128 for t in lexical_terms)):
+            raise RuntimeErrorBase('recall_lexical_terms_invalid')
+        query_tokens=list(dict.fromkeys(lexical_terms)) if lexical_terms is not None else tokens(query,query=True)
+        ts=query_tokens[:32]
+        request=fingerprint([selected,query,root_id,session_id,kinds,limit,candidate_budget,deep,required_ids,lexical_terms])
         with self.store.connection(write=True) as db:
             now,anomaly=self._time(db);items=[];excluded={};read=0;layers=[];seen=set()
             def accept(row,hits,required=False):
@@ -198,13 +202,13 @@ class RecallSupport:
             db.execute('INSERT OR IGNORE INTO recall_support_searches VALUES(?,?,?,?,?,?,?)',(ident,root_id,key,request,fingerprint(query),now,encoded(saved)))
             return audit
 
-    def record(self,unit_id,root_id,scope,*,kind,status,occurred_at,evidence):
+    def record(self,unit_id,root_id,scope,*,kind,status,occurred_at,evidence,connection=None):
         """Trusted adapter entry. Evidence must resolve a real scoped root interaction."""
         selected=normalize_scope(scope)
         if kind not in policy.ALPHAS or status not in ('completed','failed','cancelled','unknown'):
             raise RuntimeErrorBase('recall_event_invalid')
         when=policy.finite(occurred_at)
-        with self.store.connection(write=True) as db:
+        with (nullcontext(connection) if connection is not None else self.store.connection(write=True)) as db:
             now,anomaly=self._time(db)
             if when>now:raise RuntimeErrorBase('recall_event_future')
             root=db.execute('SELECT * FROM turns WHERE id=?',(root_id,)).fetchone()
@@ -224,11 +228,21 @@ class RecallSupport:
                 if not isinstance(quote,str) or len(quote.strip())<2 or quote not in input_text(db,dict(root)) or quote not in data['text']:
                     raise RuntimeErrorBase('recall_mention_quote_invalid')
             elif status=='completed':
-                receipt=db.execute('SELECT * FROM attempts WHERE id=? AND turn_id=?',(evidence.get('attempt_id'),root_id)).fetchone()
-                use=db.execute('SELECT details_json FROM context_uses WHERE attempt_id=?',(evidence.get('attempt_id'),)).fetchone()
-                if not receipt or receipt['status']!='completed' or root['status']!='completed' or not use:
-                    raise RuntimeErrorBase('recall_consumption_unconfirmed')
-                metadata=json.loads(use[0]).get('recall_support',{})
+                if evidence.get('organization_attempt_id'):
+                    receipt=db.execute('''SELECT a.status,t.payload_json FROM organization_attempts a
+                        JOIN organization_tasks t ON t.id=a.task_id WHERE a.id=? AND t.persona_id=?''',
+                        (evidence['organization_attempt_id'],selected['persona_id'])).fetchone()
+                    use=db.execute('SELECT manifest_json FROM context_manifests WHERE organization_attempt_id=? ORDER BY rowid DESC LIMIT 1',(evidence['organization_attempt_id'],)).fetchone()
+                    payload=json.loads(receipt['payload_json']).get('knowledge_processing',{}) if receipt else {}
+                    if not receipt or receipt['status']!='completed' or not use or payload.get('root_turn_id')!=root_id or payload.get('stage')!='conversation_search_notice':
+                        raise RuntimeErrorBase('recall_consumption_unconfirmed')
+                    metadata=json.loads(use[0]).get('recall_support',{})
+                else:
+                    receipt=db.execute('SELECT * FROM attempts WHERE id=? AND turn_id=?',(evidence.get('attempt_id'),root_id)).fetchone()
+                    use=db.execute('SELECT details_json FROM context_uses WHERE attempt_id=?',(evidence.get('attempt_id'),)).fetchone()
+                    if not receipt or receipt['status']!='completed' or root['status']!='completed' or not use:
+                        raise RuntimeErrorBase('recall_consumption_unconfirmed')
+                    metadata=json.loads(use[0]).get('recall_support',{})
                 if unit_id not in metadata.get('selected_ids',[]):raise RuntimeErrorBase('recall_consumption_not_adopted')
                 selection=db.execute('SELECT * FROM recall_support_searches WHERE id=?',(metadata.get('selection_id'),)).fetchone()
                 if not selection or selection['root_id']!=root_id or selection['scope_key']!=fingerprint(selected):

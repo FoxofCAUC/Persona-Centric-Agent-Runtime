@@ -53,6 +53,21 @@ def candidates(db, pid, channel):
 
 
 def previous(db, turn, question):
+    from .recall_runtime import selection as recall_selection
+    recalled=recall_selection(db,turn)
+    if recalled is not None:
+        for item in recalled['selected']:
+            if item['kind']!='native':continue
+            for (raw,) in db.execute('SELECT reference_json FROM recall_support_locations WHERE unit_id=? ORDER BY observed_epoch DESC',(item['id'],)):
+                ref=json.loads(raw)
+                row=db.execute('SELECT value FROM knowledge_control WHERE key=?',(ref.get('key'),)).fetchone()
+                if not row:continue
+                record=json.loads(row[0])['data']
+                sources,organized=apply_states(db,turn['persona_id'],record.get('sources',[]),record.get('organized',{}))
+                supporting=set(organized.get('source_ids',[]))
+                sources=[s for s in sources if not supporting or s['id'] in supporting]
+                if any(s['id']==item['source_id'] for s in sources):return {'sources':sources,'organized':organized,'record':record}
+        return {'sources':[],'organized':{},'record':None}
     from .chat import terms
     query = terms(question); ranked = []
     for index, record in enumerate(candidates(db, turn['persona_id'], turn['channel'])):

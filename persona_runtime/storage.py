@@ -20,7 +20,7 @@ from .schema_m73 import SCHEMA13, TABLES13
 from .schema_disposition import TABLES19
 from .schema_observation import TABLES20
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 M1_TABLES = ("users", "personas", "relationships", "sessions", "events", "memories", "settings")
 M2_TABLES = M1_TABLES + ("channel_sessions", "turns", "attempts", "deliveries")
 M3_TABLES = M2_TABLES + ("request_activity", "service_notices")
@@ -168,6 +168,9 @@ class Store:
         if version != SCHEMA_VERSION:
             raise RuntimeErrorBase(f"Incompatible database schema version {version}; expected {SCHEMA_VERSION}")
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if SCHEMA_VERSION>=29:
+            from .schema_recall_runtime import TABLES as runtime_recall_tables
+            if not set(runtime_recall_tables).issubset(tables):raise RuntimeErrorBase('Recall runtime schema is incomplete')
         if SCHEMA_VERSION>=28:
             from .schema_recall_support import TABLES as recall_support_tables
             if not set(recall_support_tables).issubset(tables):raise RuntimeErrorBase('Recall support schema is incomplete')
@@ -216,7 +219,7 @@ class Store:
         conn = self._connect(create=True)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27):
+            if version in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28):
                 tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not set(M1_TABLES).issubset(tables):
                     raise RuntimeErrorBase("M1 database schema is incomplete; migration refused")
@@ -235,8 +238,9 @@ class Store:
                 prefix = 'before-m9a3' if version == 25 else prefix
                 prefix = 'before-m9b-shadow' if version == 26 else prefix
                 prefix = 'before-recall-support' if version == 27 else prefix
+                prefix = 'before-recall-runtime' if version == 28 else prefix
                 prefix = 'before-disposition' if version in (17,18) else prefix
-                if version in (23,24,25,26,27):
+                if version in (23,24,25,26,27,28):
                     from .character_embedding import private_directory
                     private_directory(self.paths.home,self.paths.home/'backups')
                 backup = self.paths.home / "backups" / f"{prefix}-{uuid4()}.sqlite3"
@@ -293,7 +297,7 @@ class Store:
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif version == 12 and set(TABLES[:-len(TABLES13)]).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            elif version in (13,14,15,16,17,18,19,20,21,22,23,24,25,26,27) and set(TABLES).issubset(tables):
+            elif version in (13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28) and set(TABLES).issubset(tables):
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 self._check(conn)
@@ -367,6 +371,9 @@ class Store:
             if version < 28 and SCHEMA_VERSION >= 28:
                 from .schema_recall_support import migrate as migrate_recall_support
                 migrate_recall_support(conn)
+            if version < 29 and SCHEMA_VERSION >= 29:
+                from .schema_recall_runtime import migrate as migrate_recall_runtime
+                migrate_recall_runtime(conn)
             if conn.execute("PRAGMA foreign_key_check").fetchone():
                 raise RuntimeErrorBase("Migration foreign key verification failed")
             self._check(conn)

@@ -82,6 +82,10 @@ class SearchNotice:
         text = validate_reply(response, 'legacy_full').text
         root = dict(db.execute('SELECT * FROM turns WHERE id=?',
             (payload['knowledge_processing']['root_turn_id'],)).fetchone())
+        from .recall_runtime import validate as validate_recall,queue_feedback
+        manifest=db.execute('SELECT organization_attempt_id,manifest_json FROM context_manifests WHERE organization_task_id=? ORDER BY rowid DESC LIMIT 1',(task['id'],)).fetchone()
+        meta=json.loads(manifest['manifest_json']).get('recall_support') if manifest else None
+        validate_recall(db,root,meta)
         key = 'knowledge.search_notice.turn.' + root['id']
         old = db.execute('SELECT value FROM knowledge_control WHERE key=?', (key,)).fetchone()
         if old:
@@ -98,4 +102,5 @@ class SearchNotice:
             (key, json.dumps({'revision': 0, 'data': value}, ensure_ascii=False)))
         from .progress import record
         record(db, root['id'], 'search_notice_published')
+        if manifest:queue_feedback(db,root,manifest['organization_attempt_id'],'notice',meta)
         return {'event_id': event_id, 'published': True}

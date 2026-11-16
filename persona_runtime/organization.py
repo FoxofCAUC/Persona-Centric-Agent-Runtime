@@ -512,6 +512,16 @@ class OrganizationEngine:
                     self.schedule.incremental_tick()
                 worked = await self.run_next()
                 if not worked:
+                    if background_allowed(self.store.paths) and time.time()-getattr(self,'_recall_maintenance_at',0)>=2:
+                        self._recall_maintenance_at=time.time()
+                        from .recall_runtime import RecallRuntime
+                        local_work=asyncio.create_task(asyncio.to_thread(RecallRuntime(self.store).maintain,pages=1))
+                        try:await asyncio.shield(local_work)
+                        except asyncio.CancelledError:
+                            # Cancelling the asyncio waiter does not stop SQLite's
+                            # worker thread. Own it until its connection is closed.
+                            await asyncio.shield(local_work)
+                            raise
                     await asyncio.sleep(.5)
             except asyncio.CancelledError:
                 raise

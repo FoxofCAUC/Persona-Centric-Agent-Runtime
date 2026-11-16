@@ -122,7 +122,7 @@ def material(db,kind,ref,*,now):
     data['lineage']=fingerprint([kind,data['lineage'],offset])
     return data
 
-def scan(db,pid,kind,cursor,limit,now):
+def scan(db,pid,kind,cursor,limit,now,*,only_row=None):
     """Keyset pagination over canonical rows, resumable even within a large page."""
     rowid,part=cursor
     if kind=='memory':sql='SELECT rowid AS source_row,id FROM memories WHERE persona_id=? AND rowid>=? ORDER BY rowid'
@@ -131,6 +131,8 @@ def scan(db,pid,kind,cursor,limit,now):
     else:raise RuntimeErrorBase('recall_kind_invalid')
     result=[];next_cursor=[rowid,part];seen=0
     # Bound row reads even when every source is withdrawn or otherwise ineligible.
+    if only_row is not None:
+        sql=sql.replace(' ORDER BY rowid',' AND rowid='+str(int(only_row))+' ORDER BY rowid')
     for row in db.execute(sql+' LIMIT ?',(pid,rowid,limit+1)):
         if seen>=limit: return result,next_cursor,False
         seen+=1;rid=row['source_row'];skip=part if rid==rowid else 0

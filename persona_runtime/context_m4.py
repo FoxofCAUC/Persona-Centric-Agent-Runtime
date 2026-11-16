@@ -28,7 +28,9 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
         turns=[{'id':g['turn_id'],'ordinal':evidence['orders'][g['turn_id']]} for g in evidence['pool']]
         recent_queries=[render_input(i['group']['members']) for i in evidence['items'] if i['kind']=='recent']
     from .context_memory import rank_memories
-    memories=rank_memories(conn,turn,text,recent_queries,enforce_scope=evidence is not None)[:8]
+    from .recall_runtime import selection as recall_selection
+    recall_plan=recall_selection(conn,turn)
+    memories=[] if recall_plan is not None else rank_memories(conn,turn,text,recent_queries,enforce_scope=evidence is not None)[:8]
     from .organization_output import pending_conflicts
     pending = pending_conflicts(conn, turn, {r[3]['id'] for r in memories})
     row = conn.execute("SELECT * FROM summaries WHERE session_id=? AND channel=? AND status='active' AND end_row<? ORDER BY rowid DESC LIMIT 1", (turn['session_id'], turn['channel'], ordinal)).fetchone()
@@ -107,6 +109,10 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
                  if shared_materials is None else json.loads(shared_materials))
     turns, frozen, spec, relation_blocked, relation, state, state_active, text, reference_block, reference_manifest, memories, summary, summary_items, original_summary_items, history, history_rows, history_items, initial_removed, covered = (materials[k] for k in ('turns', 'frozen', 'spec', 'relation_blocked', 'relation', 'state', 'state_active', 'text', 'reference_block', 'reference_manifest', 'memories', 'summary', 'summary_items', 'original_summary_items', 'history', 'history_rows', 'history_items', 'initial_removed', 'covered'))
     covered = set(covered)
+    from .recall_runtime import selection as recall_selection,render as render_recall,accepted as recall_accepted,QUERY_VERSION
+    recall_plan=recall_selection(conn,turn)
+    from .recall_runtime import project as project_recall
+    recall_items=project_recall(recall_plan['selected'],conn) if recall_plan else []
     pending = materials.get('pending_conflicts', [])
     memory_times=[]
     from .automatic_memory import available
@@ -223,6 +229,7 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
             PromptBlock('character',character_body,'character_context','companion-character-v1' if is_minimal else 'character-render-v1')]+(
             [PromptBlock('expression_realization',voice_text,'dialogue_voice',expression_renderer)] if voice_after_character else [])+[
             PromptBlock('memory_summary',reference,'context_m4','companion-memory-v1' if is_minimal else 'voice-memory-v2' if voice else 'memory-v1'),
+            PromptBlock('recall_support',render_recall(recall_items,conn),'recall_runtime','recall-runtime-v1'),
             PromptBlock('explicit_references',reference_block,'references','reference-render-v1'),
             PromptBlock('reply_protocol',protocol,'reply_batch+dialogue_voice',format_renderer),
             *([PromptBlock('dialogue_context',experimental_context,'dialogue_pipeline','dialogue-context-v1')] if experimental_context else []),
@@ -237,6 +244,9 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         if optional is not None:
             item = character_parts.pop(optional)
             character_removed.append({'kind':item['kind'],'id':item['id'],'reason':'input_budget'})
+        elif any(not item.get('required') for item in recall_items):
+            index=max(i for i,item in enumerate(recall_items) if not item.get('required'))
+            old=recall_items.pop(index);removed.append({'kind':'recall_unit','id':old['id'],'reason':'input_budget'})
         elif evidence is not None and summary_items:
             summary_items.pop(0);removed.append({'kind':'summary_item','reason':'input_budget'})
         elif evidence is not None and any(i['kind']=='retrieval' for i in history_items):
@@ -345,7 +355,12 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         format_renderer=NOTICE_VERSION
         assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
     gaps = len({t['ordinal'] for t in turns} - (covered if summary_items else set()) - set(history_rows))
-    return result, {**({'companion':read_companion(turn)} if is_minimal else {}),'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
+    recall_meta=({'version':'recall-runtime-v1','query_version':QUERY_VERSION,'selection_id':recall_plan['id'],
+        'root_id':turn['id'],'selected_ids':[i['id'] for i in recall_items],
+        'searched_layers':recall_plan['searched_layers'],'cold_status':recall_plan['cold_status']} if recall_plan else
+        {'version':'recall-runtime-v1','selection_id':None,'selected_ids':[],'fallback':'index_warming'}
+        if recall_accepted(conn,turn)[0]['data']['enabled'] else None)
+    return result, {**({'recall_support':recall_meta} if recall_meta else {}),**({'companion':read_companion(turn)} if is_minimal else {}),'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
                     'references':reference_manifest,'reply_mode':reply_mode,'dialogue_voice':voice_meta,
                     'behavior':{'resolver':behavior['resolver'],'signals':[item['act'] for item in behavior['signals']],
                                 'uncertainty':behavior['uncertainty'],'character_version_id':character['version_id'] if character else None,

@@ -594,6 +594,8 @@ class ChatEngine:
                     details['presentation']=presentation
                     from .knowledge_service import validate_used
                     validate_used(conn,self.store.paths,turn['persona_id'],turn['channel'],details.get('knowledge'))
+                    from .recall_runtime import validate as validate_recall
+                    validate_recall(conn,turn,details.get('recall_support'))
                     conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
                                  (json.dumps(details,ensure_ascii=False),attempt_id))
                     record_progress(conn, turn_id, "generated", attempt_id)
@@ -616,6 +618,8 @@ class ChatEngine:
                                  (event_id, encoded, timestamp(), turn_id))
                     conn.execute("UPDATE attempts SET status='completed',usage_json=? WHERE id=?", (encoded, attempt_id))
                     record_progress(conn, turn_id, "persisted", attempt_id)
+                    from .recall_runtime import queue_feedback
+                    queue_feedback(conn,turn,attempt_id,'main',details.get('recall_support'))
             except BaseException as error:
                 interrupted = isinstance(error, asyncio.CancelledError) or str(error) == 'knowledge_stopped'
                 if getattr(error,'usage',None) is not None:usage=error.usage

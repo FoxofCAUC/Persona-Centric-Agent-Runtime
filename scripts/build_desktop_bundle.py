@@ -10,7 +10,7 @@ import zipfile
 
 SOURCE=Path(__file__).resolve().parents[1]
 SCRIPTS=('Start-Workbench.ps1','Prepare-Desktop.ps1','pcar-location.ps1','Manage-Migration.ps1',
-         'dev.ps1','test.ps1','force_stop_services.py','force_stop_qq.py','build_desktop_bundle.py','pcar_acceptance_check.py','pcar_upgrade_check.py')
+         'dev.ps1','test.ps1','force_stop_services.py','force_stop_qq.py','build_desktop_bundle.py','pcar_acceptance_check.py','pcar_upgrade_check.py','pcar_recall_rollback.py','pcar_recall_preflight.py')
 ROOT_FILES=('启动PCAR.bat','README.md','AGENTS.md','AGENT_INSTALL.md','LICENSE','pyproject.toml','uv.lock','model-assets.json','source-delivery.json')
 PUBLIC_FIXTURE_SHA256='6badfaccfed2a25626260e760f76a91b852ac7a99b2943cf4a6005e4fcbfa249'
 
@@ -26,7 +26,7 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
     for name in policy['excluded_modules']:files.pop(name,None)
     files.update({n:SOURCE/n for n in ROOT_FILES})
     files.update({'scripts/'+n:SOURCE/'scripts'/n for n in SCRIPTS})
-    for name in ('__init__.py','m9r_comparison.py','m9r_comparison_materials.py','m9r_native_probe.py','m9r_fatigue_materials.py','recall_preparation.py'):
+    for name in ('__init__.py','m9r_comparison.py','m9r_comparison_materials.py','m9r_native_probe.py','m9r_fatigue_materials.py','recall_preparation.py','recall_continuity.py'):
         path=SOURCE/'experiments'/name
         if path.is_file():files['experiments/'+name]=path
     files.update({p.relative_to(SOURCE).as_posix():p for p in (SOURCE/'docs').rglob('*') if p.is_file() and p.suffix.lower() in ('.md','.docx','.txt')})
