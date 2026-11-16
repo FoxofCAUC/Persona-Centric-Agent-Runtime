@@ -343,6 +343,20 @@ def guard_cloud_dispatch(store,persona_id,kind,model):
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')
 
 
+# Exact public README assets reviewed for the 2026-11-16 documentation update.
+# This catalog only permits their container type; private-content checks still run.
+_PUBLIC_README_IMAGE_HASHES = {
+    'assets/readme/continuity-concept.png': 'c8c5622ce30b19b166934bf7c2e5782dca5955087d3b0bce63a304500abfa6a0',
+    'assets/readme/daily-life-vision.png': 'faad3f3666a86b49a133315130c36b121e69ef25a4345ffff6439c807e61f096',
+    'assets/readme/daily-life-vision.webp': '4e25b9c14c46b65b12f60c27866f50dd3fc85b0d1fa44dcc6ce77e5e8565e5a1',
+    'assets/readme/desktop-main.png': 'e117d62bc0f78254006d48456c93d92e2d92d9515f51c108e9a5c310d3c1c45a',
+    'assets/readme/memory-overview.png': 'b6da0d197e930fb5f03f900ee4b57a8bb517717bcbde9a12096dc0438c8d7ae8',
+    'assets/readme/persona-versions.png': 'fe4535ba34869b6b5c1dc409cb383f0044a1e0143472d24aaed2ef1f723ed870',
+    'assets/readme/superfish-vision.png': '493c030d795875d051abcb0e1fe8cc5dfa112c47fbeac85ced5207715f643239',
+    'assets/readme/superfish-vision.webp': 'e91026eb1c625215cb215aed61399fcd9d8a8e7c8868c33e20c3954cfc86ea8d',
+}
+
+
 def publication_scan(paths,repo,*,staged=False,base=None):
     """Inspect local files/index/outgoing blobs; never include matches in output."""
     repo=Path(repo).resolve();registry=PrivatePersonas(paths);records=registry.load(True)['records']
@@ -390,9 +404,10 @@ def publication_scan(paths,repo,*,staged=False,base=None):
         private=(path.startswith('private/') or sha(data) in original_hashes or any(n in data for n in needles))
         binary=(Path(path).suffix.lower() in ('.sqlite','.sqlite3','.db','.onnx','.png','.jpg','.zip','.safetensors')
                 or b'\x00' in data or data.startswith((b'\x89PNG\r\n',b'\xff\xd8\xff',b'PK\x03\x04')))
-        # Only the container-type check may recognize an unchanged document at
-        # its already-published path. Private-content checks always still run.
-        if private or binary and not published:
+        # Container-type exceptions require a published document identity or
+        # an exact approved image path/hash. Private-content checks still run.
+        approved_image = _PUBLIC_README_IMAGE_HASHES.get(path) == sha(data)
+        if private or binary and not (published or approved_image):
             hits.append({'location':name,'reason':'private_or_runtime_content'})
     names=set(git('ls-files','-z').decode().split('\0'))-{''}
     if staged:
