@@ -1,0 +1,55 @@
+{
+  "version": "scene-selection-research-tools-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E.L4-执行研究工具清单.json",
+  "parent_manifest_sha256": "fcf0ad31d2a25cac95e3e1a96e10083052735dd60e02b765ac721b40aee9eda3",
+  "unchanged_core_files": 455,
+  "new_research_tools": [
+    {
+      "path": "experiments/corpus_scene_selection.py",
+      "sha256": "a3e10f4f2135ed6e2ea596eeed90d7dbea5871bf5bb8874a0b13e3506c0c18d7"
+    },
+    {
+      "path": "experiments/corpus_scene_reply.py",
+      "sha256": "0bb4188cda1378bf427640e38146d4a94a60e22152b64df07e9b3649e1716260"
+    },
+    {
+      "path": "experiments/corpus_scene_cues.py",
+      "sha256": "ab5ea05303b8950ec55376fa2b1126b8f8634b616be62a69c3b1abebf643b973"
+    },
+    {
+      "path": "experiments/corpus_semantic_selector.py",
+      "sha256": "dc57f519124a76d48babed1a6f4d194fa5aa7b8ff90fde17c6bce800990a8976"
+    },
+    {
+      "path": "experiments/corpus_scene_selection_review.py",
+      "sha256": "25ffa322de508c2abf0579ba3ad7a1b7fd528df726e5b748c5d1c1d74a230472"
+    },
+    {
+      "path": "tests/test_corpus_scene_selection.py",
+      "sha256": "70791b79a4a67d339a34126b2f7964a5b726bc4cf4e966ac5154776b7d185499"
+    },
+    {
+      "path": "tests/test_corpus_scene_reply.py",
+      "sha256": "8a31b59b6bdcac6a34f234ffc5113bfaa7e8aa612a9b98aa7b3c42eac67e0f67"
+    },
+    {
+      "path": "tests/test_corpus_scene_cues.py",
+      "sha256": "6dfba06d09e37320cdfdb1e3eae710bd6233bb1fabf4eb09fe1d095dcd3fdd96"
+    },
+    {
+      "path": "tests/test_corpus_semantic_selector.py",
+      "sha256": "a76149ff608e1de5e8c46fff725fdffbed5fe629b78da2a85eeda7393d45315b"
+    }
+  ],
+  "new_distinct_checks_passed": 41,
+  "driver_llm_calls_this_step": 0,
+  "approved_persona_prompts_modified": false,
+  "asset_words_modified": false,
+  "local_versions_accepted": false,
+  "new_selector_model_use_approved": false,
+  "proposed_selector_requests": 16,
+  "formal_activation": false,
+  "upstream_commit": "478f671e64467121fd3e39205c8d3507b5ce0bd6",
+  "upstream_selector_git_blob": "3b092f91fa6bcda56153f433337acb1d091d9e4e"
+}

@@ -1,0 +1,46 @@
+{
+  "version": "corpus-dataset-view-extension-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E.L1-微信私聊适配扩展清单.json",
+  "parent_manifest_sha256": "d1e54c0322a25dd979073850ba16af7bf807ed341ed9cc558482cbd9703ca7c5",
+  "baseline_core_files": 442,
+  "declared_changes": [],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/corpus_views.py",
+      "sha256": "abb167fb41e217e38bfbbb95d21853dab8e09c5bd552cdf50c6583d142436b6c"
+    },
+    {
+      "path": "persona_runtime/schema_corpus_views.py",
+      "sha256": "77158d6ae32dab2cfea580925e47e890a62bd36380b9c4e6206f00fefe86ed31"
+    },
+    {
+      "path": "persona_runtime/corpus_dataset.py",
+      "sha256": "2e9ab45c85ced989647bff90a019b2628f0d2075cfff3a885a27eb0cda52c938"
+    },
+    {
+      "path": "persona_runtime/corpus_dataset_export.py",
+      "sha256": "2c8e28fe8e027ed6c9096c967496403892126c28e3b3389c2a4dff0200812ce9"
+    },
+    {
+      "path": "scripts/pcar_corpus_dataset.py",
+      "sha256": "c31863739c47603ffc9660be9f591bb8ffdd57b0fec18ca6a2524298561f1caf"
+    },
+    {
+      "path": "scripts/pcar_corpus_dataset_preflight.py",
+      "sha256": "fa0eaf4177bb7bac1b1c3dda7503ed425f3cbdf6f7921bffc8daedddc075948f"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_corpus_views.py",
+      "sha256": "779f64e095f39e45f1e0857cef0532a6285d2e0560af88c4603d6b9acc450084"
+    }
+  ],
+  "scope": "local_privacy_views_fragments_and_partitions",
+  "corpus_schema": 3,
+  "candidate_schema": 32,
+  "model_input_approved": false,
+  "paid_model_calls": 0,
+  "private_data_in_source": false
+}

@@ -1,0 +1,21 @@
+{
+  "version": "corpus-coverage-research-tools-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E.L3-首批学习扩展清单.json",
+  "parent_manifest_sha256": "a46eb5ef74c4440fc822de40c8507fad3bd7b2cad51bc2b9e9b2646d599d85af",
+  "unchanged_core_files": 455,
+  "new_research_tools": [
+    {
+      "path": "experiments/corpus_learning_coverage.py",
+      "sha256": "51a613bf7a754e3f53359072e46132d9bf9e2e9636a9cd67ee75a03130118ab0"
+    },
+    {
+      "path": "tests/test_corpus_coverage.py",
+      "sha256": "8bf108ca1c9ca1cf8f9efacd7b84ec328b251112c45e53ae3179111a1d1df5ad"
+    }
+  ],
+  "maximum_additional_requests": 6,
+  "maximum_cumulative_requests": 8,
+  "template_changed": false,
+  "new_prompt_authored": false
+}

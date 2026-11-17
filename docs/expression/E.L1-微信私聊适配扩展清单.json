@@ -1,0 +1,45 @@
+{
+  "version": "corpus-moect-import-extension-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E.L0-L1-语料基础扩展清单.json",
+  "parent_manifest_sha256": "055bccf0668cb60e8a9719ee7a7b721748656b4e54b37b78fd75064220e1bfc4",
+  "declared_changes": [],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/corpus_moect.py",
+      "sha256": "d15f4b8ef6d7e2bc77f715b2bea5619fb32edc13553f85cda554eddf47727118"
+    },
+    {
+      "path": "persona_runtime/schema_corpus_moect.py",
+      "sha256": "3c49d43e1555243bfa48101af50efd02ef0c615be6378249809f3308b69b4dd5"
+    },
+    {
+      "path": "persona_runtime/corpus_ingest.py",
+      "sha256": "ab22a0ee450f79383baec8920e7dc03eb8eadd05af5c1e4ac75b5feddcd1b9b3"
+    },
+    {
+      "path": "persona_runtime/corpus_review.py",
+      "sha256": "a4ea4dd26a0afc281ddf429d02dc92895c22d0f1e4541162164f2d884cab2a60"
+    },
+    {
+      "path": "scripts/pcar_corpus_ingest.py",
+      "sha256": "ad6d22f8ec60fa9ec033cf3fc21e47a75f385864da4dd727205ef5f0f250224c"
+    },
+    {
+      "path": "scripts/pcar_corpus_import_preflight.py",
+      "sha256": "c188480a52082b58275018020494d44925434aa7c39b04f4cce8350f6f164016"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_corpus_moect.py",
+      "sha256": "7d621f6ae5f7f69cb8abc70429fdf420a58eb8ea00885277e98d66a695c77516"
+    }
+  ],
+  "scope": "local_authorized_private_material_import",
+  "corpus_schema": 2,
+  "candidate_schema": 32,
+  "model_input_approved": false,
+  "paid_model_calls": 0,
+  "private_data_in_source": false
+}

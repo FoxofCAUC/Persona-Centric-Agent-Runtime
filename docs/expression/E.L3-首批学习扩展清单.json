@@ -1,0 +1,52 @@
+{
+  "version": "corpus-learning-first-extension-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E.L2-数据视图扩展清单.json",
+  "parent_manifest_sha256": "e766e4b1e525322c14e40eeff55678e11d213230ed2efe85200e7547adadd29f",
+  "baseline_core_files": 448,
+  "declared_changes": [],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/corpus_learning_bundle.py",
+      "sha256": "e8351944bfaaf76bd6a61f61199d5998dceda403c886cbe33c30fdb8ca63abc1"
+    },
+    {
+      "path": "persona_runtime/schema_corpus_learning.py",
+      "sha256": "80d4fb57b8b5dbba331746e16ce35f65001900bbb55468827421f5d209971fc2"
+    },
+    {
+      "path": "persona_runtime/corpus_learning_transport.py",
+      "sha256": "3f3c4c1afd71a675ff03c743a78a669cdb50f094daa09c9c694ec846f1e2d333"
+    },
+    {
+      "path": "persona_runtime/corpus_learning.py",
+      "sha256": "c7eb5cb696d2ecfca4b13dd5bc66e1c19cfa1ed87dc11179c62f422378e0b438"
+    },
+    {
+      "path": "persona_runtime/corpus_learning_review.py",
+      "sha256": "5a84e1272654d1dffe30197002e85240e211e9d5453b6665c583e3fc675e2a94"
+    },
+    {
+      "path": "scripts/pcar_corpus_learning.py",
+      "sha256": "f1461a8ccc22a86033d92bcd78c7fd2d3302c72ee2e451386ba087c53b87ff4f"
+    },
+    {
+      "path": "scripts/pcar_corpus_learning_preflight.py",
+      "sha256": "cc4f598fc50582f712d24da51dd516f9464508fd143b51ad3bf078e469616ac0"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_corpus_learning.py",
+      "sha256": "b84962731bdc40e2d4020de1df1c841d8f45759e11f496a12a00f576d3fcc12a"
+    }
+  ],
+  "scope": "approved_first_two_private_corpus_learning_requests",
+  "learning_ledger_schema": 1,
+  "corpus_schema": 3,
+  "candidate_schema": 32,
+  "maximum_physical_positions": 2,
+  "automatic_asset_publication": false,
+  "new_prompt_authored": false,
+  "private_data_in_source": false
+}

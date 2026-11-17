@@ -1,0 +1,24 @@
+{
+  "version": "corpus-reply-study-preparation-tools-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E.L3-覆盖研究工具清单.json",
+  "parent_manifest_sha256": "2646f9c212024a4ca2a7a4d4bc6451c38ec96665b409d2e72c1e872147927f31",
+  "unchanged_core_manifest": "docs/expression/E.L3-首批学习扩展清单.json",
+  "unchanged_core_files": 455,
+  "new_research_tools": [
+    {
+      "path": "experiments/corpus_reply_study.py",
+      "sha256": "e0748fb312c594a893510b79927a7fd74ff0522b2ab2173ea0dc561ee53054c0"
+    },
+    {
+      "path": "tests/test_corpus_reply_study.py",
+      "sha256": "3e9b11c6d02bb488398876478d5e242b1501cbf447205848000cf997b056df84"
+    }
+  ],
+  "new_tests_passed": 19,
+  "new_model_calls": 0,
+  "new_prompts_authored": false,
+  "formal_asset_publication": false,
+  "next_prompt_and_persona_source": "author_supplied",
+  "generation_dispatch_available": false
+}

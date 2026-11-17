@@ -1,0 +1,31 @@
+{
+  "version": "corpus-reply-execution-tools-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E.L4-研究准备工具清单.json",
+  "parent_manifest_sha256": "f5452137a82dc6f642f720640f2c312bc8e9087214e7615ac9a1d78161bdadd0",
+  "unchanged_core_manifest": "docs/expression/E.L3-首批学习扩展清单.json",
+  "unchanged_core_files": 455,
+  "new_research_tools": [
+    {
+      "path": "experiments/corpus_reply_trial.py",
+      "sha256": "9b25ec11bb049251459a22821aa12e175f13c8a245e697e559025ef8633be091"
+    },
+    {
+      "path": "experiments/corpus_reply_trial_report.py",
+      "sha256": "8ee2ad3eeeb9283307f887f34c38c31195068b722bd93b7de7afd7c927f98998"
+    },
+    {
+      "path": "tests/test_corpus_reply_trial.py",
+      "sha256": "0800676927849636b137b9ca7aa358c878764cb87770ecb6bc66f8471df145e1"
+    }
+  ],
+  "new_distinct_checks_passed": 21,
+  "prior_checks_reused": 122,
+  "real_model_requests": 80,
+  "reply_outputs": 64,
+  "shared_understandings": 16,
+  "model_retries": 0,
+  "new_prompt_language_this_step": false,
+  "approved_prompt_files_external": true,
+  "formal_deployment": false
+}

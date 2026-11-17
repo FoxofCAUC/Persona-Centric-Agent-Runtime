@@ -1,0 +1,26 @@
+{
+  "version": "persona-reply-n0-author-decision-v1",
+  "date": "2026-11-17",
+  "status": "rejected_by_author",
+  "authority": "explicit_user_instruction_in_current_conversation",
+  "scope": "all developer-authored N0 language candidates and derived previews",
+  "model_use_allowed": false,
+  "learning_use_allowed": false,
+  "next_trial_allowed": false,
+  "writing_authorization_required": true,
+  "separate_author_review_required_before_use": true,
+  "preserved_language_files": {
+    "materials.json": "5c1c31d8821a2828fcaed773fc37299bdd0c53a7f30253bcadc3fd646f02ab54",
+    "prompts/replyer.prompt": "4bbac792e965166723da8d0431986dedb390d348b3173f96b97ced572de15d3a",
+    "prompts/search_notice.prompt": "98720a2ae87092be6f15f5805827fe31cec89265f4babc51679d10ef39397806",
+    "prompts/understanding.prompt": "5a99c4b8a0878c1c09512c5d1642577cacb18074d2e7399d0124be11b784a15e"
+  },
+  "revoked_bundle_sha256": [
+    "fb2f3a6efaa1f84b72f5e1c93c3e4500a9d172fada9e8cdd5b088981271ec349",
+    "33c6edfa81949521c8b12cbe29b13cbca2ec475531a5e4aa5854244316d6ba38",
+    "1f8229b38545c5768d3a96883f7811510b3e0da8bddbd846a0496a2dccd75c0d",
+    "119ee2fa9c8c15ce466618a907965bd69a6750d49fcc0599cde55d12ca0e4bec"
+  ],
+  "real_upstream_model_calls": 0,
+  "rule": "docs/模型输入与提示词写作总则.md"
+}

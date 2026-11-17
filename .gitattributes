@@ -5,3 +5,10 @@ docs/archive/pcar-project-plan-v1.0-20261029/pcar_project_plan_zh.md -text white
 
 # Preserve the user-supplied M7.5 plan and its recorded hash.
 docs/PCAR-M7.5-角色语义激活开发指导与施工计划.md -text whitespace=-blank-at-eol
+
+# These manifests and rejected language files carry byte-level fingerprints.
+# Keep their recorded bytes on Windows and Unix checkouts.
+docs/expression/*.json -text
+experiments/persona_reply_n0/materials.json -text
+experiments/persona_reply_n0/author-decision.json -text
+experiments/persona_reply_n0/prompts/*.prompt -text

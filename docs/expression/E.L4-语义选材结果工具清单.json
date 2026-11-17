@@ -1,0 +1,17 @@
+{
+  "version": "semantic-selection-result-tools-v1",
+  "date": "2026-11-18",
+  "parent_manifest": "docs/expression/E.L4-选材研究工具清单.json",
+  "parent_manifest_sha256": "099f580ef5eb74600b8b2175761be5842a51ea80933f513fa5329cddcf649c6d",
+  "unchanged_core_files": 455,
+  "new_research_tools": [
+    {
+      "path": "experiments/corpus_semantic_selector_report.py",
+      "sha256": "7575bd63ab5fe70b1ad8061ce2273859885489eb5552c4144e945162e3b2b990"
+    }
+  ],
+  "real_selector_requests": 16,
+  "new_persona_reply_calls": 0,
+  "old_eighty_requests_replayed": 0,
+  "formal_activation": false
+}

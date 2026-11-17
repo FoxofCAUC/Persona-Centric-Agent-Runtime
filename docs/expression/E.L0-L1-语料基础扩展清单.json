@@ -1,0 +1,42 @@
+{
+  "version": "corpus-foundation-extension-v1",
+  "date": "2026-11-17",
+  "parent_manifest": "docs/expression/E阶段归档-README发布保护整合清单.json",
+  "parent_manifest_sha256": "17aee6abd22384819662a9f3d1c086981f49ecd06f2d204a793a00bd3b587f08",
+  "baseline_core_files": 431,
+  "declared_changes": [],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/corpus_files.py",
+      "sha256": "f8102b292e752099f8372af29c11275f8fb7af0b36802ebb6c9d193983243038"
+    },
+    {
+      "path": "persona_runtime/schema_corpus.py",
+      "sha256": "ffbdab3ca104a0be71efdf7f91b6a03babb755a501b99d26533a8b0b9e0165e0"
+    },
+    {
+      "path": "persona_runtime/corpus_store.py",
+      "sha256": "034e4aa4878cca8ec9f1d45f29d1456819b0eca2ee01b06ff433af7d62c3232a"
+    },
+    {
+      "path": "scripts/pcar_corpus.py",
+      "sha256": "8294623901b7f68035ec1b8fe976cfa94b0871fdbbdff1ea77df8fc5c3a208e3"
+    },
+    {
+      "path": "scripts/pcar_corpus_preflight.py",
+      "sha256": "565770e2eb236f0fa5b7b8023ce0c3554651b20ad4a57d028e32e95f69ccd229"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_corpus_foundation.py",
+      "sha256": "a99a87fed310062951e5e298a4e6b13631774afdfd625332b5ee67281cd0974a"
+    }
+  ],
+  "scope": "local_only_file_provenance_and_retention",
+  "parser_ready": false,
+  "new_model_input_authored": false,
+  "paid_model_calls": 0,
+  "main_schema_changed": false,
+  "candidate_version_changed": false
+}
