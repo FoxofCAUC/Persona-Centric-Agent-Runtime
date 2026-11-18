@@ -22,4 +22,19 @@ class ReleaseBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'不能发布用户业务包'):build(target,artificial_fixture=fixture)
         self.assertFalse(target.exists())
 
+    def test_release_fixture_is_pinned_to_the_target_release(self):
+        import hashlib
+        from unittest.mock import patch
+
+        legacy = self.root/'legacy.zip'
+        legacy.write_bytes(b'ID-PUBLIC-SAMPLE-27')
+        digest = hashlib.sha256(legacy.read_bytes()).hexdigest()
+        approved = {'v0.1':digest, 'v0.2':'0'*64}
+        target = self.root/'release.zip'
+        with patch('scripts.build_desktop_bundle.PUBLIC_FIXTURE_SHA256',approved):
+            with self.assertRaisesRegex(ValueError,'本版本核准'):
+                build(target,self.root,release_tag='v0.2',source_revision='1'*40,artificial_fixture=legacy)
+        self.assertFalse(target.exists())
+
+
 if __name__=='__main__':unittest.main()

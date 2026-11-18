@@ -16,7 +16,13 @@ SCENE_DOCS=('docs/expression/E.N6-场景发言接入与回退.md','docs/模型�
             'docs/第三方角色Embedding依赖与许可.md','docs/M9R.5-本机验收与候选交付.md')
 SCENE_TESTS=('test_scene_voice_delivery.py','test_tk_notice.py','test_m9r_native_retrieval.py',
              'test_m9r0_native_contract.py','test_general_retrieval.py','test_m4.py')
-PUBLIC_FIXTURE_SHA256='6badfaccfed2a25626260e760f76a91b852ac7a99b2943cf4a6005e4fcbfa249'
+PUBLIC_FIXTURE_SHA256={
+    'v0.1':'6badfaccfed2a25626260e760f76a91b852ac7a99b2943cf4a6005e4fcbfa249',
+    'v0.2':'93f4faae190d1874f7b59ee08d444705fd1e1979451859363ab0aa4a17777ec1',
+}
+README_ASSETS=('ATTRIBUTION.md','provenance.json','superfish-vision.webp','superfish-vision.png',
+               'superfish-vision.prompt.md','daily-life-vision.webp','daily-life-vision.png',
+               'daily-life-vision.prompt.md','continuity-concept.png','continuity-concept.svg')
 
 
 def build(destination,model=None,*,release_tag=None,source_revision=None,artificial_fixture=None,candidate_base_revision=None,profile='standard'):
@@ -38,15 +44,19 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
     if profile=='scene-desktop':
         files.update({name:SOURCE/name for name in SCENE_DOCS if (SOURCE/name).is_file()})
         files.update({'tests/'+name:SOURCE/'tests'/name for name in SCENE_TESTS})
-        documentation=SOURCE/'docs/licenses'
+        documentation=SOURCE/'docs' if release_tag else SOURCE/'docs/licenses'
     else:
         documentation=SOURCE/'docs'
     files.update({p.relative_to(SOURCE).as_posix():p for p in documentation.rglob('*')
                   if p.is_file() and p.suffix.lower() in ('.md','.docx','.txt')})
+    if release_tag:
+        files.update({n:SOURCE/n for n in ('CHANGELOG.md','CONTRIBUTING.md')})
+        files.update({'assets/readme/'+n:SOURCE/'assets/readme'/n for n in README_ASSETS})
     if artificial_fixture:
         fixture=Path(artificial_fixture)
         with fixture.open('rb') as stream:actual=hashlib.file_digest(stream,'sha256').hexdigest()
-        if actual!=PUBLIC_FIXTURE_SHA256:raise ValueError('只允许固定的公开人工迁移包，不能发布用户业务包。')
+        allowed={PUBLIC_FIXTURE_SHA256.get(release_tag)} if release_tag else set(PUBLIC_FIXTURE_SHA256.values())
+        if actual not in allowed:raise ValueError('只允许本版本核准的公开人工迁移包，不能发布用户业务包。')
         files['samples/artificial-business.pcar-migration.zip']=fixture
     if model:
         index=json.loads((SOURCE/'model-assets.json').read_text(encoding='utf-8'))['character_embedding']
@@ -57,7 +67,8 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
             files['public-model/'+name]=p
     manifest={'format':'pcar-desktop-kit-v1','business_data_included':False,'credentials_included':False,
               'runtime_version':tomllib.loads((SOURCE/'pyproject.toml').read_text(encoding='utf-8'))['project']['version'],
-              'release_tag':release_tag,'source_revision':source_revision,'deployment_mode':'agent-assisted',
+              'release_tag':release_tag,'source_revision':source_revision,'schema_version':policy['schema_version'],
+              'deployment_mode':'agent-assisted',
               'profile':profile,'public_model_included':bool(model),'artificial_fixture_included':bool(artificial_fixture),
               'files':{n:{'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size} for n,p in sorted(files.items())}}
     manifest['source_tree_sha256']=hashlib.sha256(json.dumps(manifest['files'],sort_keys=True,separators=(',',':')).encode()).hexdigest()

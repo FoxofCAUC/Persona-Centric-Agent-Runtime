@@ -1,18 +1,18 @@
 # 超级大肥鱼 · PCAR 文档导航
 
-本机正式部署为 0.2.0rc9，研发接续从工作台重构开始。[场景发言与回退](expression/E.N6-场景发言接入与回退.md)
+v0.2 的程序版本为 0.2.0，研发接续从工作台重构开始。[场景发言与回退](expression/E.N6-场景发言接入与回退.md)
 
-了解人格持续存在、自主生活与成长方向，从[产品路线](product/roadmap.md)开始；体验当前公开能力，从[用户入门](user/getting-started.md)开始。公开版 v0.1 与 main 开发候选分别使用各自手册；下列用户操作链接固定到 v0.1，开发资料跟随当前仓库。
+了解人格持续存在、自主生活与成长方向，从[产品路线](product/roadmap.md)开始；体验当前公开能力，从[用户入门](user/getting-started.md)开始。下列用户操作链接固定到 v0.2，开发资料跟随当前仓库。
 
 ## 使用 PCAR
 
 | 任务 | 文档 |
 | --- | --- |
-| 下载、准备环境、第一次对话 | [用户入门](user/getting-started.md) · [v0.1 完整部署手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.1/AGENT_INSTALL.md) |
-| 管理人物、表达和关系资料 | [v0.1 人物操作说明](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.1/docs/M5.md) · [界面操作手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.1/docs/acceptance/M5-人格与关系真人验收手册.md) |
-| 开启和查看自动记忆 | [v0.1 自动记忆操作手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.1/docs/acceptance/M8.D-自动记忆验收手册.md) |
-| 了解自动调用的额度 | [v0.1 调用额度与用量说明](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.1/docs/自动调用额度与人工免限额.md) |
-| 备份、迁移与登记已有实例 | [v0.1 环境与迁移说明](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.1/docs/PCAR-环境解耦与跨机迁移.md) |
+| 下载、准备环境、第一次对话 | [用户入门](user/getting-started.md) · [v0.2 完整部署手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/AGENT_INSTALL.md) |
+| 管理人物、表达和关系资料 | [v0.2 人物操作说明](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/docs/M5.md) · [界面操作手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/docs/acceptance/M5-人格与关系真人验收手册.md) |
+| 开启和查看自动记忆 | [v0.2 自动记忆操作手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/docs/acceptance/M8.D-自动记忆验收手册.md) |
+| 了解自动调用的额度 | [v0.2 调用额度与用量说明](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/docs/自动调用额度与人工免限额.md) |
+| 备份、迁移与登记已有实例 | [v0.2 原机升级与跨机迁移](../AGENT_INSTALL.md#原机从-v01-升级) |
 | 了解 QQ 接入状态 | [暂停政策](QQ接口开发暂停政策.md) · [后续跟踪方向](SnowCat-持续跟踪与QQ恢复开发指导.md) |
 
 部分操作文档仍沿用 M5、M8.D 等研发阶段名称；其部署前提以同版本完整部署手册为准。QQ 历史接入资料仅供追溯，当前使用工作台。
@@ -31,7 +31,7 @@
 | 接续当前开发 | [协作约定](../AGENTS.md) · [当前状态](STATUS.md) · [交接](HANDOFF.md) |
 | 了解已部署的场景发言 | [E.N6 接入与回退](expression/E.N6-场景发言接入与回退.md) · [E.N5 场景研究与验收](expression/E.N5-场景人设拆分与Jev决策施工指导.md) |
 | 遵守模型输入创作与使用边界 | [模型输入与提示词写作总则](模型输入与提示词写作总则.md) · [E.N0否决与职责纠偏](expression/E.N0-作者否决与开发代理职责纠偏.md) |
-| 部署开发候选 | [当前候选手册](../AGENT_INSTALL.md) · [模型供应商支持总则](模型供应商支持总则.md) |
+| 部署开发候选 | [当前部署手册](../AGENT_INSTALL.md) · [模型供应商支持总则](模型供应商支持总则.md) |
 | 理解持久化与运行结构 | [架构说明](architecture.md) · [命令行操作](usage.md) |
 | 接续人物回复重构 | [E.N5接话修复专项](expression/E.N5-人物接话专项修复施工指导.md) · [E.N5连续桌面体验](expression/E.N5-连续桌面体验.md) · [最终基线与桌面呈现](expression/E.N4-原v8Pro基线与桌面呈现.md) · [角色的归属修复与扩测](expression/E.N3-单角色来源归属修复与扩测.md) · [E.N3角色的单角色留出对照](expression/E.N3-单角色留出对照.md) · [E.L5人物回复候选](expression/E.L5-人物回复候选接入与验收.md) · [E.N0—E.N6开发指导](expression/E阶段重构-人物回复链路开发指导.md) · [已否决候选记录](expression/E.N0-人物口吻与提示候选交付.md) · [MaiBot机制研究](research/MaiBot-活人感机制深读-20261116.md) · [PCAR 与 MaiBot 发言链路差距](research/PCAR与MaiBot发言链路差距复核-20261118.md) |
 | 准备真实聊天学习语料 | [语义选材后的正文对照](expression/E.L4-语义选材后的正文对照.md) · [已审语义终选](expression/E.L4-语义终选16位真实验证与审阅.md) · [选材修订与回归](expression/E.L4-选材修订回归与语义终选待审.md) · [详细施工规划](expression/真实聊天语料与MaiBot表达学习施工规划.md) |

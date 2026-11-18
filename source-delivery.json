@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "0.2.0rc9",
+  "release": "0.2.0",
   "mode": "source",
   "roots": [
     "persona_runtime",
@@ -31,10 +31,10 @@
   "schema_version": 33,
   "desktop_installation": "selected instance home; project venv; whole-business migration with fresh machine credentials and consent",
   "knowledge_output": "deepseek-flash native thinking enabled/high; per-step >=8192; persona speech profile v4; readable history retained",
-  "release_tag": null,
+  "release_tag": "v0.2",
   "deployment_mode": "agent-assisted",
   "development_baseline": "0.9.0.dev38",
-  "stage": "en6_scene_voice_candidate",
+  "stage": "en6_scene_voice_release",
   "previous_release_tag": "v0.1",
   "scene_voice": "desktop opt-in per reviewed persona; jev-1.14; one scene card; native Pro; receipt-based presentation"
 }
