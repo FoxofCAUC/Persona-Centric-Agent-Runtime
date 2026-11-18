@@ -1,0 +1,63 @@
+{
+  "version": "en5-jev-scene-local-v1",
+  "parent_manifest": "docs/expression/E.N5-D3连续对照候选清单.json",
+  "parent_manifest_sha256": "7c82a029ba35da66f8aacf04e6d6f01cc82b275c361faef42cfcee8d2b0d1a03",
+  "baseline_core_files": 484,
+  "baseline_evidence_files": 113,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/knowledge_general.py",
+      "sha256": "c386b2d121171375e0509ce16b5f82fff5aec5f5147035dbcac1b6f595be0bd4",
+      "baseline_sha256": "3aef1e19b0c90faae5970278c3cd62bca0254c5021f9e32a0521ccd16cbe3047"
+    },
+    {
+      "path": "persona_runtime/knowledge_translation.py",
+      "sha256": "3ad24339a5925873f3effdf38b57a8b8536c65e468b5eed135b4a850482c3e9b",
+      "baseline_sha256": "5160abc48d9e2b56a735eb5674f14f7b8c885eae38c61e012986b9cd66dda7d0"
+    },
+    {
+      "path": "persona_runtime/knowledge_processing.py",
+      "sha256": "9f8e9f33cc285f59ca496cdfae647ef9f773b8412f703863079b04c2b9acf4bb",
+      "baseline_sha256": "6ebd58ff8a1707f27209c9b1c24b2121a7b24c9fc3453e9eb241de5b60885b69"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_en5_scene_preflight.py",
+      "sha256": "f46bd92406c2c0f3ac99f0a7b629debf4170a8c6e72ff7238c11db638e7011f1"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en5_d3_presentation.py",
+      "sha256": "e0a93df000abdd19f97f14de5ee6ed9759798504586d9bed3e81764185571fad",
+      "baseline_sha256": "cd36ad8c0e3ac259c79e181110e01985fe8d16081d26386419046c3dcf57e3d1"
+    }
+  ],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_scene_voice.py",
+      "sha256": "bfc1a8f9c76f573e3e6525030f1a850eef8b679057cecac1319561afe1dbed16"
+    },
+    {
+      "path": "experiments/en5_scene_route.py",
+      "sha256": "b27b167e9e4a5b2b52513d1145d70efb456aef6282fceef58fff2b7b4e5b8490"
+    },
+    {
+      "path": "experiments/en5_scene_desktop.py",
+      "sha256": "f81afa0d8cc053b938eb07eb9565f6467d715b5376c2a5c7a771081209b1a507"
+    },
+    {
+      "path": "experiments/en5_scene_packet.py",
+      "sha256": "b6ef653769ce0b9695c3a96a4dc1ae037de17e69db59d1df2885de85ce58f912"
+    },
+    {
+      "path": "experiments/en5_scene_packet.html",
+      "sha256": "139018f86f810af003e59de7a980ce3032199ab91ca48c04a5f5a6be1ac483d7"
+    },
+    {
+      "path": "tests/test_en5_scene.py",
+      "sha256": "29b4aa4d7570a2bc50e7106fec5baadb9339d9732bc5cbac90cec2f175101269"
+    }
+  ]
+}

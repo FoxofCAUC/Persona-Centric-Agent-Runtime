@@ -1,0 +1,49 @@
+{
+  "version": "el4-body-repair-regression-tools-v1",
+  "date": "2026-11-18",
+  "parent_manifest": "docs/expression/E.L4-语义选材正文对照工具清单.json",
+  "parent_manifest_sha256": "3ac2447b1530bed4fed653cf156f31568044df6aeb1ff0bc35cdc5064e3ea4ce",
+  "new_research_tools": [
+    {
+      "path": "experiments/body_repair_material.py",
+      "sha256": "138e3f2814ae550591ddf747d8bf282bcd2309ea9cfaa40495a888061706e9a9"
+    },
+    {
+      "path": "experiments/body_repair_run.py",
+      "sha256": "09743dc5ad6262d84a088410207174cc14978987d959fb15dc93f8473e40e96b"
+    },
+    {
+      "path": "experiments/body_repair_display.py",
+      "sha256": "117e937e5efa54953b3545eb06d0fce62d23db060387138abe070407646e4c2d"
+    },
+    {
+      "path": "experiments/body_repair_review.py",
+      "sha256": "15ccb57028d4980063a44cb2fb7431c0f769f375e2a667108f991f27553ba8cc"
+    },
+    {
+      "path": "experiments/body_repair_review.html",
+      "sha256": "c9cbe4ae5517f731b98c5bf5f5822851bae241841f643170c1cd15ee40c8767f"
+    },
+    {
+      "path": "tests/test_body_repair_material.py",
+      "sha256": "4768482a4cdc66e9bde66667e23bb05c4b965fd7677cb7d3b04772a487422061"
+    },
+    {
+      "path": "tests/test_body_repair_display.py",
+      "sha256": "3dd2fe262b59b34613b021ce7ceb9a4e1a285cd64454139e1369ab1ea14e1111"
+    },
+    {
+      "path": "tests/test_body_repair_run.py",
+      "sha256": "cb15be88191781ba2765cf66f80694ed5b3cf6ca38c788aaec764eca6005ba13"
+    },
+    {
+      "path": "tests/test_body_repair_review.py",
+      "sha256": "d21c4df3632ad546bd2ff6c128bf6c7b9558685ef3eddf88a85986fa517996ae"
+    }
+  ],
+  "billing_request_count_cap": null,
+  "targeted_checks": 18,
+  "physical_requests_observed": 16,
+  "case_type": "paired_development_regression",
+  "formal_activation": false
+}

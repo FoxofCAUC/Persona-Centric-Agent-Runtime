@@ -142,6 +142,7 @@ class CognitiveService:
             with self.store.connection() as conn:evidence=self.dialogue.basic_evidence(conn,turn)
         else:evidence=self.dialogue.evidence(turn)
         knowledge=self.engine.knowledge.prepare_turn(turn)
+        self.engine.scene.ensure(turn)
         with self.store.connection() as conn:
             if evidence is not None:
                 selected=turn_scope(conn,turn)

@@ -1,0 +1,51 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>语义选材后的正文对照</title>
+<style>
+:root{color-scheme:light;--paper:#fff;--ink:#23352d;--green:#315e48;--line:#d3dfd5}
+*{box-sizing:border-box}body{margin:0;background:#f4f6f2;color:var(--ink);font:16px/1.7 system-ui,"Microsoft YaHei",sans-serif}
+main{max-width:70rem;margin:auto;padding:1rem 1.1rem 5rem}header,article{margin:1.2rem 0;background:var(--paper);border:1px solid var(--line);padding:1.2rem 1.5rem;border-radius:.55rem}
+h1,h2,h3{line-height:1.4}h1{font-size:1.65rem}h2{font-size:1.15rem}h3{font-size:.98rem;color:var(--green);margin:0 0 .7rem}a{color:var(--green)}
+nav,.toolbar,.vote{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}button,select,textarea{font:inherit;color:inherit}
+button,select{cursor:pointer;border:1px solid #aebfaf;border-radius:.4rem;padding:.38rem .7rem;background:white}button[aria-pressed="true"]{background:#ddebdc;border-color:var(--green)}
+.toolbar{position:sticky;top:0;background:#f4f6f2f8;padding:.55rem 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-family:inherit;margin:.65rem 0}
+.original{border-left:3px solid #9bb59d;padding:.5rem .9rem;background:#f2f6ef}.pair{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+.answer{min-width:0;padding:.9rem;border:1px solid var(--line);border-radius:.4rem}.meta{font-size:.9rem;color:#52675a}
+textarea{margin-top:.8rem;width:100%;padding:.45rem .65rem;min-height:3.2rem;resize:vertical;border:1px solid var(--line);border-radius:.3rem}
+@media(max-width:700px){main{padding:0 .55rem 3rem}header,article{padding:1rem}.pair{grid-template-columns:1fr}.toolbar{position:static}}
+</style></head><body><main><header><h1>语义选材后的正文对照</h1>
+<p id="summary"></p><p>每个位置有两组比较。先读用户原话，再选更自然、更像人物亲口说出的那份。甲乙顺序按位置和比较组分别打乱。</p>
+<nav><a href="匿名正文全文.txt">匿名正文全文</a><a href="../input-review.html">冻结请求</a>
+<a href="evidence.html">选材、回执与解盲</a></nav></header>
+<div class="toolbar"><label>比较对象 <select id="mode"><option value="C">同一新链的无库正文</option><option value="B">原v8 Pro正文</option></select></label>
+<label><input type="checkbox" id="identical"> 展开相同位置</label><button id="download">导出审阅意见</button><span class="meta" id="progress"></span></div>
+<div id="cases"></div></main><script id="payload" type="application/json">@@BODY_DATA@@</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('payload').textContent);
+const storage='pcar-semantic-body-'+data.manifest_sha256+'-'+data.result_set_hash;
+let votes={};try{votes=JSON.parse(localStorage.getItem(storage)||'{}')||{}}catch{}
+const mode=document.getElementById('mode'), identical=document.getElementById('identical');
+const labels={left:'甲更好',right:'乙更好',same:'无明显差别',neither:'两份都不合适',uncertain:'无法判断'};
+function el(tag,text,cls){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;if(cls)item.className=cls;return item}
+function persist(){try{localStorage.setItem(storage,JSON.stringify(votes))}catch{}
+ const entries=Object.entries(votes).filter(([k,v])=>k.startsWith(mode.value+'-')&&v.choice);
+ document.getElementById('progress').textContent='本组已评 '+entries.length+' / '+data.summary.different_pairs[mode.value]+' 个差异位置'}
+function render(){const area=document.getElementById('cases');area.replaceChildren();
+ for(const c of data.cases){const p=c.pairs[mode.value];if(p.same&&!identical.checked)continue;
+ const card=el('article'),key=mode.value+'-'+c.position;card.append(el('h2','位置 '+c.position),el('pre',c.input,'original'));
+ if(p.same){card.append(el('p',p.same_request?'请求相同，复用同一份正文。':'两份正文逐字相同。','meta'),el('pre',p.left));}
+ else{const grid=el('div',undefined,'pair');[p.left,p.right].forEach((text,i)=>{const box=el('div',undefined,'answer');
+ box.append(el('h3',i===0?'甲':'乙'),el('pre',text??('未取得完整正文（'+p.states[i]+'）')));grid.append(box)});card.append(grid);
+ if(p.ready){const group=el('div',undefined,'vote');
+ for(const [value,label] of Object.entries(labels)){const button=el('button',label);button.setAttribute('aria-pressed',String(votes[key]?.choice===value));
+ button.onclick=()=>{votes[key]={...votes[key],choice:value};group.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));persist()};group.append(button)}
+ const note=el('textarea');note.placeholder='可选：哪处措辞、语气或承接影响了判断';note.setAttribute('aria-label','位置'+c.position+'的意见');
+ note.value=votes[key]?.note??'';note.oninput=()=>{votes[key]={...votes[key],note:note.value};persist()};card.append(group,note)}}
+ area.append(card)}persist()}
+const s=data.summary;document.getElementById('summary').textContent='16份真人原话。新取得 '+s.new_completed+' 份正文，复用 '+s.reused+' 份。每项比较都使用同一位置的首次回执。';
+mode.onchange=identical.onchange=render;
+document.getElementById('download').onclick=()=>{const payload={version:'semantic-body-pairwise-review-v1',manifest_sha256:data.manifest_sha256,result_set_hash:data.result_set_hash,blind_key_sha256:data.blind_key_sha256,exported_at:new Date().toISOString(),votes};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download='E.L4-语义选材正文双对照意见.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+render();
+</script></body></html>

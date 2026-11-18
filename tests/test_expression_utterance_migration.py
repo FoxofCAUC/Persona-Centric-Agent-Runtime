@@ -8,7 +8,7 @@ import sys
 import unittest
 
 from persona_runtime.paths import RuntimePaths
-from persona_runtime.storage import Store
+from persona_runtime.storage import SCHEMA_VERSION, Store
 from persona_runtime.models import identifier
 from tests import test_expression_runtime as fixture
 
@@ -51,7 +51,7 @@ print(json.dumps({'schema':SCHEMA_VERSION,'event_id':event['id']}))
         self.assertEqual(old['schema'],31)
         copy=Store(paths);copy.initialize()
         with copy.connection() as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],32)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],SCHEMA_VERSION)
             self.assertEqual([tuple(r) for r in db.execute('SELECT * FROM expression_main_receipts')],original)
             self.assertEqual([tuple(r) for r in db.execute('SELECT id,raw_response,raw_response_hash,usage_json FROM expression_runs')],raw)
             self.assertEqual([tuple(r) for r in db.execute('SELECT id,source_id,source_hash,body,body_hash FROM expression_speech_units')],units)

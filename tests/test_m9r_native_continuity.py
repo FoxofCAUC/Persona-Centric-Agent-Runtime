@@ -57,6 +57,56 @@ class Continuity(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.provider.calls), 1)
         self.assertIn('先练走位', self.main.calls[-1][0]['content'])
 
+    async def test_unrelated_session_does_not_inherit_old_material_or_reuse_only_records(self):
+        seed,record=await self.seed()
+        # Local fixtures stand in for the old long retrieval body and a carried record.
+        seeded=deepcopy(record)
+        seeded['sources'][0]['content']='旧正文包括“问题”“不打”“又不”。'
+        with self.store.connection(write=True) as db:
+            db.execute('UPDATE knowledge_control SET value=? WHERE key=?',(
+                json.dumps({'revision':0,'data':seeded}), 'knowledge.conversation.record.'+seed['id']))
+        self.chat.session('desktop',fresh=True)
+        self.need_web=False
+        unrelated=await self.ask('问题不大，我又不打网球')
+        self.assertEqual(unrelated['status'],'completed')
+        self.assertFalse(self.decisions[-1][1]['state']['available_sources'])
+        self.assertFalse(self.decisions[-1][1]['state']['cached_public_notes'])
+        self.assertNotIn('先练走位',self.main.calls[-1][0]['content'])
+
+        copied=deepcopy(seeded)
+        copied.update(root_turn_id=unrelated['id'],session_id=unrelated['session_id'],native={})
+        copied['retrieval'].update(used_previous=True,material_acquired=False)
+        with self.store.connection(write=True) as db:
+            db.execute('UPDATE knowledge_control SET value=? WHERE key=?',(
+                json.dumps({'revision':0,'data':copied}),'knowledge.conversation.record.'+unrelated['id']))
+        await self.ask('那接着说吧')
+        self.assertFalse(self.decisions[-1][1]['state']['available_sources'])
+        self.assertNotIn('先练走位',self.main.calls[-1][0]['content'])
+
+        for text in ('上次的游戏走位和换装备细节继续说说','具体呢'):
+            result=await self.ask(text)
+            self.assertEqual(result['status'],'completed')
+            self.assertTrue(self.decisions[-1][1]['state']['available_sources'])
+            self.assertIn('先练走位',self.main.calls[-1][0]['content'])
+        self.assertEqual(len(self.provider.calls),1)
+        self.assertEqual(len(self.main.notice_calls),1)
+
+    async def test_same_session_topic_change_breaks_implicit_reuse(self):
+        await self.seed()
+        self.need_web=False
+        await self.ask('那就是差不多嘛')
+        self.assertTrue(self.decisions[-1][1]['state']['available_sources'])
+        for text in ('午饭到了','那接着说吧'):
+            result=await self.ask(text)
+            self.assertEqual(result['status'],'completed')
+            self.assertFalse(self.decisions[-1][1]['state']['available_sources'])
+            self.assertNotIn('先练走位',self.main.calls[-1][0]['content'])
+        returned=await self.ask('回到上次的游戏走位装备')
+        self.assertEqual(returned['status'],'completed')
+        self.assertTrue(self.decisions[-1][1]['state']['available_sources'])
+        self.assertIn('先练走位',self.main.calls[-1][0]['content'])
+        self.assertEqual(len(self.provider.calls),1)
+
     async def test_same_session_new_web_task_replays_whole_protocol_unit(self):
         await self.seed()
         turn = await self.ask('再查一处细节', public={'question': '继续查询公开游戏装备的另一种方案'})

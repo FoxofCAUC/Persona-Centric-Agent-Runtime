@@ -328,10 +328,29 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
             raise ModelError('companion_light_input_limit_exceeded')
         expression_renderer,format_renderer=INSTRUCTION_VERSION,FORMAT_RENDERER
         assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
+    from .style_study import policy_for as style_policy
+    study=style_policy(turn)
+    study_record=None
     if is_native:
         from .companion_native import consume,render_blocks as render_native,FORMAT_VERSION
         character_parts,consumption=consume(character_parts)
         character_removed.extend(consumption['excluded_parts'])
+        if study is not None:
+            from .style_study import project_parts, filter_history, require
+            require(not turn.get('_search_notice') and shared_materials is None and not evaluation,
+                    'incompatible_renderer')
+            projected=False
+            excluded=[]
+            if study['arm'] in ('P','PH'):
+                character_parts,projected=project_parts(character_parts,study['projection'])
+            if study['arm'] in ('H','PH'):
+                require(evidence is not None and evidence['context_mode']=='working_set','missing_history_evidence')
+                history_items,excluded=filter_history(conn,turn,history_items,evidence,reference_manifest)
+                history=[i['pair'] for i in history_items]
+                history_rows=[evidence['orders'][i['group']['turn_id']] for i in history_items]
+            study_record={'version':study['version'],'study_id':study['study_id'],'arm':study['arm'],
+                          'character_version':study['character_version'],'field_projected':projected,
+                          'omitted_history':excluded}
         blocks,character_body=render_native(blocks,character_parts)
         result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
         if sum(len(m['content']) for m in result)>limit:
@@ -368,7 +387,7 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         'searched_layers':recall_plan['searched_layers'],'cold_status':recall_plan['cold_status']} if recall_plan else
         {'version':'recall-runtime-v1','selection_id':None,'selected_ids':[],'fallback':'index_warming'}
         if recall_accepted(conn,turn)[0]['data']['enabled'] else None)
-    return result, {**({'recall_support':recall_meta} if recall_meta else {}),**({'companion':read_companion(turn)} if is_minimal else {}),'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
+    return result, {**({'style_study':study_record} if study_record is not None else {}),**({'recall_support':recall_meta} if recall_meta else {}),**({'companion':read_companion(turn)} if is_minimal else {}),'prompt_assembly':assembly,'input_batch_id':turn.get('input_batch_id'),'input_event_ids':[m['id'] for m in load_turn_input(conn,turn)],'raw_message_count':len(load_turn_input(conn,turn)),
                     'references':reference_manifest,'reply_mode':reply_mode,'dialogue_voice':voice_meta,
                     'behavior':{'resolver':behavior['resolver'],'signals':[item['act'] for item in behavior['signals']],
                                 'uncertainty':behavior['uncertainty'],'character_version_id':character['version_id'] if character else None,

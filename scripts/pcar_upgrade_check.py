@@ -13,7 +13,7 @@ BUSINESS_TABLES=('personas','sessions','events','raw_events','input_batches','in
     'knowledge_documents','knowledge_notes','knowledge_claims','context_uses','context_manifests',
     'attempts','organization_attempts','organization_receipts')
 BUSINESS_KEYS=('knowledge.conversation.record.','knowledge.processing.result.','knowledge.native.receipt.',
-    'knowledge.native.source_state.','knowledge.native.imported.')
+    'knowledge.native.source_state.','knowledge.native.imported.','scene.route.')
 # Keep the read-only checker standalone, including when an old runtime cannot import.
 BUSINESS_TABLES+=('recall_support_policies','recall_support_clock','recall_support_units',
     'recall_support_locations','recall_support_terms','recall_support_events','recall_support_searches','recall_support_sync')
@@ -27,6 +27,11 @@ EXPRESSION_RUNTIME_TABLES=('expression_runtime_policies','expression_runtime_tur
     'expression_runs','expression_publications','expression_publication_versions',
     'expression_presentation_items','expression_utterances','expression_presentation_receipts')
 BUSINESS_TABLES+=EXPRESSION_RUNTIME_TABLES
+SPEECH_TABLES=('expression_speech_contexts','expression_speech_units','expression_speech_runs','expression_speech_publications',
+    'expression_speech_versions','expression_speech_items','expression_speech_visible','expression_speech_receipts')
+DIALOGUE_TABLES=('dialogue_source_bundles','dialogue_corpus_supports','dialogue_generation_policies',
+    'dialogue_generation_turns','dialogue_generation_units','dialogue_generation_stages')
+BUSINESS_TABLES+=SPEECH_TABLES+DIALOGUE_TABLES
 
 
 def digest(value):
@@ -85,7 +90,9 @@ def compare(before,after,*,allow_schema_upgrade=False):
         if after['schema_version']>=30:
             expected.update(EXPRESSION_TABLES)
         if after['schema_version']>=31:expected.update(EXPRESSION_RUNTIME_TABLES)
-        if not (allow_schema_upgrade and 27<=before['schema_version']<after['schema_version']<=31
+        if after['schema_version']>=32:expected.update(SPEECH_TABLES)
+        if after['schema_version']>=33:expected.update(DIALOGUE_TABLES)
+        if not (allow_schema_upgrade and 27<=before['schema_version']<after['schema_version']<=33
                 and expected.issubset(after['tables'])):failures.append({'check':'schema_changed'})
     for table,rows in before['tables'].items():
         new=after['tables'].get(table,{})
@@ -103,7 +110,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='action',required=True)
     take=sub.add_parser('snapshot');take.add_argument('--home',type=Path,required=True);take.add_argument('--out',type=Path,required=True)
     check=sub.add_parser('compare');check.add_argument('before',type=Path);check.add_argument('after',type=Path)
-    check.add_argument('--allow-schema-upgrade',action='store_true',help='Allow declared additive upgrades from 27 through 31; existing rows still must match.')
+    check.add_argument('--allow-schema-upgrade',action='store_true',help='Allow declared additive upgrades from 27 through 33; existing rows still must match.')
     args=parser.parse_args()
     if args.action=='snapshot':
         value=snapshot(args.home);args.out.parent.mkdir(parents=True,exist_ok=True)

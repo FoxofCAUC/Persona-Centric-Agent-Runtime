@@ -1,0 +1,37 @@
+{
+  "version": "en5-jev-d4-author-query-v1",
+  "parent_manifest": "docs/expression/E.N5-D4定向补验候选清单.json",
+  "parent_manifest_sha256": "80525d9f1b810b49d5ae6e4486e6df8e720e4c404566eb80a2645a3e24c87005",
+  "baseline_core_files": 492,
+  "baseline_evidence_files": 134,
+  "declared_core_changes": [],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_en5_d4_author_query_preflight.py",
+      "sha256": "6283e1764d4d208746bc1d5a54a964d6fdb68298cfe4a28322ba21766db193cc"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en5_d3_live.py",
+      "sha256": "33352e58d0964a5a5b12fad6d9742b521053b0192d6f06480428f2c31036a3c6",
+      "baseline_sha256": "43091bd79620a7aba3b812ad60d3bb08ef97712fd6a569a113cd790d0ca49c01"
+    },
+    {
+      "path": "experiments/en5_scene_d4.py",
+      "sha256": "ff618974ff3bf290e44991f315a3263795b8c82d93d86a1b079fef973c90ea6d",
+      "baseline_sha256": "4216c1d46257c2fc141db7aa90b504cf3a2f5a2941c56e5c4f67842e264c1c1a"
+    },
+    {
+      "path": "experiments/en5_scene_d4_report.py",
+      "sha256": "2a91c678cb267d3123842df2b5e60117f0d55a5c1ebc7ecc65918182138aff3a",
+      "baseline_sha256": "045f28ec15467c33fc8013f725b898aa07b30a9b49718da82adb9781c3dcab1f"
+    },
+    {
+      "path": "tests/test_en5_scene_d4.py",
+      "sha256": "345447cbaaa8cb1ed55b014533e6d41748a0d1cd3350f97eb5df8eea65b07272",
+      "baseline_sha256": "da2f0ec07f3da3b37cdbf30079a1470a725af6ad30c9d25d88829b0d2ebc10d3"
+    }
+  ],
+  "new_research_tools": []
+}

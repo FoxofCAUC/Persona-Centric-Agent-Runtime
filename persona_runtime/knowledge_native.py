@@ -134,13 +134,38 @@ class NativeRetrieval:
     def __init__(self, processor):
         self.processor = processor; self.store = processor.store
 
-    def policy(self, pid):
+    @staticmethod
+    def read_policy(db, pid):
         from .knowledge_service import read
-        with self.store.connection() as db: return read(db, 'native.policy.' + pid, POLICY)
+        return read(db,'native.policy.'+pid,POLICY)
+
+    def policy(self, pid):
+        with self.store.connection() as db:return self.read_policy(db,pid)
+
+    def authorization(self, persona_id):
+        from .knowledge_native_route import flash_model, PERMISSION
+        from .private_personas import guard_cloud_dispatch, provider_identity
+        try:
+            model=flash_model(self.processor.model())
+        except RuntimeErrorBase as error:
+            return {'authorized':False,'expected_provider':None,'error_code':str(error)}
+        result={'expected_provider':provider_identity(model),'model':model['name'],'base_url':model['base_url']}
+        try:
+            guard_cloud_dispatch(self.store,persona_id,PERMISSION,model)
+        except RuntimeErrorBase as error:
+            return result | {'authorized':False,'error_code':str(error)}
+        return result | {'authorized':True}
+
+    def authorize(self, persona_id, expected_provider, operation_id):
+        from .knowledge_native_route import flash_model, PERMISSION
+        from .private_personas import PrivatePersonas, provider_identity
+        if provider_identity(flash_model(self.processor.model())) != expected_provider:
+            raise RuntimeErrorBase('private_provider_changed')
+        return PrivatePersonas(self.store.paths).authorize_model(self.store,persona_id,PERMISSION,expected_provider,operation_id)
 
     def protected(self, db, pid):
         from .private_personas import PrivatePersonas
-        if PrivatePersonas(self.store.paths).record_for_persona(pid): return True
+        if PrivatePersonas(self.store.paths).record_for_persona(pid,db=db): return True
         marker = self.store.paths.home / 'runtime/private-copy-policy.json'
         if marker.exists() and json.loads(marker.read_text(encoding='utf-8')).get('persona_id') == pid:
             return True
@@ -196,6 +221,10 @@ class NativeRetrieval:
             if len(approved) > 1:
                 result = result | {'question': '\n'.join(item['question'] for item in approved)[-4000:]}
             return result
+        # The E.N5 replay's only public inputs are its explicitly approved per-slot projections.
+        study_scope=self.store.paths.home/'runtime/en5-experience.json'
+        if study_scope.is_file() and json.loads(study_scope.read_bytes()).get('mode')=='author_material_replay':
+            return None
         derived=public_query_span(question)
         if derived is not None:return derived
         if NO_QUERY.search(question):return None
@@ -280,7 +309,7 @@ class NativeRetrieval:
         with self.store.connection() as db:
             reader = read(db, 'policy.' + turn['persona_id'], READER)['data']
             web = read(db, 'web.policy.' + turn['persona_id'], {'enabled': False})['data']
-            policy = self.policy(turn['persona_id'])
+            policy = self.read_policy(db,turn['persona_id'])
             question = input_text(db, turn)
             from .knowledge_native_memory import previous as find_previous
             previous = find_previous(db, turn, question)
@@ -333,6 +362,15 @@ class NativeRetrieval:
                     prior_notices=[row[0] for row in db.execute("SELECT id FROM organization_tasks WHERE json_extract(payload_json,'$.knowledge_processing.root_turn_id')=? AND json_extract(payload_json,'$.knowledge_processing.stage')='conversation_search_notice'",(turn['id'],))]
                 if not dispatched:
                     call(NOTICE_STAGE, {'public_task': projection, 'native_policy': policy, 'notice_profile': NOTICE_VERSION})
+                    from .dialogue_generation import enabled as direct_enabled
+                    with self.store.connection() as db:
+                        if direct_enabled(db,turn['id']):
+                            confirmed=db.execute("SELECT json_extract(value,'$.data.fully_presented') FROM knowledge_control WHERE key=?",
+                                ('knowledge.search_notice.turn.'+turn['id'],)).fetchone()
+                            if not confirmed or confirmed[0]!=1:raise RuntimeErrorBase('search_notice_not_fully_presented')
+                        from . import tk_notice
+                        desktop_gate=tk_notice.required(db,turn)
+                    if desktop_gate:tk_notice.wait(self.processor.service,turn)
                 else:
                     # An already spoken/failed/unknown prelude remains part of
                     # this question's bill, even when retrieval itself is cached.

@@ -1,0 +1,75 @@
+{
+  "version": "en5-d2-strict-decision-contract-v1",
+  "parent_manifest": "docs/expression/E.N5-接话决策与隔离桌面候选清单.json",
+  "parent_manifest_sha256": "0f4e86f57688e4d6989d9bd655ef221f8cc19878fca6e5483138403cfd2200d4",
+  "baseline_core_files": 480,
+  "baseline_evidence_files": 106,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/provider_policy.py",
+      "sha256": "8b9a9568db100b348a2e0e93d8911f8add4ab19f4d69f82a81ec8c7c7850e873",
+      "baseline_sha256": "124324dd91a1c97b00476dd4464fa7143d90a692e453208401c0a515b5e816cd"
+    },
+    {
+      "path": "persona_runtime/corpus_learning_transport.py",
+      "sha256": "0ff3e5c0e41bc80b3a833b2bda7c32801f6c43f4c7a730cb15f7bdf4acc2b2bb",
+      "baseline_sha256": "3f3c4c1afd71a675ff03c743a78a669cdb50f094daa09c9c694ec846f1e2d333"
+    },
+    {
+      "path": "persona_runtime/dialogue_generation.py",
+      "sha256": "55ebdf65199dcff1857e41c69991deb85ed628b97342beb1a7be71d71a64df2e",
+      "baseline_sha256": "061d8123231e278b838fe84e71ded990649ccd35be595107938f699d6341021b"
+    },
+    {
+      "path": "persona_runtime/fixed_decision_use.py",
+      "sha256": "98604c857660bdf0a90a8d76a8e6f3a528ee7054b3d93d57421d3ebfdf832313",
+      "baseline_sha256": "cb693aefe868ecee2d334d3e7c9a5752d86ab76eb828dd9377d929f7ff314d12"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en3_holdout_trial.py",
+      "sha256": "481de255b9d9ed2a0fc95f00e2b47c6f502af3e8b1f105ae2705622095f87de7",
+      "baseline_sha256": "cc5c734a486960606f3664767beb6caadac653c142bae7f3c2ff68d4eca60f70"
+    },
+    {
+      "path": "experiments/en5_decision_d2.py",
+      "sha256": "ef3371e365ac550e378e65f83e52353f306e984b52d1f66b4ad81afa6650673e",
+      "baseline_sha256": "841041cfac15c489438d6e9ab12062f97f3113de84b89ca0651e7814cefc7e2a"
+    },
+    {
+      "path": "experiments/en5_d3_desktop.py",
+      "sha256": "d200ebdc453791e755510ac849757a3982490871fbfc18ad0617fbae66575ba7",
+      "baseline_sha256": "b1a0574c725428d281272377cbe994c70d87f47759cf3483cdbe59f31b02283a"
+    },
+    {
+      "path": "tests/test_en5_d3_desktop.py",
+      "sha256": "279f173ef77a0a4c25cedd14fd2bc47c619ffc716204529f4f337c1ee7eeb170",
+      "baseline_sha256": "0d2b5bf2d7c725b93628a065469a2212e4bd9b03b6883dc206442ee82c72ada8"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/deepseek_reply_decision.py",
+      "sha256": "ed1d689436f82c54446a7c954b647161cbfaff09f436908f8b57fb6f8ac2c09e"
+    },
+    {
+      "path": "scripts/pcar_en5_decision_repair_preflight.py",
+      "sha256": "fda4b497df8822443d89c73532b28e8730a9a5bb0dca0c9d062c87b46845b1f1"
+    }
+  ],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_decision_tool.py",
+      "sha256": "5c1281c69f99bdc56977bf9f788e349b32e8859c8bd2e42d4c88a2e2820bc488"
+    },
+    {
+      "path": "experiments/en5_decision_repair.py",
+      "sha256": "1827ddc586d52b05ae3d0c987ce282487373ed22f5193094da32166ea3188918"
+    },
+    {
+      "path": "tests/test_en5_decision_repair.py",
+      "sha256": "e8c6fb20cbae090123b91bcd063b1fc95f5b8fd68b3349056e476dcbf0c4f4dc"
+    }
+  ]
+}

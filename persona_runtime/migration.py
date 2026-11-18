@@ -14,6 +14,7 @@ import zipfile
 
 from .installation import atomic_json,read_json,validate_home
 from .models import RuntimeErrorBase
+from . import migration_corpus
 
 FORMAT='pcar-business-migration-v1'
 SECRET_FIELDS={'encrypted_key','api_key','admin_token','bridge_token','claim_token','console_token','session_token','access_token','refresh_token'}
@@ -113,6 +114,7 @@ def _row_positions(db):
 def _sanitize_database(path):
     changes={}
     with closing(sqlite3.connect(path)) as db,db:
+        db.row_factory = sqlite3.Row
         db.execute('PRAGMA trusted_schema=OFF')
         from .storage import Store
         Store._check(db)
@@ -192,7 +194,7 @@ def _sanitize_database(path):
         if _row_positions(db)!=positions:raise RuntimeErrorBase('migration_history_positions_changed')
         return changes,counts,db.execute('PRAGMA user_version').fetchone()[0]
 
-def export_instance(paths,name=None):
+def export_instance(paths,name=None,*,include_corpora=()):
     validate_home(paths.home)
     _closed(paths)
     with _offline(paths):
@@ -213,6 +215,7 @@ def export_instance(paths,name=None):
             if version!=SCHEMA_VERSION:raise RuntimeErrorBase('请先在原实例完成正常升级，再导出迁移包。')
             atomic_json(root/'config-public.json',_safe_config(read_json(paths.home/'config/workbench.json')))
             entries={'database.sqlite3':database,'config-public.json':root/'config-public.json'}
+            entries.update(migration_corpus.stage_selected(include_corpora, root))
             private=paths.home/'private/personas'
             if (private/'registry.json').exists():
                 registry=read_json(private/'registry.json');entries['private/personas/registry.json']=private/'registry.json'
@@ -237,7 +240,8 @@ def export_instance(paths,name=None):
                     for n,p in entries.items():z.write(p,n)
                 os.replace(pending,destination)
             finally:pending.unlink(missing_ok=True)
-        return {'exported':True,'path':str(destination),'counts':counts,'credentials_included':False,'source_modified':False}
+        return {'exported':True,'path':str(destination),'counts':counts,'credentials_included':False,'source_modified':False,
+                'included_corpora':migration_corpus.corpus_ids(entries)}
 
 def _manifest(package):
     with zipfile.ZipFile(package) as z:
@@ -251,7 +255,7 @@ def _manifest(package):
         for name,entry in value['files'].items():
             path=PurePosixPath(name)
             if path.is_absolute() or str(path)!=name or '..' in path.parts or '\\' in name or ':' in name:raise RuntimeErrorBase('migration_package_path_invalid')
-            if name not in ('database.sqlite3','config-public.json','jev-public.json','private/personas/registry.json'):
+            if name not in ('database.sqlite3','config-public.json','jev-public.json','private/personas/registry.json') and not migration_corpus.member_allowed(name):
                 if len(path.parts)!=4 or path.parts[:2]!=('private','personas') or path.name not in PRIVATE_FILES:raise RuntimeErrorBase('migration_package_path_invalid')
             info=z.getinfo(name)
             if (info.external_attr>>16)&0o170000==0o120000 or info.file_size!=entry['bytes']:raise RuntimeErrorBase('migration_package_invalid')
@@ -277,12 +281,16 @@ def _target_empty(paths):
 def import_instance(paths,package,*,apply=False):
     if migration_status(paths):raise RuntimeErrorBase('已有迁移记录，请先完成配置或执行迁移回退。')
     package=Path(package).absolute();manifest=_manifest(package);_target_empty(paths)
+    included_corpora = migration_corpus.corpus_ids(manifest['files'])
+    migration_corpus.check_target(paths, included_corpora)
     preview={'format':FORMAT,'counts':manifest['counts'],'execution_changes':manifest['execution_changes'],'credentials_included':False,'paid_calls':0,'applied':False}
+    preview['included_corpora'] = included_corpora
     if not apply:return preview
     from .character_embedding import private_directory
     from .config import ConfigStore
     paths.initialize();private_directory(paths.home,paths.home)
     with _offline(paths):
+        migration_corpus.check_target(paths, included_corpora)
         required=sum(x['bytes'] for x in manifest['files'].values())*2
         if shutil.disk_usage(paths.home).free<required:raise RuntimeErrorBase('migration_insufficient_space')
         operation=uuid.uuid4().hex;temporary=private_directory(paths.home,paths.home/'tmp')
@@ -297,14 +305,17 @@ def import_instance(paths,package,*,apply=False):
                     if digest(dest)!=entry['sha256']:raise RuntimeErrorBase('migration_package_hash_invalid')
             # Validate and sanitize the actual database, not the package's claim.
             _sanitize_database(root/'database.sqlite3')
+            migration_corpus.verify_staged(root, manifest['files'])
             public=read_json(root/'config-public.json')
             for k,v in _safe_config(public).items():target_cfg[k]=v
             target_cfg['runtime']['components']={'service':True,'astrbot':False,'napcat':False}
             target_cfg['bot_qq']=target_cfg['owner_qq']=''
             ConfigStore.validate(target_cfg)
-            installed=[n for n in manifest['files'] if n.startswith('private/personas/')]
+            installed=[n for n in manifest['files'] if n.startswith('private/personas/') or migration_corpus.member_allowed(n)]
             if 'jev-public.json' in manifest['files']:installed.append('private/knowledge-router/config.json')
             marker={'version':1,'migration_id':operation,'instance_id':target_cfg['instance_id'],'state':'installing','resume_background':False,'counts':manifest['counts'],'installed_files':installed}
+            marker['created_corpus_directories'] = sorted(name for name in migration_corpus.directories(installed)
+                                                        if not (paths.home/name).exists())
             backup=paths.home/'backups'/('before-migration-'+operation);backup.mkdir(parents=True)
             shutil.copyfile(config.file,backup/'workbench.json')
             if previous_db.exists():shutil.copyfile(previous_db,backup/'runtime.sqlite3')
@@ -315,6 +326,10 @@ def import_instance(paths,package,*,apply=False):
             marker['original_private_files']=[p.relative_to(backup).as_posix() for p in (backup/'private').rglob('*') if p.is_file()] if (backup/'private').exists() else []
             atomic_json(marker_file(paths),marker)
             try:
+                for ident in included_corpora:
+                    relative = Path(*migration_corpus.PREFIX, ident)
+                    dest = private_directory(paths.home, paths.home / relative)
+                    shutil.copytree(root / relative, dest, dirs_exist_ok=True)
                 if (root/'private/personas').exists():
                     dest=private_directory(paths.home,paths.home/'private/personas');shutil.copytree(root/'private/personas',dest,dirs_exist_ok=True)
                     (dest/'model-grants.json').unlink(missing_ok=True)
@@ -344,10 +359,17 @@ def _restore_empty_target(paths,value):
     names=set(value.get('installed_files',[]))|set(value.get('original_private_files',[]))|{'private/personas/model-grants.json'}
     for name in names:
         part=PurePosixPath(name)
-        if part.is_absolute() or '..' in part.parts or '\\' in name or not name.startswith(('private/personas/','private/knowledge-router/')):raise RuntimeErrorBase('migration_state_unavailable')
+        if part.is_absolute() or '..' in part.parts or '\\' in name or not (name.startswith(('private/personas/','private/knowledge-router/')) or migration_corpus.member_allowed(name)):raise RuntimeErrorBase('migration_state_unavailable')
         dest=safe(paths.home.joinpath(*part.parts),paths.home);old=safe(backup.joinpath(*part.parts),backup)
         if old.is_file():dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(old,dest)
         else:dest.unlink(missing_ok=True)
+    owned = set(value.get('created_corpus_directories', []))
+    if not owned.issubset(migration_corpus.directories(names)):
+        raise RuntimeErrorBase('migration_state_unavailable')
+    for name in sorted(owned, key=lambda n: len(PurePosixPath(n).parts), reverse=True):
+        directory = safe(paths.home/name, paths.home)
+        if directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
     # Only remove now-empty canonical role folders created by this operation.
     private=paths.home/'private/personas'
     if private.exists():

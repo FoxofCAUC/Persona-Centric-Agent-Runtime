@@ -1,0 +1,45 @@
+{
+  "version": "en5-jev-continuous-v1",
+  "parent_manifest": "docs/expression/E.N5-Jev请求计时候选清单.json",
+  "parent_manifest_sha256": "e0914736270b00d4783cd3871dfc209477e630adfc0f2e626b30fdbebece5d46",
+  "baseline_core_files": 486,
+  "baseline_evidence_files": 124,
+  "declared_core_changes": [],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_en5_scene_continuous_preflight.py",
+      "sha256": "d3f683a2f5322c10df566b3056264ade082cd96d2aa1d57132b3ecfa68e57552"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en5_d3_live.py",
+      "sha256": "575ae1f7419f972258ef0add6678205cd3ce4b7dcb3bce9e876ea3056930e511",
+      "baseline_sha256": "bc5d3823276d901838b07963fa8394b375e1a78f7f5cc6d6f4e3571fccf17593"
+    },
+    {
+      "path": "experiments/en5_d3_live_review.py",
+      "sha256": "4dea2760b478360368aae847e093181e08e61aab967831a1694a7643711b7dff",
+      "baseline_sha256": "924b58ce1118950dc840b652b511aa7e9fceaa8b14027eb075862f3428e17a48"
+    },
+    {
+      "path": "experiments/en5_scene_desktop.py",
+      "sha256": "bef9e41b150e2049d1e7001cf9b61187e3ef8f3180b0618428ceda6b60e59df4",
+      "baseline_sha256": "f81afa0d8cc053b938eb07eb9565f6467d715b5376c2a5c7a771081209b1a507"
+    }
+  ],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_scene_continuous.py",
+      "sha256": "e278932f8e67b8bf4c580e0ae9c89b42314fcdaab7a974baa0f22b9ea6f9fe21"
+    },
+    {
+      "path": "experiments/en5_scene_continuous_review.py",
+      "sha256": "7b98e82f7b2c31fa940cd9c8c1a86cd4fce5d3165d287801c01b3dcf9b02c8ee"
+    },
+    {
+      "path": "tests/test_en5_scene_continuous.py",
+      "sha256": "fc0d4e9837b6531900ecf982529c081442b8e2495d1910f03a82e03f4cc6ede3"
+    }
+  ]
+}

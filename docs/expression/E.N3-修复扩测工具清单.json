@@ -1,0 +1,70 @@
+{
+  "version": "en3-repair-expanded-tools-v1",
+  "date": "2026-11-18",
+  "parent_manifest": "docs/expression/E.N3-单角色研究工具清单.json",
+  "parent_manifest_sha256": "a161f7c726f141592ca8912fdaea0b10579f689842421dff1241feb0a91d90a0",
+  "baseline_core_files": 468,
+  "baseline_evidence_files": 58,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/dialogue_generation.py",
+      "sha256": "061d8123231e278b838fe84e71ded990649ccd35be595107938f699d6341021b",
+      "baseline_sha256": "d085694587fb4d00920ca29d3d11beec7b98a419841100f13766adebafcd2ada"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/dialogue_portable.py",
+      "sha256": "8da926ccce7672ed4704daf71b251774b2fc6131b151d475087e181b333bdc64"
+    },
+    {
+      "path": "scripts/pcar_en3_repair_preflight.py",
+      "sha256": "9331f246afeb0abfff944cd2708ae8c27e9c783aae5af3140fc9d446574219bf"
+    }
+  ],
+  "declared_evidence_changes": [],
+  "new_research_tools": [
+    {
+      "path": "experiments/en3_expanded_material.py",
+      "sha256": "0a621bb6ee5e43e7a492fd792f47b43eac2b137a32d7817c4cadf03236634e3c"
+    },
+    {
+      "path": "experiments/en3_repair_blind.html",
+      "sha256": "8212709f07eb79858005e14fbdfd9c8cab4e1c2e7ca2e6bf021b164366718ccf"
+    },
+    {
+      "path": "experiments/en3_repair_blind.py",
+      "sha256": "d9b098d4f5308b310dd21f5f883380d4088b8266f3ecfdbb7eb655bad065c607"
+    },
+    {
+      "path": "experiments/en3_repair_packet.py",
+      "sha256": "49590773299938d2b6d950c75150747b764f44eebc10b2c4ddca65ebe579f1db"
+    },
+    {
+      "path": "experiments/en3_repair_trace.py",
+      "sha256": "a0a1bc4bb7e55a869cbf3325f74e42c9d71620d1b07393fd48d3df3134996e7c"
+    },
+    {
+      "path": "experiments/en3_repair_trial.py",
+      "sha256": "0fba81d62710dbdc5e70f5bc1095b8c03ac6dbc89afd568c7366dd7cf42daf2d"
+    },
+    {
+      "path": "tests/test_dialogue_portable.py",
+      "sha256": "9edbe1a0fe9055fdb3df8330a7a4277b52fd5b8b39085b3f635a680d703fb37f"
+    },
+    {
+      "path": "tests/test_en3_expanded_material.py",
+      "sha256": "7c583e98d007d5555c8ae5c299d04f4bc1650cb1d8961f382dcf32035ca13b72"
+    },
+    {
+      "path": "tests/test_en3_repair_blind.py",
+      "sha256": "7f2c348ee6fcaf4f3d421733f94c5141bf5702cf6e643ca0519840069349127a"
+    },
+    {
+      "path": "tests/test_en3_repair_trial.py",
+      "sha256": "3624b0e0aff4295af2dc809057d8a252a1f95bc2c0d3135e12930cfcc7b8533c"
+    }
+  ],
+  "schema": 33,
+  "formal_activation": false
+}

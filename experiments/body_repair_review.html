@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>人物正文修复 · 双组盲审</title>
+<style>
+:root{color-scheme:light;font:16px/1.65 system-ui,"Microsoft YaHei",sans-serif;color:#24332d;background:#f5f6f2}
+*{box-sizing:border-box}body{margin:0}main{max-width:66rem;margin:auto;padding:1rem 1.15rem 4rem}
+h1,h2,h3,p{margin:0 0 .65rem}h1{font-size:1.6rem}h2{font-size:1.15rem}h3{font-size:1rem}
+header,article,details{background:white;border:1px solid #cfdbd1;border-radius:.55rem;margin:.9rem 0;padding:1rem 1.2rem}
+label,button,summary,select{cursor:pointer}button,select,textarea{font:inherit;color:inherit}button,select{min-height:2.7rem;border:1px solid #9eafa4;background:white;border-radius:.35rem;padding:.35rem .6rem}
+.action{background:#295a43;border-color:#295a43;color:white}button[aria-pressed=true]{background:#dcebdc;border-color:#3a684b;box-shadow:inset 0 0 0 1px #3a684b}
+.bar,.choices{display:flex;align-items:center;flex-wrap:wrap;gap:.55rem}.bar{padding:.4rem 0}.choices{margin-top:.8rem}
+pre{padding:0;margin:.3rem 0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}.original{border-left:3px solid #90ac98;background:#f3f6f1;padding:.5rem .9rem}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-top:.75rem}.answer{border:1px solid #dbe1db;border-radius:.35rem;padding:.75rem;min-width:0}
+.meta{color:#465e50;font-size:.92rem}textarea{margin-top:.8rem;width:100%;border:1px solid #a9b7ab;border-radius:.3rem;padding:.4rem .55rem;min-height:3rem;resize:vertical}summary{font-weight:600}a{color:#295a43}
+@media(max-width:650px){main{padding:.5rem .55rem 2rem}header,article,details{padding:.85rem}.pair{grid-template-columns:1fr}.choices button{flex:1 1 28%}}
+</style></head><body><main><header><h1>人物正文修复 · 双组盲审</h1><p id="summary"></p>
+<p>每个位置使用同一条真人原话。读完甲乙两份回复，选出更像人物在当下会说的那份。每组分别打乱甲乙顺序。</p>
+<p class="meta">本轮比较整套修复后的最终发言。单项改动各自贡献了多少，需要另作对照。</p>
+<div class="bar"><label for="mode">比较对象</label><select id="mode"></select>
+<button type="button" class="action" id="download">导出审阅意见</button><a href="匿名正文全文.txt">阅读全文</a><a href="evidence.html">原文、呈现与解盲</a></div>
+<p class="meta" id="progress" aria-live="polite"></p><p class="meta" id="storage" hidden></p></header>
+<div id="cases"></div></main><script type="application/json" id="data">@@REPAIR_DATA@@</script>
+<script>
+'use strict';
+const data = JSON.parse(document.getElementById('data').textContent);
+const mode = document.getElementById('mode');
+for (const [code, name] of Object.entries(data.groups)) mode.add(new Option(name,code));
+const storageKey = 'pcar-el4-repair-review:' + data.manifest_sha256 + ':' + data.result_set_hash + ':' + data.blind_key_sha256;
+const choices = {left:'甲更好', right:'乙更好', same:'无明显差别', neither:'两份都不合适', uncertain:'无法判断'};
+let votes = {};
+function storageWarning() {
+  const note = document.getElementById('storage');
+  note.hidden = false;
+  note.textContent = '当前浏览器无法在本机保存进度。关闭页面前请导出意见。';
+}
+try { votes = JSON.parse(localStorage.getItem(storageKey) || '{}') || {}; } catch { storageWarning(); }
+function node(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+function updateProgress() {
+  const parts = Object.entries(data.groups).map(([g,name]) => {
+    const done = data.cases.filter(c => c.pairs[g].status === 'different' && votes[g+'-'+c.position]?.choice).length;
+    return name+'组已评 '+done+' / '+data.summary.comparisons[g].different;
+  });
+  document.getElementById('progress').textContent = parts.join('　·　');
+}
+function record(key, value) {
+  votes[key] = {...votes[key], ...value};
+  try { localStorage.setItem(storageKey, JSON.stringify(votes)); } catch { storageWarning(); }
+  updateProgress();
+}
+function renderCard(c) {
+  const pair = c.pairs[mode.value], key = mode.value+'-'+c.position;
+  const card = node('article');
+  card.append(node('h2','位置 '+c.position), node('pre',c.input,'original'));
+  if (pair.status === 'identical') {
+    card.append(node('p','两份正文逐字相同。','meta'),node('pre',pair.sides[0].text));
+    return card;
+  }
+  const row = node('div',undefined,'pair');
+  pair.sides.forEach((p,i) => {
+    const box = node('div',undefined,'answer');
+    box.append(node('h3',i === 0 ? '甲':'乙'), node('pre',p.text ?? ('未取得可评正文（'+p.state+'）')));
+    row.append(box);
+  });
+  card.append(row);
+  if (pair.status !== 'different') return card;
+  const list = node('div',undefined,'choices');
+  Object.entries(choices).forEach(([choice,title]) => {
+    const b = node('button',title);
+    b.type = 'button';
+    b.setAttribute('aria-pressed',String(choice === votes[key]?.choice));
+    b.onclick = () => {
+      record(key,{choice});
+      list.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed',String(x === b)));
+    };
+    list.append(b);
+  });
+  const note = node('textarea');
+  note.placeholder = '可选：记下影响判断的原句或原因';
+  note.setAttribute('aria-label','位置 '+c.position+' 的意见');
+  note.value = votes[key]?.note ?? '';
+  note.oninput = () => record(key,{note:note.value});
+  card.append(list,note);
+  return card;
+}
+function render() {
+  const area = document.getElementById('cases');
+  area.replaceChildren();
+  const rowsFor = status => data.cases.filter(c => c.pairs[mode.value].status === status);
+  const different = rowsFor('different'), incomplete = rowsFor('incomplete'), same = rowsFor('identical');
+  document.getElementById('summary').textContent = data.summary.positions+' 个位置，新取得 '+data.summary.new_completed+
+    ' 份正文，复用 '+data.summary.reused+' 份。呈现时有 '+data.summary.presentation_changed_count+
+    ' 个位置移除了动作旁白。本组有 '+different.length+' 对正文不同、'+same.length+' 对相同、'+incomplete.length+' 对回执未齐。';
+  different.forEach(c => area.append(renderCard(c)));
+  incomplete.forEach(c => area.append(renderCard(c)));
+  if (same.length) {
+    const d = node('details');
+    d.append(node('summary','逐字相同的 '+same.length+' 个位置 · '+same.map(c => c.position).join('、')));
+    same.forEach(c => d.append(renderCard(c)));
+    area.append(d);
+  }
+  updateProgress();
+}
+mode.onchange = render;
+document.getElementById('download').onclick = () => {
+  const feedback = {version:'body-repair-double-review-v1',study_id:data.study_id,
+    manifest_sha256:data.manifest_sha256,result_set_hash:data.result_set_hash,
+    blind_key_sha256:data.blind_key_sha256,exported_at:new Date().toISOString(),votes};
+  const url = URL.createObjectURL(new Blob([JSON.stringify(feedback,null,2)],{type:'application/json'}));
+  const a = node('a');
+  a.download = 'E.L4-人物正文修复双组审阅意见.json';
+  a.href = url;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url),2000);
+};
+render();
+</script></body></html>

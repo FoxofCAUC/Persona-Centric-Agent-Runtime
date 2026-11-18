@@ -20,6 +20,11 @@ def canonical(value):return sha(json.dumps(value,ensure_ascii=False,sort_keys=Tr
 def provider_identity(model):return canonical({k:model.get(k) for k in ('base_url','name')})
 
 
+DIALOGUE_PERMISSIONS = {'dialogue_understanding': 'deepseek-flash',
+                       'dialogue_selection': 'deepseek-flash', 'dialogue_reply': 'deepseek-v4-pro'}
+FIXED_MODEL_PERMISSIONS = {**DIALOGUE_PERMISSIONS, 'knowledge_native': 'deepseek-flash'}
+
+
 def safe(path, parent=None):
     path=Path(path).absolute()
     for item in (path,*path.parents):
@@ -135,17 +140,17 @@ class PrivatePersonas:
         from .config import ConfigStore
         from .persona_management import active
         if not operation_id:raise RuntimeErrorBase('operation_id_required')
-        if kind not in ('main','organization','proactive','knowledge_router','selector','expression','expression_learning'):raise RuntimeErrorBase('private_permission_kind_invalid')
+        if kind not in ('main','organization','proactive','knowledge_router','selector','expression','expression_learning') and kind not in FIXED_MODEL_PERMISSIONS:raise RuntimeErrorBase('private_permission_kind_invalid')
         self.root.mkdir(parents=True,exist_ok=True)
         lock=InstanceLock(self.root/'registry.lock')
         try:
             with store.connection(write=True) as db:
                 if store.current(db)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
                 active(db,persona_id)
-                policy=self.record_for_persona(persona_id)
+                policy=self.record_for_persona(persona_id,db=db)
                 if policy is None:
                     policy=self.acceptance_copy_policy(persona_id)
-                    if policy is not None and kind not in ('main','knowledge_router','expression','expression_learning'):
+                    if policy is not None and kind not in ('main','knowledge_router','expression','expression_learning') and kind not in FIXED_MODEL_PERMISSIONS:
                         raise RuntimeErrorBase('private_copy_permission_kind_not_allowed')
                 if policy is None:raise RuntimeErrorBase('private_scope_mismatch')
                 cfg=ConfigStore(self.paths).load()
@@ -154,6 +159,14 @@ class PrivatePersonas:
                     from .knowledge_routing import configured_model
                     model=configured_model(self.paths)
                 if kind=='selector':model=cfg['character_selector']
+                if kind in FIXED_MODEL_PERMISSIONS:
+                    from .provider_policy import require_generation_provider
+                    model = dict(cfg['model'], name=FIXED_MODEL_PERMISSIONS[kind])
+                    require_generation_provider(model)
+                    # Reviewed Flash requests use the bare official endpoint, even
+                    # when the managed credential and the v8 Pro turn use /v1.
+                    if kind in ('dialogue_understanding','dialogue_selection') and provider_identity(model)!=expected_provider:
+                        model = dict(model,base_url='https://api.deepseek.com')
                 if provider_identity(model)!=expected_provider:
                     raise RuntimeErrorBase('private_provider_changed')
                 data=self.model_grants()
@@ -185,7 +198,7 @@ class PrivatePersonas:
         if policy.get('_copy_binding'):expected['copy_binding']=policy['_copy_binding']
         return all(grant.get(k)==v for k,v in expected.items())
 
-    def record_for_persona(self,persona_id):
+    def record_for_persona(self,persona_id,*,db=None):
         def scoped(record):
             if record is None:return None
             from .migration import privacy_binding
@@ -196,10 +209,12 @@ class PrivatePersonas:
         if direct:return scoped(direct)
         from .storage import Store
         import sqlite3
-        from contextlib import closing
-        path=Store(self.paths).path
-        if not path.exists():return None
-        with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=.2)) as db:
+        from contextlib import closing, nullcontext
+        store=Store(self.paths)
+        if db is None and not store.path.exists():return None
+        connection=(closing(sqlite3.connect(store.path.as_uri()+'?mode=ro',uri=True,timeout=store.timeout))
+                    if db is None else nullcontext(db))
+        with connection as db:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name='persona_lifecycle'").fetchone():return None
             row=db.execute('SELECT privacy_root FROM persona_lifecycle WHERE persona_id=?',(persona_id,)).fetchone()
         if not row or not row[0]:return None
@@ -311,15 +326,61 @@ def guard_acceptance_write(store,persona_id):
         if active:PrivatePersonas(store.paths).assert_acceptance(persona_id)
 
 
-def guard_cloud_dispatch(store,persona_id,kind,model):
+def _en5_grant(paths, policy, kind, model):
+    """A visible-only experience grant belongs to one instance and one author use."""
+    from .config import ConfigStore
+    try:
+        home=paths.home.resolve()
+        scope_path=safe(home/'runtime/en5-experience.json',home)
+        use_path=safe(home.parent/'author-use.private.json',home.parent)
+        scope=json.loads(scope_path.read_bytes())
+        use=use_path.read_bytes()
+        if sha(use)!=policy.get('en5_approval_sha256'):
+            return False
+        data=json.loads(use)
+        if (not Path(scope['home']).is_absolute() or Path(scope['home']).resolve()!=home or scope.get('instance_id')!=ConfigStore(paths).load()['instance_id']
+                or scope['persona_id']!=policy['persona_id'] or data['persona_id']!=policy['persona_id']
+                or scope['permission_binding']!=policy['_copy_binding'] or data['scope_sha256']!=sha(scope_path.read_bytes())
+                or data.get('approved') is not True or data.get('sessions')!=scope['sessions']
+                or kind not in ('main','knowledge_router','knowledge_native')
+                or provider_identity(model)!=provider_identity(data['providers'][kind])):
+            return False
+        if scope['mode']=='author_material_replay':
+            slots=safe(home.parent/'approved-slots.private.json',home.parent)
+            if sha(slots.read_bytes())!=policy.get('en5_slots_sha256'):return False
+            for name,field in (('materials.private.json','material_sha256'),('input-contract.private.json','input_contract_sha256')):
+                path=safe(home.parent/name,home.parent)
+                if sha(path.read_bytes())!=data[field]:return False
+        return True
+    except (OSError,KeyError,TypeError,ValueError):
+        return False
+
+
+def guard_cloud_dispatch(store,persona_id,kind,model,*,db=None,decision_use=None):
+    from contextlib import nullcontext
     from .migration import ensure_cloud_ready
     ensure_cloud_ready(store.paths)
     private=PrivatePersonas(store.paths)
-    policy=private.record_for_persona(persona_id)
-    if policy is not None and kind in ('main','organization','proactive','knowledge_router','selector','expression','expression_learning') and private.model_authorized(persona_id,policy,kind,model):return
+    policy=private.record_for_persona(persona_id,db=db)
+    if (policy and policy.get('d3_binding_sha256')) or (store.paths.home/'runtime/d3-binding.json').is_file():
+        from .continuous_decision_use import check
+        check(store.paths,policy,kind,model)
+    if kind=='dialogue_decision':
+        from .config import ConfigStore
+        from .fixed_decision_use import guard
+        main=ConfigStore(store.paths).load()['model']
+        if (not policy or policy.get('state')!='en5_visible_copy' or not decision_use
+                or not _en5_grant(store.paths,policy,'main',main)
+                or not private.model_authorized(persona_id,policy,'main',main)):
+            raise RuntimeErrorBase('en5_specific_use_unavailable')
+        guard(store.paths,policy,model,decision_use)
+        return
+    if policy and policy.get('state')=='en5_visible_copy' and not _en5_grant(store.paths,policy,kind,model):
+        raise RuntimeErrorBase('en5_specific_use_unavailable')
+    if policy is not None and (kind in ('main','organization','proactive','knowledge_router','selector','expression','expression_learning') or kind in FIXED_MODEL_PERMISSIONS) and private.model_authorized(persona_id,policy,kind,model):return
     if policy is not None and policy.get('_migration_binding'):
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')
-    with store.connection() as db:
+    with (store.connection() if db is None else nullcontext(db)) as db:
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_imports'").fetchone():
             for row in db.execute('SELECT data_json FROM memory_imports WHERE persona_id=?',(persona_id,)):
                 if json.loads(row[0]).get('private_review_required'):
@@ -335,7 +396,7 @@ def guard_cloud_dispatch(store,persona_id,kind,model):
             if candidate.get('copy_scope')=='visible_only_v1':
                 raise RuntimeErrorBase('private_cloud_provider_not_authorized')
             policy=candidate
-    if policy is not None and kind in ('organization','proactive','knowledge_router','expression','expression_learning'):
+    if policy is not None and (kind in ('organization','proactive','knowledge_router','expression','expression_learning') or kind in FIXED_MODEL_PERMISSIONS):
         # Background disclosure always requires a role-specific grant. Neither
         # ancestor registry approvals nor copied acceptance policies transfer it.
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')

@@ -1,0 +1,46 @@
+{
+  "version": "en3-single-persona-tools-v1",
+  "date": "2026-11-18",
+  "parent_manifest": "docs/expression/E.L5-结构33候选扩展清单.json",
+  "parent_manifest_sha256": "e9bd331fb6c47486b6b94365f66af0d79d9050e57eef15ef21c71774d9194e9e",
+  "new_research_tools": [
+    {
+      "path": "experiments/en3_holdout_blind.html",
+      "sha256": "7882a3e8288dbca24160db84571877d24a041da1fc2534644ae580757376567d"
+    },
+    {
+      "path": "experiments/en3_holdout_blind.py",
+      "sha256": "a729519cc8efa92e390abc0e1fc774d6d68f278129235495d16ab14866d5a4c7"
+    },
+    {
+      "path": "experiments/en3_holdout_material.py",
+      "sha256": "e1a426f80c6f8cf7fc8344c25ab67092cfc756ad7d87dfaa6b6de1f56769bab4"
+    },
+    {
+      "path": "experiments/en3_holdout_packet.py",
+      "sha256": "461bb873594562dd19c921fc8baf2e4121e7d900ee06b6b6029fac5340316ab6"
+    },
+    {
+      "path": "experiments/en3_holdout_trial.py",
+      "sha256": "cc5c734a486960606f3664767beb6caadac653c142bae7f3c2ff68d4eca60f70"
+    },
+    {
+      "path": "tests/test_en3_holdout_blind.py",
+      "sha256": "ff443b0c2466d49e9e448472da203dc064812161a7b886133a077ea6289b60d0"
+    },
+    {
+      "path": "tests/test_en3_holdout_material.py",
+      "sha256": "c53bf82293565db6bec1dd50df7d99c4ea85d37793af819e8d95a8edef6ebdce"
+    },
+    {
+      "path": "tests/test_en3_holdout_packet.py",
+      "sha256": "afe252819bb1d453e171eb4e50d458b14702193ae03e34c9f36d2a75ad93c594"
+    },
+    {
+      "path": "tests/test_en3_holdout_trial.py",
+      "sha256": "ee7263febfc80c5c09fa9c38e71b44e422823601f6674b1dcdd20ff71099ca42"
+    }
+  ],
+  "production_core_files": 468,
+  "new_live_model_requests": 0
+}

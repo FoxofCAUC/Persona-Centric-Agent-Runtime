@@ -39,19 +39,19 @@ def health_status(config, engine, organization, ingress):
                               "version": __version__, "assist_admitted": bool(getattr(engine,"assist_admission",None)), "live_admitted": bool(getattr(engine,"live_admission",None)), "decision_capsule_version":"decision-capsule-v1", "selector_configured":bool(config.load()["character_selector"]["enabled"] and config.load()["character_selector"]["name"] and config.load()["character_selector"]["base_url"]), "shadow_audit_gap":bool(HEALTH), "capabilities":["recall_runtime_v1","companion_selective_reply_v1","companion_im_text_v1","companion_native_text_v1","companion_prompt_light_v1","companion_context_rules_workbench_v1","companion_persona_workbench_v1","companion_c2_workbench_v1","companion_workbench_v1","companion_cancel_v1","evaluation_review_v1","disposition_live_candidate_v1","situation_observation_v1","author_relationship_mapping_v2","static_disposition_v1","disposition_shadow_v1","reply_bubbles_v3","rolling_quiet_v2","reply_display_messages_v1","reply_output_contract_v1","character_selection_v1","character_retrieval_v1","reply_batch_v2","reply_rhythm_v1","session_lifecycle_v1","session_package_v1","thread_manual_v1","cognitive_context_v1","archive_search_v1","working_set_preview_v1","archive_exact_v1","input_reference_v1","durable_ingress_v2","input_batch_v1","reply_batch_v1","behavior_resolver_v1","reply_delivery_parts_v1"], "buffer_pending":ingress.unresolved_count()}
 
 
-def create_app(paths, client=None, *, assist_admission=None, live_admission=None):
+def create_app(paths, client=None, *, assist_admission=None, live_admission=None, foreground_only=False, engine_factory=None):
     config = ConfigStore(paths)
     config.initialize()
     store = Store(paths)
     store.initialize()
-    engine = ChatEngine(store, config, client, assist_admission=assist_admission,live_admission=live_admission)
+    engine = (engine_factory or ChatEngine)(store, config, client, assist_admission=assist_admission,live_admission=live_admission)
     from .migration import migration_pending
     pending_migration=migration_pending(paths)
     if not pending_migration:engine.recover()
     ingress=IngressService(engine)
     delivery_service=DeliveryService(store)
     if not pending_migration:ingress.recover()
-    organization = OrganizationEngine(store, config, engine.client, engine)
+    organization = OrganizationEngine(store, config, engine.client, engine, foreground_only=foreground_only)
     if not pending_migration:organization.recover()
     from .sessions import SessionService
     from .topics import TopicService
@@ -132,7 +132,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
 
     async def health(request):
         status=health_status(config,engine,organization,ingress)
-        status['capabilities'].append('native_web_v1')
+        status['capabilities'].extend(('native_web_v1','tk_notice_presented_v1'))
         return web.json_response(status)
 
     async def chat(request):
@@ -316,6 +316,10 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
+        if action in ('chat.notice.preview','chat.notice.presented'):
+            from .tk_notice import display
+            return web.json_response(display(organization.processing.search_notice,
+                **args,acknowledge=action=='chat.notice.presented'))
         if action.startswith('knowledge.'):
             knowledge=engine.knowledge
             handlers={'knowledge.status':knowledge.status,'knowledge.search':knowledge.search,
@@ -338,6 +342,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 'knowledge.processing.show':organization.processing.show,'knowledge.general.update':organization.processing.enable_for_persona})
             handlers.update({'knowledge.native.policy.current':organization.processing.native.policy,
                 'knowledge.native.policy.update':organization.processing.native.update,
+                'knowledge.native.authorization':organization.processing.native.authorization,
+                'knowledge.native.authorize':organization.processing.native.authorize,
                 'knowledge.native.source.update':organization.processing.native.update_source})
             handlers.update({'knowledge.routing.policy.current':organization.routing.policy,
                 'knowledge.routing.policy.update':organization.routing.update_policy,
@@ -424,6 +430,10 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         from .expression_utterance_publication import SpeechPublication
         speech_publication=SpeechPublication(engine.expression.outlet)
         expression_handlers={
+            'dialogue.generation.policy.current':engine.direct.generation.policy,
+            'dialogue.generation.policy.update':engine.direct.generation.configure,
+            'dialogue.generation.authorize':engine.direct.generation.authorize,
+            'dialogue.generation.status':engine.direct.generation.status,
             'expression.policy.current':engine.expression.policy,
             'expression.policy.update':engine.expression.configure,
             'expression.status':engine.expression.inspect,
@@ -444,6 +454,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             'expression.v2.cancel':speech_publication.cancel,
         }
         if action in expression_handlers:return web.json_response(expression_handlers[action](**args))
+        if action=='dialogue.generation.resume':return web.json_response(await engine.resume_direct(**args))
+        if action=='dialogue.generation.cancel':return web.json_response(await engine.cancel(**args))
         if action=='expression.resume':return web.json_response(await engine.resume_expression(**args))
         if action in ("inbox.check", "inbox.submit"):
             journal = SubmissionJournal(paths, "qq")
@@ -606,7 +618,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
 
     async def startup(_):
         if not migration_pending(paths):await asyncio.to_thread(engine.cognitive.characters.notify,None)
-        app["session_worker"] = asyncio.create_task(sessions.worker())
+        if not foreground_only:
+            app["session_worker"] = asyncio.create_task(sessions.worker())
         app["organization_worker"] = asyncio.create_task(organization.worker())
         app["ingress_worker"] = asyncio.create_task(ingress.worker())
         app['delivery_housekeeping']=asyncio.create_task(delivery_housekeeping())
@@ -634,6 +647,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
         await engine.wait()
+        await engine.scene.close()
         await engine.observer.drain()
         await asyncio.to_thread(engine.cognitive.characters.close)
     app.on_cleanup.append(cleanup)

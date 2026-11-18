@@ -1,0 +1,119 @@
+{
+  "version": "en4-v8-pro-desktop-v1",
+  "parent_manifest": "docs/expression/E.N3-修复扩测工具清单.json",
+  "parent_manifest_sha256": "cbe110d8a3ca1f50de32b41cb6f2f248b8398337f7c39349088065bb52afd532",
+  "decision_sha256": "40c64b5486eae9ea37418605ad567d7188fbff2cf31f82d6c55d23539bd510cd",
+  "baseline_core_files": 470,
+  "baseline_evidence_files": 68,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/chat.py",
+      "baseline_sha256": "39c4e59db8af92c5e92d3755f317c910292745457e0bc282dc53db019307bc12",
+      "sha256": "dd203893d9c0b94a3ed1cd22ec0c459d3f81541c92d8292b75e0cf0b8d5f32f0"
+    },
+    {
+      "path": "persona_runtime/config.py",
+      "baseline_sha256": "8882199a287d44594b97eec3147634c954e0574e7c0071e5282d01ad4d19b1bb",
+      "sha256": "ae699f9aef62d4c9621a178c94d851da3f1f7b0faa8be245ede1a0b22a074352"
+    },
+    {
+      "path": "persona_runtime/desktop.py",
+      "baseline_sha256": "605d7db680e03ab652ec50d752d2b743bb15797c10419d00d1352182cb9ded5a",
+      "sha256": "b6af93bfef2373de9b2c1bb4af7b7c97e55d58bf6654f18ff95c6f4314bd8cb4"
+    },
+    {
+      "path": "persona_runtime/desktop_client.py",
+      "baseline_sha256": "400d9794cbe8b9617e1657ff5003fc1fb0d87861a70406ae58f6ed661305620c",
+      "sha256": "2597f768272b209c6b2eb7c1a719cad068269d3464ff8914e57123622fda5db1"
+    },
+    {
+      "path": "persona_runtime/desktop_knowledge.py",
+      "baseline_sha256": "f79efb783a62702adbaa19d058ba2aaca554ddf75393a1b3bbc73a4e9467d757",
+      "sha256": "715e447f372fcb729c55b27e0547e68eb01faddf01c80cfe16d5cd6a0586e82e"
+    },
+    {
+      "path": "persona_runtime/ingress.py",
+      "baseline_sha256": "dc6f0a3938d55688314e9fc8a50ee03962b629b56f19303b5e7894ee94f27d7b",
+      "sha256": "313ade483f30c92b5a9baf9ef1884b85ad0d169f92ad704bce281784addef4d7"
+    },
+    {
+      "path": "persona_runtime/knowledge_admin.py",
+      "baseline_sha256": "c9bdc0fa21507ef0de5ec6a5be799fcf58d0c6cc23ce0aca78d42fb5b0aa9e07",
+      "sha256": "9f7ce78c28f76fe263e7e9efc676767eb635006c22957c57a0190817bbd03ce7"
+    },
+    {
+      "path": "persona_runtime/knowledge_native.py",
+      "baseline_sha256": "c17c408c3a53dcd991fddfa7bc362d826dfe3fa75cc34e7b3cca74658fc63e3a",
+      "sha256": "1f16dedc7d5c03dc28f933c1c18ba3abeab3d259f26105ae747366f37bd098ec"
+    },
+    {
+      "path": "persona_runtime/knowledge_processing.py",
+      "baseline_sha256": "2e8f21ab4a3f472bc8e00270ff17c58fbb57faac7b9f68938735de35686e239a",
+      "sha256": "6ebd58ff8a1707f27209c9b1c24b2121a7b24c9fc3453e9eb241de5b60885b69"
+    },
+    {
+      "path": "persona_runtime/knowledge_routing.py",
+      "baseline_sha256": "45336fa5e71d0a8504505337c26aa8821a06fbcc6d4f820d9124f1dd897f30d9",
+      "sha256": "340651c3ca766267bc6084930abddf7083138b8c2cd578183aebeb0fda4852ff"
+    },
+    {
+      "path": "persona_runtime/knowledge_search_notice.py",
+      "baseline_sha256": "98a5b10265e0aa280cb75cf41c8463354febbe8b21e586336dd2f4c4d6c5e5ab",
+      "sha256": "2ce8096e0b36a25207a8ee840abdf7f26804b38f6d99ca581ea3b0d752d44797"
+    },
+    {
+      "path": "persona_runtime/managed_organization.py",
+      "baseline_sha256": "4944dfaf75feb92a6d74d1bb3e07efd291af0dae931333ddfb1bf049a6f42701",
+      "sha256": "35d1699202eabf8b2e47980283b38e47eab31cf098f7bd77bd981f3f821c4dbb"
+    },
+    {
+      "path": "persona_runtime/private_personas.py",
+      "baseline_sha256": "6b61658343336b24f788bac96cfa2360a26cab42659559830326589ae2949533",
+      "sha256": "a80da0a2f5667c1ede819be304f72db70829207b2b1af06b586cd56b8297c8f3"
+    },
+    {
+      "path": "persona_runtime/server.py",
+      "baseline_sha256": "8ae41e8af0fd0770c2231ce2011894a1a0c058ac9dfed05b4719668b3b24d229",
+      "sha256": "3c4fe34483b4f2fa9bb20673d3a53bf504ceb1f2395afc87ebca61392fc14fc5"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/knowledge_native_route.py",
+      "sha256": "10a904b1bd875a1534c163036de44751fb3a421a279be7c215027ae8e6d8ba41"
+    },
+    {
+      "path": "persona_runtime/tk_notice.py",
+      "sha256": "5f2351a29b5171e34fbbb89fc2411dbaa26ffa3f977e70f5224840ddc0ba4c48"
+    },
+    {
+      "path": "scripts/pcar_en4_preflight.py",
+      "sha256": "129b9ae5b6b9de80e29c1dd30e78eeeb4232c0a1ed8222bc354369d3f09e1653"
+    }
+  ],
+  "declared_evidence_changes": [],
+  "new_research_tools": [
+    {
+      "path": "experiments/en3_repair_feedback.py",
+      "sha256": "86327445bb0a207b33394d4d9e33f5739a2dfbf10a3446a784fb6998a786fbb9"
+    },
+    {
+      "path": "tests/test_en4_native_route.py",
+      "sha256": "2e50a390778f9d618a1a31baa01df5537e13f97608f2c57751c170234a7b28a7"
+    },
+    {
+      "path": "tests/test_en4_style_baseline.py",
+      "sha256": "9795860cb4ff111c10d309d2137115f982d179f2578819c62662eb1089ba6a62"
+    },
+    {
+      "path": "tests/test_en4_workbench_loopback.py",
+      "sha256": "a30e8c835648185c48521323c87952091418d3aef860658b5ed48dd31f457196"
+    },
+    {
+      "path": "tests/test_tk_notice.py",
+      "sha256": "28982c71e3b747719ab15bae555f6d8ed5fa6a33c3e9b791fc683bb6b7392f28"
+    }
+  ],
+  "schema": 33,
+  "formal_activation": false
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>角色 · 扩测会话盲审</title>
+<style>
+:root{color-scheme:light dark;--line:#838e8780;--fill:#849b8b24}body{max-width:74rem;margin:1.5rem auto;padding:0 1rem;font:16px/1.6 system-ui,sans-serif}
+h1,h2,h3{line-height:1.35}article,section{border-top:1px solid var(--line);margin-top:1.2rem;padding:.6rem 0}label,summary,button,select{cursor:pointer}
+label{display:inline-block;margin:.25rem .6rem .3rem 0}textarea,select,button{font:inherit}textarea{width:min(96%,45rem);min-height:3rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(17rem,100%),1fr));gap:.8rem}.option{padding:.5rem .7rem;border-left:2px solid var(--line)}
+.text,.bubble{white-space:pre-wrap;overflow-wrap:anywhere}.bubble{background:var(--fill);border-radius:.65rem;margin:.35rem 0;padding:.45rem .7rem}
+[hidden]{display:none!important}.user{font-weight:550}summary{padding:.4rem 0}button{padding:.4rem 1em}nav a{display:inline-block;margin-right:.9em}
+</style><main><h1>角色的扩测会话盲审</h1><p>每组内甲、乙、丙各自延续一条会话，下组重新匿名。可只记首选，也可并列或补充次选。相同正文默认折叠。</p><nav id="nav" aria-label="切换场景"></nav>
+<div id="groups"></div><section><h2>整体意见</h2><label>跨场景的观察可注明场景编号和轮次。<br><textarea id="overall"></textarea></label><p><button id="download">导出审阅意见</button> <output id="status"></output></p>
+<details><summary>核对技术记录（含模型身份）</summary><a href="evidence.html">查看各轮理解、选材、成本与失败记录</a></details></section></main>
+<script type="application/json" id="data">@@DATA@@</script>
+<script>
+const study=JSON.parse(document.getElementById('data').textContent),labels=['甲','乙','丙'];
+const stash='pcar-en3repair-'+study.results_sha256, statusMsg=s=>document.getElementById('status').textContent=s;
+let answers={votes:{},notes:{},overall:''};
+try{const old=JSON.parse(localStorage.getItem(stash));if(old&&old.votes&&old.notes&&typeof old.overall==='string')answers=old;}catch{}
+const make=(tag,text,cls)=>{const node=document.createElement(tag);if(text!=null)node.textContent=text;if(cls)node.className=cls;return node;};
+function save(){try{localStorage.setItem(stash,JSON.stringify(answers));statusMsg('已保存到本机');}catch{statusMsg('请导出意见文件以保存');}}
+function choice(select,value,text){const op=make('option',text);op.value=value;select.append(op);}
+function rank(parent,key){const selected=answers.votes[key]||{};const title=make('label','首选　'),first=make('select');title.append(first);
+for(const [k,v] of [['','未选择'],...labels.map(v=>[v,v]),['甲乙','甲乙并列'],['甲丙','甲丙并列'],['乙丙','乙丙并列'],['相近','三份相近'],['暂难判断','暂难判断']])choice(first,k,v);
+first.value=selected.first||'';const sub=make('label','其次　'),second=make('select');sub.append(second);parent.append(title,sub);
+function refresh(v){const single=labels.includes(first.value);second.replaceChildren();choice(second,'','未排');if(single){for(const k of labels.filter(k=>k!==first.value))choice(second,k,k);choice(second,'相近','其余两份相近');}sub.hidden=!single;second.value=(single&&Array.from(second.options).some(o=>o.value===v))?v:'';}
+refresh(selected.second);function update(){answers.votes[key]={first:first.value,second:second.value};save();}first.onchange=()=>{refresh('');update();};second.onchange=update;}
+function note(parent,key){const d=make('details');d.append(make('summary','本处备注'));const a=make('textarea');a.setAttribute('aria-label','本处备注');a.value=answers.notes[key]||'';a.oninput=()=>{answers.notes[key]=a.value;save();};d.append(a);parent.append(d);}
+for(const s of study.scenes){const box=make('section');box.id='group-'+s.id;
+const anchor=make('a',s.id+' '+s.title);anchor.href='#'+box.id;document.getElementById('nav').append(anchor);box.append(make('h2',s.id+' · '+s.title));
+if(s.regression)box.append(make('p','这组六轮复用上一轮的用户输入及两路对照回执，单独观察已发现的问题是否重现。'));
+for(const t of s.turns){const row=make(t.same?'details':'article');row.append(make(t.same?'summary':'h3','第 '+t.n+' 轮'+(t.same?' · 三份正文相同':'')),make('p',t.user,'user text'));
+const grid=make('div',null,'grid');for(const k of labels){const opt=t.options[k],col=make('div',null,'option');col.append(make('b',k),make('p',opt.text??('本轮缺口 · '+opt.state),'text'));grid.append(col);}row.append(grid);
+if(!t.same)rank(row,s.id+'/'+t.n);note(row,s.id+'/'+t.n);box.append(row);}
+const group=make('details');group.append(make('summary','展开三条完整气泡会话'));const grid=make('div',null,'grid');
+for(const k of labels){const col=make('div');col.append(make('h3',k));for(const t of s.turns){const opt=t.options[k];col.append(make('p',t.n+' · '+t.user,'text user'));
+for(const part of opt.parts)col.append(make('p',part,'bubble'));if(!opt.text)col.append(make('p','本轮缺口 · '+opt.state));}grid.append(col);}group.append(grid);box.append(group,make('h3','整组交流'));rank(box,s.id+'/conversation');note(box,s.id+'/conversation');document.getElementById('groups').append(box);}
+const overall=document.getElementById('overall');overall.value=answers.overall;overall.oninput=()=>{answers.overall=overall.value;save();};
+document.getElementById('download').onclick=()=>{const {study_id,input_contract_sha256,blind_key_sha256,results_sha256}=study;
+const packet={version:'en3-repair-author-feedback-v2',study_id,input_contract_sha256,blind_key_sha256,results_sha256,...answers};
+const url=URL.createObjectURL(new Blob([JSON.stringify(packet,null,2)],{type:'application/json'}));const link=make('a');link.href=url;link.download='E.N3-角色-修复扩测审阅意见.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),2000);statusMsg('已导出');};
+</script></html>

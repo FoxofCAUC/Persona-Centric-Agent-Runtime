@@ -1,0 +1,43 @@
+{
+  "version": "en5-jev-wire-timing-v1",
+  "parent_manifest": "docs/expression/E.N5-Jev场景拆分候选清单.json",
+  "parent_manifest_sha256": "8dd38ff5b9e95795aa556961565dc5819d3ab038bcb1cf428794fda6e14be1bc",
+  "baseline_core_files": 485,
+  "baseline_evidence_files": 119,
+  "declared_core_changes": [],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_en5_jev_timing_preflight.py",
+      "sha256": "9433b41f7943e7143975ebdb22719f6e2ffa12d807adc9e9af3e99f2f914fb92"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en5_scene_route.py",
+      "sha256": "e0140283438a9068cd96259d5c5f64b198ebad6f1a99e4d7641f8c24e5dc58b1",
+      "baseline_sha256": "b27b167e9e4a5b2b52513d1145d70efb456aef6282fceef58fff2b7b4e5b8490"
+    }
+  ],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_scene_compare.py",
+      "sha256": "9de5e23ea1d6354b4fea75d61c3df333b95c78eb8087368d72b568c8a6752a14"
+    },
+    {
+      "path": "experiments/en5_scene_feedback.py",
+      "sha256": "dcb42439f3d5de49976933030ca47d4c623003ae30977b60e64fb0095d269c9c"
+    },
+    {
+      "path": "experiments/en5_scene_jev.py",
+      "sha256": "ddcc7bfe837dbf3e86d861d87d3efe881cd43997acc84878bd8c7cfe27ca2573"
+    },
+    {
+      "path": "experiments/en5_jev_transport.py",
+      "sha256": "3ecd7193aba362ba1b5e2f976019d836765e3ed8ea2b687436a4ff7d08e268e5"
+    },
+    {
+      "path": "tests/test_en5_jev_timing.py",
+      "sha256": "324e212c606739deeed65a7ea7470cac890a6559caea45266323ea997cb2f852"
+    }
+  ]
+}

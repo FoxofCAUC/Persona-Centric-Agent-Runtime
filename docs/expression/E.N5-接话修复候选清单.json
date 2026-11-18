@@ -1,0 +1,67 @@
+{
+  "version": "en5-style-factors-v1",
+  "parent_manifest": "docs/expression/E.N5-连续体验候选清单.json",
+  "parent_manifest_sha256": "d6df2d0373cb0ffc7f8b80216b7d06e1120097f48bf25cf76982a96bc4a95e4b",
+  "baseline_core_files": 476,
+  "baseline_evidence_files": 82,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/chat.py",
+      "baseline_sha256": "ad216efdeb389d5a81602596b16eb091086db6e5bd5d9a60be1b6621c5788f30",
+      "sha256": "878f3ceb7860eed83b7bd6582d6954123fb5489b5e6f23c93cead3e87365eac2"
+    },
+    {
+      "path": "persona_runtime/context_m4.py",
+      "baseline_sha256": "98d65b594151bcb1473199f5cb9315fb35d3799d1c7a3966fc27e84750109a67",
+      "sha256": "63e7ce9e5b913217afb1734d60ba8d9276a992f60f03196e8a8e4d88d46bd6eb"
+    },
+    {
+      "path": "persona_runtime/context_policy.py",
+      "baseline_sha256": "c46fb7ec4a513a9c792c78ea2420fe74ce7745abf07f8b141a607c51c4a97cd1",
+      "sha256": "d12fb1de0f831b2704beb9fc63b248bed323ce5650ea1c675c92ced68a5f1369"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/style_study.py",
+      "sha256": "0715c92e1b42acc7fc4eddaeedeb45e71da354c646cdba52f51e9357d78699d7"
+    },
+    {
+      "path": "scripts/pcar_style_factors_preflight.py",
+      "sha256": "ab75441ee7aaf0356abafc0c3931f44438517eb184de14fe32bbb1f22739ac09"
+    }
+  ],
+  "declared_evidence_changes": [],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_style_feedback.py",
+      "sha256": "7481eff138d5d9f4c0aff37f3b7a6c75adf8cf56e89e55523e8c486bf6107c2a"
+    },
+    {
+      "path": "experiments/en5_style_packet.py",
+      "sha256": "d7c9def8a153a369d743a13b9623ec4977446dc741ff2384dc2c018dcbcb65fe"
+    },
+    {
+      "path": "experiments/en5_style_review.html",
+      "sha256": "02dd3b707788d36f1a0d619ac033f99a5ce5795525610b3508ee4eaaf9dc542f"
+    },
+    {
+      "path": "experiments/en5_style_review.py",
+      "sha256": "0b3689e950ec0e83ed1fd3b9b616653a4124a4cbc02f01700018066a332d94c7"
+    },
+    {
+      "path": "experiments/en5_style_trial.py",
+      "sha256": "a721485243ad499cd51077a4ebc58462781fd824e87e5ddee1d133fbbad09836"
+    },
+    {
+      "path": "tests/test_en5_style_factors.py",
+      "sha256": "1bd3a912bba2eb45e6a05f3a451bf1a58511e885dd24727b7b4a0a7cedaab579"
+    },
+    {
+      "path": "tests/test_en5_style_packet.py",
+      "sha256": "4330a19d7b8129fc48b987199c192b5bfc54d7c97f70de58f468a5a922242659"
+    }
+  ],
+  "schema": 33,
+  "formal_activation": false
+}

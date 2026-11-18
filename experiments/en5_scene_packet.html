@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>角色 · 场景提示与 Jev 供稿</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#faf9f4;color:#242d2a;font:16px/1.6 system-ui,sans-serif}main{max-width:940px;margin:auto;padding:24px}h1,h2,h3{line-height:1.3}h2{margin-top:2em}article{padding:1em 0;border-top:1px solid #bdc6be}textarea,select,button{font:inherit;border:1px solid #839286;border-radius:4px;padding:7px}textarea{display:block;width:100%;min-height:4em;background:white}label{display:block;margin:10px 0}pre,blockquote{white-space:pre-wrap;overflow-wrap:anywhere;background:#eff2ed;padding:10px;margin:.4em 0}small,summary{color:#42574a}button{margin:.3em .5em .3em 0;cursor:pointer}button.primary{background:#214e3e;color:#fff}nav{display:flex;gap:20px;flex-wrap:wrap}a{color:#245a44}output{display:block}details{margin:.5em 0}section{scroll-margin-top:1em}@media(max-width:550px){main{padding:14px}}
+</style><main><h1>角色 · 场景提示与 Jev 供稿</h1>
+<p>五份人物提示已填入获准原文。请核对每份的取舍，补齐 Jev 判别文字，再给 16 个固定位置选定场景。可分次填写并导出草稿。</p>
+<nav><a href="#cards">五份人物提示</a><a href="#router">Jev 判别说明</a><a href="#positions">16 个固定位置</a><a href="#out">导出意见</a></nav>
+<section id="cards"><h2>角色在各场景中的说话方式</h2><p>可直接保留原文。展开出处可查看完整字段和摘录位置，修改区会逐字进入对应场景的 Pro 预览。</p></section>
+<section id="router"><h2>Jev 判别说明</h2><p>请填写整道单选题及五个选项的判别依据。人物提示和判别依据分别存储，右侧模型预览见下方。</p></section>
+<section id="positions"><h2>固定位置与完整请求</h2><p>每一轮都可展开实际前文。选定场景后可查看 Pro 主回复与查前发言的请求。查前预览只用于核对同一场景在该出口的装配。</p></section>
+<section id="out"><h2>导出意见</h2><button id="draft">导出草稿</button><button id="finish" class="primary">确认此版并导出</button><output id="status" aria-live="polite"></output></section></main>
+<script id="packet" type="application/json">@@PAYLOAD@@</script><script>
+'use strict';
+const data=JSON.parse(document.getElementById('packet').textContent),keys=Object.keys(data.labels);
+const gaps={daily:'可核对打趣与表达个人看法的分寸。',relationship:'可补陪伴或尊重边界时，角色自己的口吻。',help:'可补角色认真帮忙时的说话方式。',closing:'现有摘录涉及简短收住，道别或放下话题的口吻可由你补充。',fallback:'请核对信息不足时仍能通用的说话方式。'};
+const form={version:data.version,packet_sha256:data.packet_sha256,bodies:{},instruction:'',criteria:{},choices:{}};
+for(const s of keys){form.bodies[s]=data.cards[s].map(p=>p.text).join('\n');form.criteria[s]=''}
+for(const row of data.cases)form.choices[row.position]='';
+const status=document.getElementById('status'),storageKey=data.version+data.packet_sha256;
+try{const saved=JSON.parse(localStorage.getItem(storageKey));if(saved?.packet_sha256===data.packet_sha256){
+for(const k of ['bodies','criteria','choices'])for(const id of Object.keys(form[k]))if(typeof saved[k]?.[id]==='string')form[k][id]=saved[k][id];
+if(typeof saved.instruction==='string')form.instruction=saved.instruction}}catch{}
+const refresh=[];
+function changed(){try{localStorage.setItem(storageKey,JSON.stringify(form))}catch{}for(const f of refresh)f()}
+function el(tag,parent,text){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;parent.append(node);return node}
+function disclosure(parent,label){const d=el('details',parent);el('summary',d,label);return d}
+function field(parent,name,obj,key){const label=el('label',parent,name);const ctrl=el('textarea',label);ctrl.value=obj[key];ctrl.oninput=()=>{obj[key]=ctrl.value;changed()}}
+const cards=document.getElementById('cards'),router=document.getElementById('router');
+field(router,'Jev 单选总说明',form,'instruction');
+for(const key of keys){const a=el('article',cards);el('h3',a,data.labels[key]);el('p',a,gaps[key]);field(a,'人物提示全文',form.bodies,key);
+ const details=disclosure(a,'原文出处 · '+data.cards[key].length+' 处');
+ for(const p of data.cards[key]){el('blockquote',details,p.text);el('small',details,p.field+'　字符 ['+p.start+', '+p.end+')　版本 '+p.profile_version);el('pre',disclosure(details,'查看该字段全文'),p.field_text)}
+ field(router,data.labels[key]+'的判别依据',form.criteria,key)}
+for(const row of data.cases){const a=el('article',document.getElementById('positions'));el('h3',a,row.position);
+ for(const user of row.users)el('blockquote',a,user);const history=disclosure(a,'固定前文与原 v8 首答');
+ for(const msg of row.main.messages.slice(1,-1))el('p',history,(msg.role==='user'?'对方　':'角色　')+msg.content);
+ el('p',history,'原 v8 首答　'+row.baseline);
+ const label=el('label',a,'本轮场景　'),sel=el('select',label);el('option',sel,'请选择').value='';
+ for(const key of keys)el('option',sel,data.labels[key]).value=key;sel.value=form.choices[row.position];
+ sel.onchange=()=>{form.choices[row.position]=sel.value;changed()};
+ const wires=disclosure(a,'完整请求预览');const outputs={};
+ for(const [id,title] of [['jev','Jev 场景判断'],['main','Pro 主回复'],['notice','Pro 查前发言']]){el('h4',wires,title);outputs[id]=el('pre',wires)}
+ function update(){if(!wires.open)return;const key=sel.value;
+ const jev=structuredClone(data.jev_draft);jev.questions.scene.instructions=form.instruction;jev.questions.scene.criteria=form.criteria;jev.state=row.state;outputs.jev.textContent=JSON.stringify(jev,null,2);
+ for(const phase of ['main','notice']){if(!key){outputs[phase].textContent='选定本轮场景后显示。';continue}
+ const wire=structuredClone(row[phase]);wire.messages[0].content=wire.messages[0].content.replace(data.marker,()=>form.bodies[key]);outputs[phase].textContent=JSON.stringify(wire,null,2)}}
+ wires.ontoggle=update;refresh.push(update)}
+function download(reviewed){
+ const missing=[];if(!form.instruction.trim())missing.push('Jev 总说明');
+ for(const s of keys){if(!form.criteria[s].trim())missing.push(data.labels[s]+'判别依据');if(!form.bodies[s].trim())missing.push(data.labels[s]+'人物提示')}
+ for(const row of data.cases)if(!keys.includes(form.choices[row.position]))missing.push(row.position);
+ if(reviewed&&missing.length){status.textContent='待填写　'+missing.join('、');return}
+ const url=URL.createObjectURL(new Blob([JSON.stringify({...form,reviewed},null,2)],{type:'application/json'}));const a=el('a',document.body);a.href=url;a.download='E.N5-角色-Jev场景'+(reviewed?'确认稿':'草稿')+'.json';a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);status.textContent='已生成文件。'}
+document.getElementById('finish').onclick=()=>download(true);document.getElementById('draft').onclick=()=>download(false);
+</script></html>

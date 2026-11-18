@@ -86,7 +86,11 @@ class ExpressionRuntime:
             changed = db.execute('UPDATE attempts SET status=\'completed\',usage_json=? WHERE id=? AND turn_id=?',
                                  (json.dumps(audit), logical_attempt_id, turn['id'])).rowcount
             if changed != 1:raise ExpressionAssetError('expression_main_attempt_missing')
-            if batch:
+            from .scene_policy import frozen as scene_frozen
+            if scene_frozen(turn):
+                db.execute('UPDATE expression_runtime_turns SET closed_at=coalesce(closed_at,?) WHERE turn_id=?',
+                           (timestamp(),turn['id']))
+            elif batch:
                 draft=dict(db.execute('SELECT * FROM expression_main_receipts WHERE id=?',(ident,)).fetchone())
                 self.outlet.register_main(db,turn,draft)
             return ident
@@ -295,7 +299,11 @@ class ExpressionRuntime:
             return dict(row)
 
     def inspect(self, turn_id):
+        from .dialogue_generation import enabled as direct_enabled
         with self.store.connection() as db:
+            if direct_enabled(db,turn_id):
+                from .dialogue_outlet import DirectReplies
+                return DirectReplies.main_info(db,turn_id)
             mode=db.execute('SELECT * FROM expression_runtime_turns WHERE turn_id=?',(turn_id,)).fetchone()
             if not mode or not json.loads(mode['policy_json'])['data'].get('enabled'):return None
             receipt=db.execute('SELECT id,valid,body_hash FROM expression_main_receipts WHERE turn_id=?',(turn_id,)).fetchone()
@@ -309,6 +317,7 @@ class ExpressionRuntime:
                 row=db.execute("""SELECT d.id FROM expression_main_receipts d JOIN turns t ON t.id=d.turn_id
                   JOIN expression_runtime_turns m ON m.turn_id=t.id LEFT JOIN expression_publications p ON p.turn_id=t.id
                   WHERE t.persona_id=? AND t.session_id=? AND t.rowid<(SELECT rowid FROM turns WHERE id=?) AND d.valid=1
+                  AND json_extract(m.policy_json,'$.data.enabled')=1
                   AND ((p.id IS NOT NULL AND p.state NOT IN ('closed','complete')) OR
                        (p.id IS NULL AND m.cancelled_at IS NULL AND m.closed_at IS NULL)) LIMIT 1""",
                   (turn['persona_id'],turn['session_id'],turn['id'])).fetchone()
@@ -316,7 +325,7 @@ class ExpressionRuntime:
                 with self.store.connection() as db:
                     pending=db.execute('''SELECT 1 FROM expression_speech_units u JOIN turns t ON t.id=u.turn_id
                       WHERE u.persona_id=? AND u.session_id=? AND t.rowid<(SELECT rowid FROM turns WHERE id=?)
-                      AND u.phase!='main' AND u.closed_at IS NULL LIMIT 1''',(turn['persona_id'],turn['session_id'],turn['id'])).fetchone()
+                      AND (u.phase!='main' OR u.source_kind='dialogue_reply') AND u.closed_at IS NULL LIMIT 1''',(turn['persona_id'],turn['session_id'],turn['id'])).fetchone()
                 if not pending:return
             await asyncio.sleep(.05)
 

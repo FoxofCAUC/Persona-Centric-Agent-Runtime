@@ -1,0 +1,100 @@
+{
+  "version": "en5-decision-desktop-engineering-v1",
+  "parent_manifest": "docs/expression/E.N5-接话修复候选清单.json",
+  "parent_manifest_sha256": "c2479eb0825e1514204b4018718db58d8da898c114e580d84c25e65d3e6ac6c0",
+  "baseline_core_files": 478,
+  "baseline_evidence_files": 89,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/private_personas.py",
+      "sha256": "305e3efad988d718dd429ac64e5e867c8f2dcff67f7d28159b304cd121936a2d",
+      "baseline_sha256": "c18a27bbbae44bf23a39f34abd92600a0a7584b20e23b906636dc7a3ebeaf40b"
+    },
+    {
+      "path": "persona_runtime/server.py",
+      "sha256": "013823d1983adbaa7f537c932411047655b126c11af7eaefa08cb9d747ea40b9",
+      "baseline_sha256": "ea69cdad42cfeba539613de7e68b751c63a9b5d6f3a9376fdeb653653a76a7f6"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/fixed_decision_use.py",
+      "sha256": "cb693aefe868ecee2d334d3e7c9a5752d86ab76eb828dd9377d929f7ff314d12"
+    },
+    {
+      "path": "scripts/pcar_en5_decision_desktop_preflight.py",
+      "sha256": "c5f86c4a484dde97e57dec2797c160bcf42ac7e08863e478431afb3647eebaf4"
+    }
+  ],
+  "declared_evidence_changes": [],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_d2_receipt_review.py",
+      "sha256": "e81f1b0c727aea2cbf2f6baff59102079cc40908634aa5fa499be039b50fd791"
+    },
+    {
+      "path": "experiments/en5_d3_desktop.py",
+      "sha256": "b1a0574c725428d281272377cbe994c70d87f47759cf3483cdbe59f31b02283a"
+    },
+    {
+      "path": "experiments/en5_d3_material.py",
+      "sha256": "b3be652efcc08a96b15d702c93950334e024dbb497d5b3e237a1cb87849f3395"
+    },
+    {
+      "path": "experiments/en5_d3_presentation.py",
+      "sha256": "cd36ad8c0e3ac259c79e181110e01985fe8d16081d26386419046c3dcf57e3d1"
+    },
+    {
+      "path": "experiments/en5_d3_rehearsal.py",
+      "sha256": "3519d2fad8dadf9e1a08ce10989e201dbbdf811f7cbdb6a404f6fa03f1bf834c"
+    },
+    {
+      "path": "experiments/en5_decision_contract.py",
+      "sha256": "fa8c99774609f53ebebfd39737437607057b504392e05c4ba5ad13bc5f12f01d"
+    },
+    {
+      "path": "experiments/en5_decision_d1.py",
+      "sha256": "4ba51a13ad4e57b595fa903df640adf03a23291fc0ffa6d6c5b075db45b604fb"
+    },
+    {
+      "path": "experiments/en5_decision_d2.py",
+      "sha256": "841041cfac15c489438d6e9ab12062f97f3113de84b89ca0651e7814cefc7e2a"
+    },
+    {
+      "path": "experiments/en5_decision_packet.html",
+      "sha256": "fdc9555b5b65570e8aef641bc32a6a5db61997c741d2b83406bfcb420df66b90"
+    },
+    {
+      "path": "experiments/en5_decision_packet.py",
+      "sha256": "b6e91dc9874870cece6373eb5f5b5094457384575e70a1e0c85c8571baf9c0bc"
+    },
+    {
+      "path": "experiments/en5_decision_sources.py",
+      "sha256": "07488857ab657338215b9d5bf860c293e304717bacf70455a0428a32091e0712"
+    },
+    {
+      "path": "experiments/en5_guidance_removal.py",
+      "sha256": "90f05fc800f733284246e9374217d03181b23738d03173f4dd926c3bc325f4f4"
+    },
+    {
+      "path": "experiments/en5_guidance_review.py",
+      "sha256": "0ee503706bae0c3a5168dcca29fd7b5d44d0770fa5791881fb3efe04c2e87b97"
+    },
+    {
+      "path": "tests/test_en5_d3_desktop.py",
+      "sha256": "0d2b5bf2d7c725b93628a065469a2212e4bd9b03b6883dc206442ee82c72ada8"
+    },
+    {
+      "path": "tests/test_en5_decision.py",
+      "sha256": "e7d97cb56aa474e67069987b51b4c3fb1b498eaf055a0357c52dfb98d71ddbab"
+    },
+    {
+      "path": "tests/test_en5_decision_d2.py",
+      "sha256": "7460099b4574d4de9470a0959e9541acbeeb83f7e3f909d0c42db203e40eae00"
+    },
+    {
+      "path": "tests/test_en5_guidance_removal.py",
+      "sha256": "edbd521e988c73471cdf957c9f36cb5b629eed2e6115f6ced560059d85f9b4a5"
+    }
+  ]
+}

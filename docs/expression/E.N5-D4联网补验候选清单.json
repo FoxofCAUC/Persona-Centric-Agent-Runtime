@@ -1,0 +1,50 @@
+{
+  "version": "en5-jev-d4-web-v1",
+  "parent_manifest": "docs/expression/E.N5-Jev表达修复候选清单.json",
+  "parent_manifest_sha256": "e074d84e82c20cb72bb33875c97de07eb6a2aba28975523bcd4812bf8c9c3122",
+  "baseline_core_files": 488,
+  "baseline_evidence_files": 129,
+  "declared_core_changes": [],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_en5_d4_preflight.py",
+      "sha256": "dd9b2cb4b3250fb3262dd97db12ac6914c826ffff38e7f61965707102561a919"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en5_d3_live.py",
+      "sha256": "3aae7aa547966cd5fded2688acc0891bf060b9916700caeea551fe3d2686142b",
+      "baseline_sha256": "eb3d9145a919e9c560d8e6901f34d8c72b45539407f1e0d833b3481edef0b448"
+    },
+    {
+      "path": "experiments/en5_scene_desktop.py",
+      "sha256": "144ee7d51c457f65875003a59ba8d8488cbd085e48dab8e58f326b6851c5a99b",
+      "baseline_sha256": "bef9e41b150e2049d1e7001cf9b61187e3ef8f3180b0618428ceda6b60e59df4"
+    },
+    {
+      "path": "experiments/en5_scene_continuous.py",
+      "sha256": "66f009055c7b2bcf1a0943dd526e9b03e9841683e6a2f8c9831b4ba6ff1bd2eb",
+      "baseline_sha256": "350af85d0688574ec3e8e0cf7ad4ed214c9b37531f8b0f5781caa0cad9ce79a6"
+    },
+    {
+      "path": "experiments/en5_experience_report.py",
+      "sha256": "8e77d8d1417f17ff6d44f426b7f6a08a2543320baf238dfa41fa22584e291f04",
+      "baseline_sha256": "b792d1a5aeba019f0b2c13dca6d0e8fd732d565985fb0464b6408dba0988a1bd"
+    }
+  ],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_scene_d4.py",
+      "sha256": "e7d28d5cc5a51bfc08714186904a3dfe8b2538fe00f9fc5f1d07d27fd71da403"
+    },
+    {
+      "path": "experiments/en5_scene_d4_report.py",
+      "sha256": "6a3359880a41115544ee6c66143df9918d4cc047437e7450e30a206a3775566e"
+    },
+    {
+      "path": "tests/test_en5_scene_d4.py",
+      "sha256": "cef39b5158f4aed6798d6b2242a2dbf5a6a9dbb19bf7255e7fef044da33ebaf4"
+    }
+  ]
+}

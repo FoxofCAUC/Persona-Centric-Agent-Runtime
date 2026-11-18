@@ -36,6 +36,7 @@ def overview(service,persona_id):
         'web_decision':{'configuration':org.routing.configuration(),'authorization':org.routing.authorization(persona_id),'latest':latest_decision},
         'jev_cost':{'calls':jev_calls,'tokens_known':jev_tokens,'included_in_total':True,'amount':None},
         'native_policy':processing.native.policy(persona_id),
+        'native_authorization':processing.native.authorization(persona_id),
         'tool_cost':{'calls':tools+native_actions,'billable_calls':billable+sum(native_counts.values()),
             'native_billable_counts':native_counts,'unknown_native_tool_usage_calls':unknown_tool_usage,
             'known_amount_usd':str(amount),'actual_billed_amount_usd':None,

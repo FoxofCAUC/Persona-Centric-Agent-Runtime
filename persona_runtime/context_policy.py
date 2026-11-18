@@ -50,7 +50,15 @@ def values(policy):
 
 def snapshot(policy,conn=None):
     result = {'schema_version':1,'policy_id':policy['id'],'revision':policy['revision'],**values(policy)}
+    from .style_study import KEY
+    study = json.loads(policy['data_json']).get(KEY)
+    if study is not None:
+        result[KEY] = study
     if conn is not None:
+        if policy['channel']=='desktop':
+            from .scene_policy import KEY as SCENE_KEY, active
+            enrolled=active(conn,policy['persona_id'])
+            if enrolled:result[SCENE_KEY]=enrolled
         from .disposition import CONTEXT_ADAPTER
         from .situation_observation import VERSION as OBSERVATION_VERSION
         observed_mode=result['situation_observation_mode']

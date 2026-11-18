@@ -38,6 +38,16 @@ class SavedTopicSelection(unittest.TestCase):
         self.assertEqual(found['organized']['notes'],records[1]['organized']['notes'])
         self.assertEqual([s['id'] for s in found['sources']],['older'])
 
+    def test_other_session_needs_a_topic_or_exact_source_link(self):
+        records=self.records()
+        records[0]['sources'][0]['content']='这个问题，换种方式又不行，不打扰。'
+        turn={'id':'current','persona_id':self.persona['id'],'channel':'desktop','session_id':'other'}
+        with self.store.connection() as db,patch('persona_runtime.knowledge_native_memory.candidates',return_value=records):
+            self.assertFalse(previous(db,turn,'这个问题不大，我又不打网球')['sources'])
+            self.assertFalse(previous(db,turn,'请看 https://example.org/older/?other=1')['sources'])
+            self.assertEqual(previous(db,turn,'再看 https://example.org/older#section')['sources'][0]['id'],'older')
+            self.assertEqual(previous(db,turn,'空气炸锅杏鲍菇还能分批烤吗')['sources'][0]['id'],'older')
+
 
 class DecisionBudget(unittest.TestCase):
     def test_large_source_history_is_only_a_bounded_routing_sketch(self):

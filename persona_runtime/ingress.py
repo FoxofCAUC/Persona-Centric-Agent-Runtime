@@ -302,10 +302,13 @@ class IngressService:
 
     def accept(self,value):
         started=time.perf_counter()
-        allowed={'channel','text','request_id','persona_id','session_id','bot','sender','platform_message_id','platform_time','reference','public_task'}
+        allowed={'channel','text','request_id','persona_id','session_id','bot','sender','platform_message_id','platform_time','reference','public_task','desktop_presentation'}
         if not isinstance(value,dict) or set(value)-allowed:raise RuntimeErrorBase('unknown_ingress_field')
         channel=value.get('channel','desktop');text=value.get('text');rid=value.get('request_id')
         require_text(text,'text');require_text(rid,'request_id')
+        if 'desktop_presentation' in value:
+            from .tk_notice import CONTRACT
+            if channel!='desktop' or value['desktop_presentation']!=CONTRACT:raise RuntimeErrorBase('invalid_desktop_presentation')
         if 'public_task' in value:
             from .knowledge_native import public_task
             if channel!='desktop':raise RuntimeErrorBase('native_public_task_channel_invalid')
@@ -341,6 +344,13 @@ class IngressService:
             guard_acceptance_write(self.store,pid)
             sid=self.engine._session(conn,pid,channel,value.get('session_id'),origin={'bot':bot,'sender':peer})
             pol=self.policy(conn,pid,channel);policy={**buffer_policy(pol),'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol,conn),'expression':json.loads(pol['data_json']).get('expression') or expression_snapshot(pol['reply_mode'],pol['id'],version=1)}
+            from .en5_replay_scope import replay_request
+            replay_request(self.store.paths,conn,value,pid,sid)
+            if 'desktop_presentation' in value:policy['desktop_presentation']=value['desktop_presentation']
+            from .scene_policy import KEY as SCENE_KEY
+            from .tk_notice import CONTRACT as VISIBLE_DESKTOP
+            if SCENE_KEY in policy['context'] and policy.get('desktop_presentation')!=VISIBLE_DESKTOP:
+                raise RuntimeErrorBase('scene_workbench_required')
             frozen=snapshot(conn,pid);character=character_head(conn,pid)
             scope=digest([pid,LOCAL_USER_ID,channel,bot,peer,sid,policy,frozen['core']['id'],frozen['expression']['id'],frozen['relationship']['id'],character['id']])
             # A change in settings or session seals collecting batches at the prior boundary.

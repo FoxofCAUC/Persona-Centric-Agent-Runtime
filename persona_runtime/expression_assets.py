@@ -267,7 +267,10 @@ class ExpressionAssets:
         for sid, revision in refs.items():source(db, pid, selected, sid, revision)
         digest = fingerprint([situation, style, keywords])
         if asset_id is None:
-            existing = db.execute('SELECT a.id,a.revision FROM expression_assets a JOIN expression_asset_versions v ON v.asset_id=a.id AND v.revision=a.revision WHERE a.persona_id=? AND a.scope_key=? AND a.state=\'active\' AND v.content_hash=?', (pid, key, digest)).fetchone()
+            existing = db.execute('''SELECT a.id,a.revision FROM expression_assets a JOIN expression_asset_versions v
+                ON v.asset_id=a.id AND v.revision=a.revision WHERE a.persona_id=? AND a.scope_key=?
+                AND a.state='active' AND v.content_hash=? AND EXISTS(SELECT 1 FROM expression_asset_supports s
+                WHERE s.asset_id=a.id AND s.asset_revision=a.revision)''', (pid, key, digest)).fetchone()
             if existing:
                 asset_id, expected_revision = existing['id'], existing['revision']
                 for support in db.execute('SELECT * FROM expression_asset_supports WHERE asset_id=? AND asset_revision=?', (asset_id, expected_revision)):
@@ -283,6 +286,9 @@ class ExpressionAssets:
         current = db.execute('SELECT * FROM expression_assets WHERE id=? AND persona_id=? AND scope_key=?', (asset_id, pid, key)).fetchone()
         if not current or current['revision'] != expected_revision:
             raise ExpressionAssetError('expression_asset_revision_conflict')
+        if expected_revision and not db.execute('SELECT 1 FROM expression_asset_supports WHERE asset_id=? AND asset_revision=?',
+                                                (asset_id, expected_revision)).fetchone():
+            raise ExpressionAssetError('expression_asset_requires_versioned_source')
         if current['state'] != 'active' and restored_from is None:
             raise ExpressionAssetError('expression_disabled_asset_requires_restore')
         revision = expected_revision + 1

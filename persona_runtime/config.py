@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from .models import RuntimeErrorBase, identifier
 from .security import protect, unprotect
 
+SPEECH_BASELINE_MODEL = "deepseek-v4-pro"
 SELECTOR_TIMEOUT_MAX = 240
 
 SELECTOR_DEFAULTS = {"enabled": False, "base_url": "", "name": "", "encrypted_key": "",
@@ -20,7 +21,7 @@ DEFAULTS = {
     "version": 3, "character_selector": SELECTOR_DEFAULTS, "service_port": 8765, "napcat_port": 6399,
     "runtime": {"revision":1,"components":{"service":True,"astrbot":False,"napcat":False},"qq_persona_id":""},
     "astrbot_port": 6285, "onebot_port": 6299, "bot_qq": "", "owner_qq": "",
-    "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
+    "model": {"base_url": "", "name": SPEECH_BASELINE_MODEL, "encrypted_key": "", "timeout": 60,
               "max_tokens": 1024, "hourly_limit": 300, "max_input_chars": 24000},
     "interaction": {"cancel_queued": False, "qq_wait_notice": False, "qq_wait_seconds": 15},
     "organization": {"reuse_chat": False, "hourly_limit": 60, "daily_limit": 240,

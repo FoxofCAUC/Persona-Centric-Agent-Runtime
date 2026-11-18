@@ -13,6 +13,13 @@ from .models import identifier, timestamp, LOCAL_USER_ID
 class ExpressionPublication:
     def __init__(self, runtime):self.runtime,self.store=runtime,runtime.store
 
+    def _direct_main(self, turn_id):
+        with self.store.connection() as db:
+            from .dialogue_generation import enabled
+            if not enabled(db,turn_id):return None
+            row=db.execute("SELECT id FROM expression_speech_units WHERE turn_id=? AND phase='main' AND source_kind='dialogue_reply'",(turn_id,)).fetchone()
+            return row[0] if row else None
+
     def _publish(self, db, turn, draft, kind, producer_id, body, segments, reason, *, replace_unoffered=False):
         db.execute("UPDATE attempts SET status='completed',error_code=NULL,usage_json=? WHERE id=?",(draft['usage_json'],draft['logical_attempt_id']))
         current=db.execute('SELECT * FROM expression_publications WHERE turn_id=?',(turn['id'],)).fetchone()
@@ -55,6 +62,9 @@ class ExpressionPublication:
         return dict(db.execute('SELECT * FROM expression_publications WHERE id=?',(pub_id,)).fetchone())
 
     def fallback(self, turn_id, reason):
+        from .dialogue_generation import enabled
+        with self.store.connection() as db:
+            if enabled(db,turn_id):raise ExpressionAssetError('dialogue_direct_fallback_unavailable')
         try:
             with self.store.connection(write=True) as db:
                 turn=dict(db.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
@@ -69,6 +79,8 @@ class ExpressionPublication:
             return {'state':'blocked','reason':str(error),'new_call':False}
 
     def plan(self, persona_id, session_id, turn_id):
+        uid=self._direct_main(turn_id)
+        if uid:return self.runtime.outlet.direct.publication.plan(persona_id,session_id,uid)
         with self.store.connection() as db:
             turn=self._owner(db,persona_id,session_id,turn_id)
             row=db.execute('SELECT * FROM expression_publications WHERE turn_id=?',(turn_id,)).fetchone()
@@ -83,6 +95,8 @@ class ExpressionPublication:
         return dict(row)
 
     def offer(self, persona_id, session_id, turn_id, publication_id, revision, ordinal, presenter_id):
+        uid=self._direct_main(turn_id)
+        if uid:return self.runtime.outlet.direct.publication.offer(persona_id,session_id,uid,publication_id,revision,ordinal,presenter_id)
         text(presenter_id,'presenter_id',200)
         with self.store.connection(write=True) as db:
             turn=self._owner(db,persona_id,session_id,turn_id)
@@ -121,6 +135,8 @@ class ExpressionPublication:
                     'kind':item['kind'],'required':bool(item['required']),'delay_ms':item['delay_ms']}
 
     def acknowledge(self, persona_id, session_id, turn_id, utterance_id, lease_id, presenter_id, receipt_id, body_hash, state='presented'):
+        uid=self._direct_main(turn_id)
+        if uid:return self.runtime.outlet.direct.publication.acknowledge(persona_id,session_id,uid,utterance_id,lease_id,presenter_id,receipt_id,body_hash,state)
         if state not in ('presented','not_presented','unknown'):raise ExpressionAssetError('expression_receipt_state_invalid')
         text(receipt_id,'receipt_id',200)
         with self.store.connection(write=True) as db:
@@ -173,6 +189,16 @@ class ExpressionPublication:
         else:self._close(db,pub,reason)
 
     def cancel(self, turn_id, reason='cancelled_by_user'):
+        uid=self._direct_main(turn_id)
+        if uid:return self.runtime.outlet.direct.publication.cancel(uid,reason)
+        from .dialogue_generation import enabled
+        with self.store.connection() as db:direct=enabled(db,turn_id)
+        if direct:
+            self.runtime.outlet.direct.generation.cancel_root(turn_id,reason)
+            self.runtime.outlet.cancel_root(turn_id,reason)
+            with self.store.connection(write=True) as db:
+                db.execute("UPDATE turns SET cancelled_at=?,error_code=?,status='interrupted',updated_at=? WHERE id=? AND status!='completed'",(timestamp(),reason,timestamp(),turn_id))
+            return {'state':'cancelled','new_call':False}
         self.runtime.outlet.cancel_root(turn_id,reason)
         with self.store.connection(write=True) as db:
             mode=db.execute('SELECT * FROM expression_runtime_turns WHERE turn_id=?',(turn_id,)).fetchone()
@@ -187,11 +213,15 @@ class ExpressionPublication:
             return {'state':'cancelled','new_call':False}
 
     def visible(self, persona_id, session_id, turn_id):
+        uid=self._direct_main(turn_id)
+        if uid:return self.runtime.outlet.direct.publication.visible(persona_id,session_id,uid)
         with self.store.connection() as db:
             self._owner(db,persona_id,session_id,turn_id)
             return [dict(r) for r in db.execute('SELECT id,ordinal,text,receipt_id,presented_at FROM expression_utterances WHERE turn_id=? ORDER BY ordinal',(turn_id,))]
 
     def pending_receipts(self, persona_id, session_id, turn_id, presenter_id):
+        uid=self._direct_main(turn_id)
+        if uid:return self.runtime.outlet.direct.publication.pending_receipts(persona_id,session_id,uid,presenter_id)
         """重启呈现端核对原租约；只返回身份和状态，不再次交付正文。"""
         text(presenter_id,'presenter_id',200)
         with self.store.connection() as db:

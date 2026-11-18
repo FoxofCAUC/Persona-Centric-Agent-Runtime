@@ -25,9 +25,9 @@ class CorpusCallFailure(Exception):
 
 class CorpusLearningHTTPClient:
     @staticmethod
-    def preflight(model,request):
-        require_generation_provider(model)
-        if build_request(model,request['messages'])[0] != request:
+    def preflight(model,request,*,wire_builder=build_request,allow_reply_decision_tool=False):
+        require_generation_provider(model,allow_reply_decision_tool=allow_reply_decision_tool)
+        if wire_builder(model,request['messages'])[0] != request:
             raise ValueError('corpus_learning_wire_changed')
         url=endpoint(model);proxy=outbound_proxy(url);tls=model_tls_context()
         secret=unprotect(model['encrypted_key']) if model.get('encrypted_key') else ''

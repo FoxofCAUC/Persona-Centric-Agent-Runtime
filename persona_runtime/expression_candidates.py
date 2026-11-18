@@ -79,7 +79,9 @@ class ExpressionCandidates:
             current_authority = authority(db, persona_id)
             rows = []
             if current_policy['data']['enabled'] and query.strip():
-                for (ident,) in db.execute('SELECT id FROM expression_assets WHERE persona_id=? AND scope_key=? AND state=\'active\' ORDER BY id', (persona_id, scope_key)):
+                for (ident,) in db.execute('''SELECT a.id FROM expression_assets a WHERE a.persona_id=? AND a.scope_key=?
+                        AND a.state='active' AND EXISTS(SELECT 1 FROM expression_asset_supports s
+                        WHERE s.asset_id=a.id AND s.asset_revision=a.revision) ORDER BY a.id''', (persona_id, scope_key)):
                     try:item = asset(db, persona_id, selected_scope, ident)
                     except ExpressionAssetError:continue
                     rows.append(item | {'persona_id': persona_id, 'scope': selected_scope})

@@ -1,0 +1,57 @@
+{
+  "stage": "E.N3",
+  "decision": "final_style_baseline",
+  "study_id": "en3-ling-repair-02",
+  "selected_branch": "B",
+  "branch_name": "原 v8 Pro",
+  "effective_author_export_sha256": "a17b8fac2a10abe11e89d39a0ffd4f8d8bcf134d129ce19060ee5ad4c99796c1",
+  "superseded_export_sha256": "64ff174ddc04d728b0265a558c6d72235f79ada29beff088553a63f481969aaf",
+  "input_contract_sha256": "1992b6005f5f0aeadeff77a27c252e0dfc37cacd722916182f2ccbf8b136bfb3",
+  "blind_key_sha256": "c0c021e9f623a06985b1074c5003dbaf04472a5358f53b1ea98e92e44658448c",
+  "results_sha256": "f6d1bd929e8c669c485c2b26a10fda1918bdbffb882ea65f751723b8cc596502",
+  "companion_profile": "companion-runtime-v8",
+  "mode": "minimal_im",
+  "reply_mode": "context_full",
+  "wire_settings": {
+    "model": "deepseek-v4-pro",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "thinking": {
+      "type": "disabled"
+    }
+  },
+  "direct_dialogue_generation": false,
+  "post_reply_rewrite": false,
+  "fresh_turn_first_choices": {
+    "B": 22,
+    "O": 12,
+    "R": 2
+  },
+  "fresh_conversation_first_choices": {
+    "B": 4,
+    "O": 2,
+    "R": 0
+  },
+  "regression_turn_first_choices": {
+    "B": 1,
+    "O": 5,
+    "R": 0
+  },
+  "regression_conversation_first_choices": {
+    "B": 1,
+    "O": 0,
+    "R": 0
+  },
+  "all_turn_first_choices": {
+    "B": 23,
+    "O": 17,
+    "R": 2
+  },
+  "all_conversation_first_choices": {
+    "B": 5,
+    "O": 2,
+    "R": 0
+  }
+}

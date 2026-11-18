@@ -175,7 +175,8 @@ class CandidateService:
 
 
 class OrganizationEngine:
-    def __init__(self, store, config, client, chat):
+    def __init__(self, store, config, client, chat, *, foreground_only=False):
+        self.foreground_only = foreground_only
         self.store, self.config, self.client, self.chat = store, config, client, chat
         self.summaries, self.candidates = SummaryService(store), CandidateService(store)
         self.draining = False
@@ -502,17 +503,18 @@ class OrganizationEngine:
                     await asyncio.sleep(.5)
                     continue
                 self.schedule.pause_changed_models()
-                if background_allowed(self.store.paths):
+                background = not self.foreground_only and background_allowed(self.store.paths)
+                if background:
                     if self.automatic:self.automatic.tick()
                     self.proactive.tick()
                     await self.knowledge.tick()
-                if background_allowed(self.store.paths) and time.time()-self.last_scan >= 30 and not self.chat.draining:
+                if background and time.time()-self.last_scan >= 30 and not self.chat.draining:
                     self.last_scan = time.time()
                     self.schedule.daily_tick()
                     self.schedule.incremental_tick()
                 worked = await self.run_next()
                 if not worked:
-                    if background_allowed(self.store.paths) and time.time()-getattr(self,'_recall_maintenance_at',0)>=2:
+                    if background and time.time()-getattr(self,'_recall_maintenance_at',0)>=2:
                         self._recall_maintenance_at=time.time()
                         from .recall_runtime import RecallRuntime
                         local_work=asyncio.create_task(asyncio.to_thread(RecallRuntime(self.store).maintain,pages=1))

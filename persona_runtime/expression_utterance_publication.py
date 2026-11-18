@@ -1,5 +1,6 @@
 """按人物发言单元授权呈现；正文只在首次租约中交付。"""
 import json
+from contextlib import ExitStack
 
 from .archive import fingerprint
 from .expression_assets import ExpressionAssetError,text
@@ -13,15 +14,21 @@ def project_notice(db,unit,body,complete):
     event=identifier()
     db.execute("INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES(?,?,?,?,'persona',?,?)",
         (event,unit['session_id'],unit['persona_id'],LOCAL_USER_ID,body,timestamp()))
+    context=json.loads(unit['context_json'])
+    if unit['source_kind'] in ('dialogue_reply','scene_reply') and unit['phase']=='main':
+        root=dict(db.execute('SELECT * FROM turns WHERE id=?',(unit['turn_id'],)).fetchone())
+        db.execute("UPDATE turns SET reply_event_id=?,status='completed',cancelled_at=NULL,updated_at=? WHERE id=?",(event,timestamp(),root['id']))
+        from .recall_runtime import queue_feedback
+        queue_feedback(db,root,context['logical_attempt_id'],'main',context['details'].get('recall_support'))
     if unit['phase']=='search_notice':
         task=db.execute('SELECT payload_json FROM organization_tasks WHERE id=?',(unit['task_id'],)).fetchone()
         payload=json.loads(task[0]);root=dict(db.execute('SELECT * FROM turns WHERE id=?',(unit['turn_id'],)).fetchone())
         value={'event_id':event,'task_id':unit['task_id'],'channel':root['channel'],
-            'version':payload['knowledge_processing']['input']['notice_profile'],'response_hash':unit['source_hash'],
+            'version':payload['knowledge_processing']['input']['notice_profile'],'response_hash':context.get('notice_response_hash',unit['source_hash']),
             'utterance_id':unit['id'],'final_body_hash':text_hash(body),'fully_presented':complete}
         db.execute('INSERT INTO knowledge_control VALUES(?,?)',('knowledge.search_notice.turn.'+unit['turn_id'],encoded({'revision':0,'data':value})))
         from .recall_runtime import queue_feedback
-        queue_feedback(db,root,unit['source_id'],'notice',json.loads(unit['context_json'])['details'].get('recall_support'))
+        queue_feedback(db,root,context.get('logical_attempt_id',unit['source_id']),'notice',context['details'].get('recall_support'))
         from .progress import record
         record(db,root['id'],'search_notice_published')
     return event
@@ -51,7 +58,7 @@ class SpeechPublication:
             unit=self._owner(db,persona_id,session_id,utterance_id)
             run=db.execute('SELECT id,state,attempt_id,usage_json,error_code FROM expression_speech_runs WHERE utterance_id=?',(utterance_id,)).fetchone()
             source_usage=db.execute('SELECT usage_json FROM organization_attempts WHERE id=?',(unit['source_id'],)).fetchone() if unit['phase']!='main' else None
-        if unit['phase']=='main':return {'utterance_id':utterance_id,'phase':'main','state':self.outlet.runtime.inspect(unit['turn_id'])}
+        if unit['source_kind']=='main_receipt':return {'utterance_id':utterance_id,'phase':'main','state':self.outlet.runtime.inspect(unit['turn_id'])}
         return {'utterance_id':utterance_id,'phase':unit['phase'],'source':{'kind':unit['source_kind'],'id':unit['source_id'],'body_hash':unit['body_hash']},
                 'source_usage':json.loads(source_usage[0]) if source_usage and source_usage[0] is not None else None,
                 'run':dict(run) if run else None,'publication':self.plan(persona_id,session_id,utterance_id)}
@@ -106,7 +113,7 @@ class SpeechPublication:
     def plan(self,persona_id,session_id,utterance_id):
         with self.store.connection() as db:
             unit=self._owner(db,persona_id,session_id,utterance_id)
-            if unit['phase']!='main':
+            if unit['source_kind']!='main_receipt':
                 pub=db.execute('SELECT id,revision,state,producer_kind,reason FROM expression_speech_publications WHERE utterance_id=?',(utterance_id,)).fetchone()
                 if not pub:return None
                 items=[dict(r) for r in db.execute('SELECT id,ordinal,kind,required,delay_ms,state FROM expression_speech_items WHERE publication_id=? AND revision=? ORDER BY ordinal',(pub['id'],pub['revision']))]
@@ -116,8 +123,14 @@ class SpeechPublication:
     def offer(self,persona_id,session_id,utterance_id,publication_id,revision,ordinal,presenter_id):
         text(presenter_id,'presenter_id',200)
         with self.store.connection() as db:unit=self._owner(db,persona_id,session_id,utterance_id)
-        if unit['phase']=='main':return self._legacy().offer(persona_id,session_id,unit['turn_id'],publication_id,revision,ordinal,presenter_id)
-        with self.store.connection(write=True) as db:
+        if unit['source_kind']=='main_receipt':return self._legacy().offer(persona_id,session_id,unit['turn_id'],publication_id,revision,ordinal,presenter_id)
+        with ExitStack() as stack:
+            if unit['source_kind']=='dialogue_reply':
+                try:stack.enter_context(self.outlet.direct.authority_window(json.loads(unit['context_json'])['generation_unit_id']))
+                except (OSError,RuntimeErrorBase) as error:
+                    self.cancel(utterance_id,'source_or_permission_changed')
+                    return {'state':'stopped','reason':str(error),'new_offer':False}
+            db=stack.enter_context(self.store.connection(write=True))
             unit=self._owner(db,persona_id,session_id,utterance_id)
             if self.store.current(db)!=persona_id:raise ExpressionAssetError('speech_persona_not_selected')
             pub=db.execute('SELECT * FROM expression_speech_publications WHERE id=? AND utterance_id=?',(publication_id,utterance_id)).fetchone()
@@ -153,10 +166,13 @@ class SpeechPublication:
         text(receipt_id,'receipt_id',200)
         if state not in ('presented','not_presented','unknown'):raise ExpressionAssetError('speech_receipt_state_invalid')
         with self.store.connection() as db:unit=self._owner(db,persona_id,session_id,utterance_id)
-        if unit['phase']=='main':return self._legacy().acknowledge(persona_id,session_id,unit['turn_id'],fragment_id,lease_id,presenter_id,receipt_id,body_hash,state)
+        if unit['source_kind']=='main_receipt':return self._legacy().acknowledge(persona_id,session_id,unit['turn_id'],fragment_id,lease_id,presenter_id,receipt_id,body_hash,state)
         with self.store.connection(write=True) as db:
             previous=db.execute('SELECT * FROM expression_speech_receipts WHERE id=?',(receipt_id,)).fetchone()
             if previous:
+                belongs=db.execute('''SELECT 1 FROM expression_speech_items i JOIN expression_speech_publications p
+                    ON p.id=i.publication_id WHERE i.id=? AND p.utterance_id=?''',(fragment_id,utterance_id)).fetchone()
+                if not belongs:raise ExpressionAssetError('speech_receipt_identity_mismatch')
                 if tuple(previous)[1:6]!=(fragment_id,lease_id,presenter_id,body_hash,state):raise ExpressionAssetError('speech_receipt_conflict')
                 return {'state':state,'already_applied':True}
             item=db.execute('''SELECT i.* FROM expression_speech_items i JOIN expression_speech_publications p ON p.id=i.publication_id
@@ -168,9 +184,16 @@ class SpeechPublication:
             now=timestamp()
             db.execute('INSERT INTO expression_speech_receipts VALUES(?,?,?,?,?,?,?)',(receipt_id,fragment_id,lease_id,presenter_id,body_hash,state,now))
             db.execute('UPDATE expression_speech_items SET state=?,receipt_id=? WHERE id=?',(state,receipt_id,fragment_id))
-            if state=='presented':db.execute('INSERT INTO expression_speech_visible VALUES(?,?,?,?,?,?,?)',(fragment_id,utterance_id,pub['id'],item['ordinal'],item['text'],receipt_id,now))
+            if state=='presented':
+                db.execute('INSERT INTO expression_speech_visible VALUES(?,?,?,?,?,?,?)',(fragment_id,utterance_id,pub['id'],item['ordinal'],item['text'],receipt_id,now))
+                if unit['source_kind']=='scene_reply':
+                    from .progress import record
+                    record(db,unit['turn_id'],'first_output' if item['ordinal']==0 else 'scene_bubble_presented',
+                           json.loads(unit['context_json'])['logical_attempt_id'])
             remaining=db.execute("SELECT state FROM expression_speech_items WHERE publication_id=? AND revision=? AND state IN ('pending','offered','unknown')",(pub['id'],pub['revision'])).fetchall()
-            if remaining:db.execute('UPDATE expression_speech_publications SET state=? WHERE id=?',('unknown' if any(r[0]=='unknown' for r in remaining) else 'partial',pub['id']))
+            if state=='not_presented':
+                self._stop(db,unit,pub,'fragment_not_presented')
+            elif remaining:db.execute('UPDATE expression_speech_publications SET state=? WHERE id=?',('unknown' if any(r[0]=='unknown' for r in remaining) else 'partial',pub['id']))
             else:self._close(db,unit,pub,'complete' if not unit['cancelled_at'] else 'cancelled_by_user')
             return {'state':state,'already_applied':False}
 
@@ -189,7 +212,14 @@ class SpeechPublication:
             event=project_notice(db,unit,body,complete)
         db.execute('UPDATE expression_speech_publications SET state=?,reason=?,canonical_event_id=? WHERE id=?',
             ('complete' if complete else 'closed',reason,event,pub['id']))
+        if unit['source_kind'] in ('dialogue_reply','scene_reply') and unit['phase']=='main':
+            db.execute('UPDATE turns SET status=?,error_code=?,updated_at=? WHERE id=?',
+                ('completed' if event else 'interrupted',None if complete else reason,timestamp(),unit['turn_id']))
         db.execute('UPDATE expression_speech_units SET closed_at=? WHERE id=?',(timestamp(),unit['id']))
+        if unit['source_kind']=='scene_reply':
+            from .progress import record
+            record(db,unit['turn_id'],'persisted' if event else 'interrupted',
+                   json.loads(unit['context_json'])['logical_attempt_id'])
 
     def _stop(self,db,unit,pub,reason):
         db.execute('UPDATE expression_speech_units SET cancelled_at=COALESCE(cancelled_at,?) WHERE id=?',(timestamp(),unit['id']))
@@ -201,7 +231,7 @@ class SpeechPublication:
 
     def cancel(self,utterance_id,reason='cancelled_by_user'):
         with self.store.connection() as db:unit=self.outlet.unit(db,utterance_id)
-        if unit['phase']=='main':return self._legacy().cancel(unit['turn_id'],reason)
+        if unit['source_kind']=='main_receipt':return self._legacy().cancel(unit['turn_id'],reason)
         with self.store.connection(write=True) as db:
             unit=self.outlet.unit(db,utterance_id)
             if unit['closed_at']:return {'state':'closed','new_call':False}
@@ -215,13 +245,13 @@ class SpeechPublication:
     def visible(self,persona_id,session_id,utterance_id):
         with self.store.connection() as db:
             unit=self._owner(db,persona_id,session_id,utterance_id)
-            if unit['phase']!='main':return [dict(r) for r in db.execute('SELECT fragment_id AS id,ordinal,text,receipt_id,presented_at FROM expression_speech_visible WHERE utterance_id=? ORDER BY ordinal',(utterance_id,))]
+            if unit['source_kind']!='main_receipt':return [dict(r) for r in db.execute('SELECT fragment_id AS id,ordinal,text,receipt_id,presented_at FROM expression_speech_visible WHERE utterance_id=? ORDER BY ordinal',(utterance_id,))]
         return self._legacy().visible(persona_id,session_id,unit['turn_id'])
 
     def pending_receipts(self,persona_id,session_id,utterance_id,presenter_id):
         with self.store.connection() as db:
             unit=self._owner(db,persona_id,session_id,utterance_id)
-            if unit['phase']!='main':return [dict(r) for r in db.execute('''SELECT i.id,i.publication_id,i.revision,i.ordinal,i.lease_id,i.presenter_id,i.body_hash,i.state,i.offered_at
+            if unit['source_kind']!='main_receipt':return [dict(r) for r in db.execute('''SELECT i.id,i.publication_id,i.revision,i.ordinal,i.lease_id,i.presenter_id,i.body_hash,i.state,i.offered_at
                 FROM expression_speech_items i JOIN expression_speech_publications p ON p.id=i.publication_id
                 WHERE p.utterance_id=? AND p.state NOT IN ('complete','closed') AND i.presenter_id=? AND i.state IN ('offered','unknown') ORDER BY i.ordinal''',(utterance_id,presenter_id))]
         return self._legacy().pending_receipts(persona_id,session_id,unit['turn_id'],presenter_id)

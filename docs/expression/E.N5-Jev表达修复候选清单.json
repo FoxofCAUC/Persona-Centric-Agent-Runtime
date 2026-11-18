@@ -1,0 +1,51 @@
+{
+  "version": "en5-jev-continuous-style-repair-v1",
+  "parent_manifest": "docs/expression/E.N5-Jev连续体验候选清单.json",
+  "parent_manifest_sha256": "d63958ed301853ef47382c6c0e7724de515980456a734b3444b628f61a968cca",
+  "baseline_core_files": 487,
+  "baseline_evidence_files": 127,
+  "declared_core_changes": [],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_en5_scene_style_preflight.py",
+      "sha256": "a913e3b2183cdb82b0afbbb59a26a995a45fb2deeb3f4c0914f7c46b32d46fa2"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en5_d3_live.py",
+      "sha256": "eb3d9145a919e9c560d8e6901f34d8c72b45539407f1e0d833b3481edef0b448",
+      "baseline_sha256": "575ae1f7419f972258ef0add6678205cd3ce4b7dcb3bce9e876ea3056930e511"
+    },
+    {
+      "path": "experiments/en5_d3_presentation.py",
+      "sha256": "628a6a4bda74bd91e7d6e76f7694f31b2d17bf902ef2f841f73728ba77b5daeb",
+      "baseline_sha256": "e0a93df000abdd19f97f14de5ee6ed9759798504586d9bed3e81764185571fad"
+    },
+    {
+      "path": "experiments/en5_d3_live_review.py",
+      "sha256": "029471e80013f8171e61b547018a0a6eaaf87759d9a653aa64124fd502fae8a3",
+      "baseline_sha256": "4dea2760b478360368aae847e093181e08e61aab967831a1694a7643711b7dff"
+    },
+    {
+      "path": "experiments/en5_scene_continuous.py",
+      "sha256": "350af85d0688574ec3e8e0cf7ad4ed214c9b37531f8b0f5781caa0cad9ce79a6",
+      "baseline_sha256": "e278932f8e67b8bf4c580e0ae9c89b42314fcdaab7a974baa0f22b9ea6f9fe21"
+    },
+    {
+      "path": "experiments/en5_scene_continuous_review.py",
+      "sha256": "9dde34a17ef364b9faf6ab3eeb6ddf54fc489e3ec3b0a67008fc1b45c7bb2582",
+      "baseline_sha256": "7b98e82f7b2c31fa940cd9c8c1a86cd4fce5d3165d287801c01b3dcf9b02c8ee"
+    }
+  ],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_scene_style.py",
+      "sha256": "305bce427f81133d205555baa8dbbcd7abac76c22cc009f60f832d5f571dec77"
+    },
+    {
+      "path": "tests/test_en5_scene_style.py",
+      "sha256": "38188bf455299a1b6dc3102921c3533295ace210d68a5f2dc07932f33d06c701"
+    }
+  ]
+}

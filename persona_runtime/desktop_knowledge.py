@@ -14,21 +14,39 @@ class KnowledgeUI:
         ttk.Checkbutton(line,text='当前角色按需联网检索',variable=self.knowledge_read).pack(side='left')
         self.button(line,'保存设置',self.save_knowledge_reader,{'knowledge-write'})
         self.button(line,'刷新',self.refresh_knowledge,{'knowledge-read'})
+        self.native_grant_button=self.button(line,'允许当前角色用官方 Flash 检索公开资料',
+                                           self.authorize_native_reader,{'knowledge-write'})
+        self.native_grant_button.pack_forget()
         ttk.Label(parent,text='联网使用深度思考搜索，保留原人物回应。聊天页“公开检索”可填写本次公开问题。',wraplength=760).pack(anchor='w',padx=16,pady=8)
         ttk.Label(parent,textvariable=self.knowledge_status,wraplength=760).pack(anchor='w',padx=16,pady=12)
     def knowledge_key(self):return self.persona_id,self.view_epoch
     def knowledge_ready(self):return bool(self.persona_id and self.knowledge_loaded_key==self.knowledge_key() and self.knowledge_data)
     def refresh_knowledge(self):
+        self.native_grant_button.pack_forget()
         if not self.persona_id:return
         key=self.knowledge_key()
         def done(data):
             if key!=self.knowledge_key():return
             self.knowledge_data=data;self.knowledge_loaded_key=key;self.knowledge_read.set(data['policy']['data']['enabled'])
+            grant=data.get('native_authorization',{})
+            if self.knowledge_read.get() and grant.get('error_code')=='private_cloud_provider_not_authorized' and grant.get('expected_provider'):
+                self.native_grant_button.pack(side='left',padx=(0,7),pady=4)
             cost=data['cost'];tools=data['tool_cost']
             decision=data.get('web_decision',{});ready=decision.get('configuration',{}).get('key_configured') and decision.get('authorization',{}).get('authorized')
             fallback='上轮Jev未取得有效判断，已按策略联网继续。' if self.knowledge_read.get() and decision.get('latest',{}).get('decision_source')=='policy_fallback' else ''
             self.knowledge_status.set(f"通用检索{'已启用' if self.knowledge_read.get() else '未启用'}。Jev配置及授权{'已就绪' if ready else '未就绪'}。{fallback}知识模型调用{cost['calls']}次（含Jev），搜索/读取{tools['calls']}次；费用按记录留账。")
         self.run_task('读取联网设置',{'knowledge-read'},lambda _:self.client.manage('knowledge.manage.show',persona_id=key[0]),done,quiet=True)
+    def authorize_native_reader(self):
+        if not self.knowledge_ready():return
+        grant=self.knowledge_data.get('native_authorization',{})
+        if grant.get('error_code')!='private_cloud_provider_not_authorized' or not grant.get('expected_provider'):return
+        from .models import identifier
+        key=self.knowledge_key()
+        args={'persona_id':key[0],'expected_provider':grant['expected_provider'],'operation_id':identifier()}
+        self.run_task('授权公开检索',{'knowledge-write'},
+                      lambda _:self.client.manage('knowledge.native.authorize',**args),
+                      lambda _:self.refresh_knowledge() if key==self.knowledge_key() else None)
+
     def save_knowledge_reader(self):
         if not self.knowledge_ready():return
         from .models import identifier

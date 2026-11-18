@@ -1,0 +1,194 @@
+{
+  "version": "dialogue-generation-rc8-v1",
+  "parent_manifest": "docs/expression/E.L4-新场景扩测工具清单.json",
+  "parent_manifest_sha256": "788ad11cf709a13b7e8f982bf3ee7d658e3dbf38d1380f02c952d463d6da0fc8",
+  "baseline_core_files": 455,
+  "declared_changes": [
+    {
+      "path": "persona_runtime/__init__.py",
+      "sha256": "063774f635fdb92bbdd0097a968b72410b99524c84821e8da201e251d642f44d",
+      "baseline_sha256": "6b8f29c6ad714cd9a9aed92d2da08ef82824aa6ee2b8e1704d156bc5dac2e407"
+    },
+    {
+      "path": "persona_runtime/__main__.py",
+      "sha256": "0b837e8130c0ca471e7f59cc312b9f9f878817ca94fd0e2a64ac2addc0499b0f",
+      "baseline_sha256": "7804caf4b8f6ab28d95aeb8b52da9ff28e8577fcf2cf124fc82c90e2bc58bf9a"
+    },
+    {
+      "path": "persona_runtime/chat.py",
+      "sha256": "39c4e59db8af92c5e92d3755f317c910292745457e0bc282dc53db019307bc12",
+      "baseline_sha256": "590071f57f3b3a0f140de1e90f32a032581ea22f3ba5d3d910a679ca9b2da455"
+    },
+    {
+      "path": "persona_runtime/expression_assets.py",
+      "sha256": "f746f6c268422aebc650a3e0dc4280d1111a9e43235a0c26d13e86961a6ee057",
+      "baseline_sha256": "8ab22f6e9990b8325c681558a1a18325be4eec3e2cef7b3d7f0b579d118ba69a"
+    },
+    {
+      "path": "persona_runtime/expression_candidates.py",
+      "sha256": "d39341548aa489c34d0d2b53cf0ff0fb520f58f0dd2ee081f95a3dc20fd3dbe5",
+      "baseline_sha256": "76622de338a7b3085aff23904edf4810dfa0ed8f636ea24e94c2b072548bf164"
+    },
+    {
+      "path": "persona_runtime/expression_compat.py",
+      "sha256": "4a8100803b70523df6e04aea90c525898ec15f5f8a4af1b74484d6f9c1576d70",
+      "baseline_sha256": "9cbaa8a6ab272468cdcb9ac1098f6762a1996dacc98d7140df296279c0a675a1"
+    },
+    {
+      "path": "persona_runtime/expression_publication.py",
+      "sha256": "ea4510988dc56f00664efebb8899efa0f80fcb90e8fdbe5529f9b01896611c79",
+      "baseline_sha256": "ff83a252008677ac3c3fbc89b501a140554c78983b593bf3b7e851898e7e766c"
+    },
+    {
+      "path": "persona_runtime/expression_runtime.py",
+      "sha256": "35108fcf2b76e7c4cc3f633cda3776433b9eea5ee734a12d707006755473bac3",
+      "baseline_sha256": "ce73f493877f81f9e86f1eadb496d14ed5f51d4b9b79797e5e391dcbae078311"
+    },
+    {
+      "path": "persona_runtime/expression_utterance.py",
+      "sha256": "859bd9286bf6a37bff01560db5540439c5bade1f62aec84907464e2f6db5f728",
+      "baseline_sha256": "33924375d501ce987a15fedecf65397d1d39e819c1318d2bfd45528a9a6b3078"
+    },
+    {
+      "path": "persona_runtime/expression_utterance_publication.py",
+      "sha256": "e3302d301470e5a9a26cdb0a0b12ca78a0bca93feb773f55058be2a9a4b3e4c5",
+      "baseline_sha256": "1e5b60d18f85e3f07ed0c7ce7d5952adff70704030cfe62fe47b951a87dc7316"
+    },
+    {
+      "path": "persona_runtime/knowledge_native.py",
+      "sha256": "c17c408c3a53dcd991fddfa7bc362d826dfe3fa75cc34e7b3cca74658fc63e3a",
+      "baseline_sha256": "870d4212a7b97ddaa6293182fa4ec4a673d368148e6f53e8c1c208db8488857e"
+    },
+    {
+      "path": "persona_runtime/knowledge_processing.py",
+      "sha256": "2e8f21ab4a3f472bc8e00270ff17c58fbb57faac7b9f68938735de35686e239a",
+      "baseline_sha256": "dd60701c1f9b721e88b2925fea7b0a45fd06acc6b8cc8448d25cc6ac2477f459"
+    },
+    {
+      "path": "persona_runtime/knowledge_search_notice.py",
+      "sha256": "98a5b10265e0aa280cb75cf41c8463354febbe8b21e586336dd2f4c4d6c5e5ab",
+      "baseline_sha256": "08bd98a3d58d9dc5fe3c55b88c624def6d6fd48ec7ba4b7aea36bf7c071d3a3f"
+    },
+    {
+      "path": "persona_runtime/managed_organization.py",
+      "sha256": "4944dfaf75feb92a6d74d1bb3e07efd291af0dae931333ddfb1bf049a6f42701",
+      "baseline_sha256": "bcb6d7dd83285cbc51afa7d951d3170f69f55f971d94898b9fc62ed4ac45cc10"
+    },
+    {
+      "path": "persona_runtime/migration.py",
+      "sha256": "0e0e488b86c083027334232447cf0b3642db308dd0f6b8e19b0742a46d7263dc",
+      "baseline_sha256": "f8db02f9f8d95fd35ffc402732dbd1748fc005973f829ac0ff018d582317c094"
+    },
+    {
+      "path": "persona_runtime/private_personas.py",
+      "sha256": "6b61658343336b24f788bac96cfa2360a26cab42659559830326589ae2949533",
+      "baseline_sha256": "ca5f87cfb36dba45c7c759fb07749947c02a994616cf747754c8aa47324aa346"
+    },
+    {
+      "path": "persona_runtime/recall_rollback.py",
+      "sha256": "7fa0160db5f7176c6d20e4dd7d85c8fb56137e8b7f74cbc0bb4b31b14a669a73",
+      "baseline_sha256": "7f9110694436d833937f2a561f3c78dd6f1b4c301fb1bb65658bab0ce556c23c"
+    },
+    {
+      "path": "persona_runtime/server.py",
+      "sha256": "8ae41e8af0fd0770c2231ce2011894a1a0c058ac9dfed05b4719668b3b24d229",
+      "baseline_sha256": "8a62f7c4031336922602f45dfc8b1569c1ebf8dfad1ea37950672dc9f85d0241"
+    },
+    {
+      "path": "persona_runtime/storage.py",
+      "sha256": "8137bea8a8e25eb23f3f837d54756c18b3ebecbdc05616572961432cc99e3f4c",
+      "baseline_sha256": "7175240393428ec4f018f811dce32ac4003b229ddbe38e32dd698a2f68a59a9e"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "eac2b802d1fc0f1cf362edf75d043c4ddbabedb1388c4060d96d61695cfe32fb",
+      "baseline_sha256": "684431f5cf3747566639e198b0e68c4f496019a99dac55dbab7f230ee6ac4bcd"
+    },
+    {
+      "path": "scripts/pcar_recall_rollback.py",
+      "sha256": "c1ba7a31b2eb0cc1516aa75df14cc792ceef9637836a095b0bc2eddee1434bf5",
+      "baseline_sha256": "6d7ed6357e2fb5d708ba6eefa53d67a145b3bb20e674f84c77cbcb5a219a88ad"
+    },
+    {
+      "path": "uv.lock",
+      "sha256": "5d5baacb1be5509087035fd68ce0d2b3d1ebda07dd380687a7f7869668649e24",
+      "baseline_sha256": "e12e4e3b87ff27904579e7b8d56decc8542ecf34a9ec24d29ea73bf6c282276b"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/dialogue_assembly.py",
+      "sha256": "201b10b46d777ae6dccbca3f1ba8be64bd361610b641edc9ff17a7a7c38043f8"
+    },
+    {
+      "path": "persona_runtime/dialogue_display.py",
+      "sha256": "15548b07e5b24029b752b92982d97051936272abe4b9e953962f1c9fde0beca8"
+    },
+    {
+      "path": "persona_runtime/dialogue_generation.py",
+      "sha256": "d085694587fb4d00920ca29d3d11beec7b98a419841100f13766adebafcd2ada"
+    },
+    {
+      "path": "persona_runtime/dialogue_outlet.py",
+      "sha256": "f2fc4afe5b3c72b98f2e4ff01ddf9f268b48cb34c46c97220f5995c56b9d7231"
+    },
+    {
+      "path": "persona_runtime/dialogue_receipt.py",
+      "sha256": "c0b21cd3dbebefc3e100ca945e85a6dedbbb1f9c0d1cec179cfcbfb27a1a41a7"
+    },
+    {
+      "path": "persona_runtime/dialogue_repair.py",
+      "sha256": "2ebf43f451f775685e957655bb97e02c4fca2981d88771c45acffe5e1eeee207"
+    },
+    {
+      "path": "persona_runtime/expression_corpus_sources.py",
+      "sha256": "d42db3e0a52f846cb12a0b7d98ebf14583f02ae8e10d1c21a2ee5062a7245f65"
+    },
+    {
+      "path": "persona_runtime/migration_corpus.py",
+      "sha256": "dec97442476697a8aca22a9139604e1b5e8703e0f9d9d318275968a558b63ec8"
+    },
+    {
+      "path": "persona_runtime/schema_dialogue.py",
+      "sha256": "86b4cc23c4b6b6fe0bf4ad9ac4f371a45dd47db26c52c69a6959f973400a40e7"
+    },
+    {
+      "path": "persona_runtime/schema_dialogue_generation.py",
+      "sha256": "6f52d213fac88bcf8aec10d82572ccc4115c909a1001fe5bd11f67836a148d5a"
+    },
+    {
+      "path": "persona_runtime/schema_dialogue_sources.py",
+      "sha256": "2975d136eb0183898957ad9856608487a2d98ced25e39e919c0082dd92f99fbd"
+    },
+    {
+      "path": "scripts/pcar_dialogue_generation_preflight.py",
+      "sha256": "48584c5708b484fd726a7645ba9ebf0adde67033426570b47644c6c6021b4ac1"
+    },
+    {
+      "path": "scripts/pcar_dialogue_sources.py",
+      "sha256": "f92bc1b01dcc6e4fa86ccf8bbf9562234da23d86899dcd1acef61ab9de067f40"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_dialogue_generation_stages.py",
+      "sha256": "37d141e501d38ef7af9a869ad8c7612e13f6252581b91bc820223f24ba18c44a"
+    },
+    {
+      "path": "tests/test_dialogue_material_sources.py",
+      "sha256": "f903b32a98c631e8ed75cbfe02f8255623f570061829b1c414f112af34979e15"
+    },
+    {
+      "path": "tests/test_dialogue_outlet.py",
+      "sha256": "8904118c2c85dcbb04c11e43e96b9b6038eecac7cc89d224bf8d707ebb8833d8"
+    },
+    {
+      "path": "tests/test_dialogue_schema_migration.py",
+      "sha256": "dde6a53957b69eb0d931cec1f31130d429f3f769a8455dcfc526b30c073619e1"
+    },
+    {
+      "path": "tests/test_expression_utterance_migration.py",
+      "sha256": "0aedce5ffcbbc5bd19820c8b65f93ef97fd720551a67a0dd0aabba8c179d25d0"
+    }
+  ]
+}

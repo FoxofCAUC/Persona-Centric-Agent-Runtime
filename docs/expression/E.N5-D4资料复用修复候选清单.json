@@ -1,0 +1,35 @@
+{
+  "version": "en5-d4-native-reuse-repair-v1",
+  "parent_manifest": "docs/expression/E.N5-D4联网补验候选清单.json",
+  "parent_manifest_sha256": "d29fb9a2ff7bb11624f4b13015701521560b438e3199ff5bce6fcb1406eade04",
+  "baseline_core_files": 489,
+  "baseline_evidence_files": 132,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/knowledge_native_memory.py",
+      "sha256": "ab9202de74be69daad0db284741e7b65428d30d7cd20b469a763fae6080a7b3c",
+      "baseline_sha256": "72d882d0edf26c3124e836bae832becaff663a763444eca3b849eb7efbfc23ed"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/knowledge_native_topic.py",
+      "sha256": "5505168e52c483d1d48424fb003811c51ba9ec7b01ce8bc11bccd9e120f524bf"
+    },
+    {
+      "path": "scripts/pcar_en5_d4_reuse_preflight.py",
+      "sha256": "3172652c453751b146036fbf653bb343e128453fb25517282b2ebabc201e44f9"
+    }
+  ],
+  "declared_evidence_changes": [],
+  "new_research_tools": [
+    {
+      "path": "tests/test_m9r_fatigue.py",
+      "sha256": "aa173db1d8882d9b158694ce18a428ba9910379a29cf81c27edfa04f378658ec"
+    },
+    {
+      "path": "tests/test_m9r_native_continuity.py",
+      "sha256": "1cb9ef7ad2ef6a54a08dac144bce1709b9ed01d2a2e72dba44d68f3b13f7ea5f"
+    }
+  ]
+}

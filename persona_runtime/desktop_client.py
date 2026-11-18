@@ -105,6 +105,8 @@ class LocalClient:
                 health=self.call('GET','/v1/health')
                 if ('durable_ingress_v2' not in health.get('capabilities',[]) or (payload.get('reference') and 'input_reference_v1' not in health.get('capabilities',[]))
                         or (payload.get('public_task') and 'native_web_v1' not in health.get('capabilities',[]))):raise RuntimeErrorBase('runtime_upgrade_required')
+                if 'desktop_presentation' in payload and 'tk_notice_presented_v1' not in health.get('capabilities',[]):
+                    raise RuntimeErrorBase('runtime_upgrade_required')
                 result=self.call('POST','/v2/ingress',payload)
         except TransportUnknown:
             self.journal.state(payload['request_id'],'unconfirmed');raise

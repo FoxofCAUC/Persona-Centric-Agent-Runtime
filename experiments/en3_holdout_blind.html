@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>角色 · 三链会话盲审</title>
+<style>
+:root{color-scheme:light dark;--line:#818a8366;--fill:#839b8822}
+body{max-width:72em;margin:auto;padding:1em;font:16px/1.65 system-ui,sans-serif}h1,h2,h3{line-height:1.25}
+.scene{border-top:2px solid var(--line);margin:2em 0}.turn,fieldset{padding:1em 0;border:0;border-top:1px solid var(--line)}
+fieldset{margin:0}label{display:inline-block;padding:.25em .7em .25em 0}button,select,textarea{font:inherit}
+textarea{width:min(96%,52em);min-height:3em}.text,.bubble{white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble{padding:.4em .7em;background:var(--fill);border-radius:.6em;margin:.3em 0}.option{padding:.5em;border-left:2px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(17em,100%),1fr));gap:.7em}.user{font-weight:550}
+details{margin:.6em 0}summary,button,select,label{cursor:pointer}.status{font-size:.9em}button{padding:.4em 1em}
+</style>
+<main><h1>角色的三链会话盲审</h1><p>甲、乙、丙在同一组内各代表一条独立会话。先读相同排版的正文，再看各链连续发言时的气泡。每题均可留空。</p>
+<div id="scenes"></div><h2>审阅记录</h2><label>整体意见<br><textarea id="overall"></textarea></label>
+<p><button id="download">导出审阅意见</button> <output id="status"></output></p>
+<details><summary>查看运行证据（含模型身份）</summary><p>可在完成文字偏好后核对每轮理解、选材、耗时、用量及失败记录。</p><a href="evidence.html">打开运行证据</a></details></main>
+<script type="application/json" id="data">@@DATA@@</script>
+<script>
+const study=JSON.parse(document.getElementById('data').textContent);
+const storageKey='pcar-en3-'+study.results_sha256;
+let answers={votes:{},notes:{},overall:''};
+try{const old=JSON.parse(localStorage.getItem(storageKey));if(old&&old.votes&&old.notes)answers=old;}catch{}
+const el=(tag,txt,cls)=>{const a=document.createElement(tag);if(txt!=null)a.textContent=txt;if(cls)a.className=cls;return a;};
+const statusText=msg=>document.getElementById('status').textContent=msg;
+function save(){try{localStorage.setItem(storageKey,JSON.stringify(answers));statusText('已保存到本机');}catch{statusText('请导出文件保存意见');}}
+function vote(parent,key,title){const lab=el('label',title+'　');const select=el('select');for(const v of ['','甲','乙','丙','相近','暂难判断']){
+const op=el('option',v||'未选择');op.value=v;select.append(op);}select.value=answers.votes[key]||'';select.onchange=()=>{answers.votes[key]=select.value;save();};lab.append(select);parent.append(lab);}
+function note(parent,key){const d=el('details');d.append(el('summary','备注'));const a=el('textarea');a.setAttribute('aria-label','备注');a.value=answers.notes[key]||'';a.oninput=()=>{answers.notes[key]=a.value;save();};d.append(a);parent.append(d);}
+for(const s of study.scenes){
+const box=el('section',null,'scene');box.append(el('h2',s.id+' · '+s.title));
+for(const t of s.turns){
+const row=el(t.identical?'details':'section',null,'turn');row.append(el(t.identical?'summary':'h3','第 '+t.n+' 轮'+(t.identical?' · 三份正文相同':'')));
+row.append(el('p',t.user,'text user'));const grid=el('div',null,'grid');
+for(const [k,o] of Object.entries(t.options)){const col=el('div',null,'option');col.append(el('b',k),el('p',o.body??('未取得正文 · '+o.state),'text'));grid.append(col);}row.append(grid);
+if(!t.identical)vote(row,s.id+'/'+t.n,'这轮更喜欢的正文');note(row,s.id+'/'+t.n);box.append(row);}
+const whole=el('details');whole.append(el('summary','整组气泡会话'));const grid=el('div',null,'grid');
+for(const k of ['甲','乙','丙']){const col=el('div');col.append(el('h3',k));for(const t of s.turns){col.append(el('p',t.n+' · '+t.user,'text user'));const o=t.options[k];for(const part of o.segments)col.append(el('div',part,'bubble'));if(!o.body)col.append(el('p','未取得正文 · '+o.state));}grid.append(col);}whole.append(grid);box.append(whole);
+vote(box,s.id+'/conversation','整组交流更喜欢哪条');note(box,s.id+'/conversation');document.getElementById('scenes').append(box);}
+const overall=document.getElementById('overall');overall.value=answers.overall;overall.oninput=()=>{answers.overall=overall.value;save();};
+document.getElementById('download').onclick=()=>{const {study_id,input_contract_sha256,results_sha256,blind_key_sha256}=study;
+const packet={version:'en3-ling-review-v1',study_id,input_contract_sha256,results_sha256,blind_key_sha256,...answers};
+const url=URL.createObjectURL(new Blob([JSON.stringify(packet,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download='E.N3-角色-三链留出对照审阅意见.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);statusText('已导出');};
+</script></html>

@@ -1,0 +1,36 @@
+"""Verify the first scene candidate against the D3 source snapshot, without model access."""
+import argparse
+import json
+from pathlib import Path
+from scripts.pcar_en3_repair_preflight import child, read
+from scripts.pcar_en5_d3_live_preflight import D2, MANIFEST as D3, apply, previous
+from scripts.pcar_expression_preflight import check_core, source_digest
+
+MANIFEST='docs/expression/E.N5-Jev场景拆分候选清单.json'
+
+
+def d3_files(repo):
+    commit,core,evidence=previous(repo)
+    apply(child(repo,D3,D2,'en5-d3-continuous-desktop-v1'),core,evidence)
+    return commit,core,evidence
+
+
+def inspect(repo):
+    repo=repo.resolve()
+    commit,core,evidence=d3_files(repo)
+    apply(child(repo,MANIFEST,D3,'en5-jev-scene-local-v1'),core,evidence)
+    if core.keys() & evidence.keys():
+        raise ValueError('scene_source_overlap')
+    checked=check_core(repo,{'commit':commit,'files':[{'path':k,'sha256':v} for k,v in core.items()],
+                             'allowed_new_core_files_e0':[]})
+    errors=[k for k,v in evidence.items() if not (repo/k).is_file() or source_digest(read(repo,k))!=v]
+    return {'passed':checked['passed'] and not errors,'core':checked,'research_files':len(evidence),
+            'research_errors':errors,'model_calls':0}
+
+
+if __name__=='__main__':
+    cli=argparse.ArgumentParser(description=__doc__)
+    cli.add_argument('--repo',type=Path,required=True)
+    result=inspect(cli.parse_args().repo)
+    print(json.dumps(result,ensure_ascii=False))
+    raise SystemExit(0 if result['passed'] else 1)

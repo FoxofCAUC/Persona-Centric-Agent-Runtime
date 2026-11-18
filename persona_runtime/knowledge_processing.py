@@ -72,7 +72,7 @@ class KnowledgeProcessing:
     def context(self,db,turn):
         from .turn_input import load_turn_input
         return {'scope':turn_scope(db,turn),'input':load_turn_input(db,turn)}
-    def _grant(self,db,turn,policy,inputs,stage=None):
+    def _grant(self,db,turn,policy,inputs,stage=None,*,native_route=None):
         from .knowledge_service import read,POLICY
         from .private_personas import guard_cloud_dispatch
         current=read(db,'processing.'+turn['persona_id'],self.defaults())
@@ -80,10 +80,15 @@ class KnowledgeProcessing:
         web=read(db,'web.policy.'+turn['persona_id'],{'enabled':False})['data']
         if current!=policy or not reader['enabled'] or not web.get('enabled') or turn['channel'] not in reader['channels'] or not current['data'].get('enabled') or current['data'].get('prompt_profile')!=PROFILE:
             raise RuntimeErrorBase('knowledge_permission_changed')
-        guard_cloud_dispatch(self.store,turn['persona_id'],'main',self.model())
-        if stage=='conversation_web_decision':self.engine.routing.grant(turn['persona_id'])
+        if native_route is None:
+            guard_cloud_dispatch(self.store,turn['persona_id'],'main',self.model(),db=db)
+        else:
+            from .knowledge_native_route import model_for_task, PERMISSION
+            spec={'root_turn_id':turn['id'],'stage':stage,'input':inputs,'native_model_route':native_route}
+            guard_cloud_dispatch(self.store,turn['persona_id'],PERMISSION,model_for_task(db,turn['persona_id'],spec),db=db)
+        if stage=='conversation_web_decision':self.engine.routing.grant(turn['persona_id'],db=db)
         if stage in ('conversation_native','conversation_search_notice'):
-            if self.native.policy(turn['persona_id'])!=inputs.get('native_policy'):
+            if self.native.read_policy(db,turn['persona_id'])!=inputs.get('native_policy'):
                 raise RuntimeErrorBase('native_policy_changed')
             from .turn_input import input_text
             from .knowledge_native import public_task
@@ -94,9 +99,21 @@ class KnowledgeProcessing:
                 from .knowledge_native_memory import source_states
                 if source_states(db,turn['persona_id'])['revision']!=inputs.get('source_state_revision',0):
                     raise RuntimeErrorBase('native_readable_source_changed')
+        if stage=='conversation_native':
+            from .tk_notice import authorize_search
+            authorize_search(db,self.store,turn)
+
     def _call(self,turn,stage,inputs):
         from .knowledge_service import read
         from .knowledge_wait import check,mark
+        if stage=='conversation_search_notice':
+            scene_gate=getattr(self.engine.chat,'await_notice_scene',None)
+            if scene_gate:
+                try:
+                    scene_gate(turn)
+                except (RuntimeErrorBase, ValueError, OSError) as error:
+                    # End retrieval if the required person or visible preface is unavailable.
+                    raise RuntimeErrorBase('knowledge_request_inactive:'+str(error)) from error
         check(self.service,turn)
         if stage not in STAGES:raise RuntimeErrorBase('legacy_retrieval_frozen')
         policy=self.policy(turn['persona_id'])
@@ -105,7 +122,6 @@ class KnowledgeProcessing:
         token=fingerprint([turn['id'],turn.get('execution_revision'),stage,inputs,policy,VERSION]+([decision_binding] if decision_binding else []))
         cache_key='processing.cache.'+token
         with self.store.connection(write=True) as db:
-            self._grant(db,turn,policy,inputs,stage)
             # A primary retry changes its execution number, not the identity of
             # already dispatched retrieval work for the same frozen question.
             context_guard=fingerprint(self.context(db,turn))
@@ -116,10 +132,20 @@ class KnowledgeProcessing:
                         and (data.get('decision_binding')==decision_binding or stage=='conversation_web_decision')
                         and data['context_guard']==context_guard and payload['scope']==turn_scope(db,turn)):
                     previous.append(row)
+            from .knowledge_native_route import for_new_work
+            native_route=(json.loads(previous[-1]['payload_json'])['knowledge_processing'].get('native_model_route')
+                          if previous else for_new_work(db,turn,stage))
+            self._grant(db,turn,policy,inputs,stage,native_route=native_route)
             resumed=None
             for row in previous:
                 if row['status']=='completed':
                     return copy.deepcopy(read(db,'processing.result.'+row['id'],{})['data']),row['id']
+                if row['status'] in ('queued','waiting_quota','running') and stage=='conversation_search_notice':
+                    from .dialogue_generation import enabled as direct_enabled
+                    contract=self.engine.managed.contract(db,row['id'])
+                    if direct_enabled(db,turn['id']) and contract and contract['data']['phase']=='received' and not contract['data']['cancel_requested']:
+                        resumed={'id':row['id']}
+                        continue
                 if row['status']=='failed' or stage in ('conversation_native','conversation_search_notice') and row['status']=='cancelled':
                     contract=self.engine.managed.contract(db,row['id'])
                     if stage in ('conversation_native','conversation_search_notice') and contract and contract['data']['phase']=='received' and not contract['data']['cancel_requested']:
@@ -147,6 +173,7 @@ class KnowledgeProcessing:
             data={'stage':stage,'input':inputs,'pipeline':VERSION,'root_turn_id':turn['id'],'context_guard':context_guard,
                 'policy':policy,'cache_key':cache_key,'request_profile':OUTPUT_PROFILE,
                 **({'decision_binding':decision_binding} if decision_binding else {})}
+            if native_route is not None:data['native_model_route']=native_route
             payload={'persona_id':turn['persona_id'],'channel':turn['channel'],'session_id':turn['session_id'],'mode':'both',
                 'scope':turn_scope(db,turn),'user_id':LOCAL_USER_ID,
                 'knowledge_processing':data,'fingerprint':token,'manual_quota_request':bool(not turn.get('outbound_id') and (turn.get('user_event_id') or turn.get('input_batch_id')))}
@@ -168,7 +195,11 @@ class KnowledgeProcessing:
         if data['stage'] not in STAGES:raise RuntimeErrorBase('legacy_retrieval_frozen')
         if not turn or turn['persona_id']!=task['persona_id'] or turn['cancelled_at'] or turn['status']!='queued' or turn_scope(db,dict(turn))!=payload['scope']:
             raise RuntimeErrorBase('knowledge_scope_changed')
-        self._grant(db,dict(turn),data['policy'],data['input'],data['stage'])
+        self._grant(db,dict(turn),data['policy'],data['input'],data['stage'],native_route=data.get('native_model_route'))
+        if data['stage'] in ('conversation_search_notice','conversation_native'):
+            check_scene = getattr(self.engine.chat, 'scene_for', None)
+            if check_scene:
+                check_scene(db,dict(turn))
         if data['stage']=='conversation_web_decision':
             from .knowledge_routing import binding
             if binding(self.engine.routing.model())!=data.get('decision_binding'):raise RuntimeErrorBase('organization_model_changed')

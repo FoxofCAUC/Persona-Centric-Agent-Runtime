@@ -1,0 +1,104 @@
+{
+  "version": "en5-v8-pro-experience-v1",
+  "parent_manifest": "docs/expression/E.N4-桌面候选清单.json",
+  "parent_manifest_sha256": "bd517fa0320e5ef8c25ce860056a6d9fb608831b0365c6e7bb9a324a9ff1e932",
+  "baseline_core_files": 473,
+  "baseline_evidence_files": 73,
+  "declared_core_changes": [
+    {
+      "path": "persona_runtime/chat.py",
+      "baseline_sha256": "dd203893d9c0b94a3ed1cd22ec0c459d3f81541c92d8292b75e0cf0b8d5f32f0",
+      "sha256": "ad216efdeb389d5a81602596b16eb091086db6e5bd5d9a60be1b6621c5788f30"
+    },
+    {
+      "path": "persona_runtime/desktop.py",
+      "baseline_sha256": "b6af93bfef2373de9b2c1bb4af7b7c97e55d58bf6654f18ff95c6f4314bd8cb4",
+      "sha256": "973fbb341c1fad88324180214946576f5ac78756f8ea9f71aa77476ac27191d4"
+    },
+    {
+      "path": "persona_runtime/ingress.py",
+      "baseline_sha256": "313ade483f30c92b5a9baf9ef1884b85ad0d169f92ad704bce281784addef4d7",
+      "sha256": "f4699e53904b7f553af3a122dd0fa623e7eb8ba01fae1447658c979afee84584"
+    },
+    {
+      "path": "persona_runtime/knowledge_native.py",
+      "baseline_sha256": "1f16dedc7d5c03dc28f933c1c18ba3abeab3d259f26105ae747366f37bd098ec",
+      "sha256": "cd8bbd1fcbd52e0c26f8de4cc25bef96ed6f0f6607ac3227076b2004460bcecc"
+    },
+    {
+      "path": "persona_runtime/managed_organization.py",
+      "baseline_sha256": "35d1699202eabf8b2e47980283b38e47eab31cf098f7bd77bd981f3f821c4dbb",
+      "sha256": "d40f45a10f3079df7925cb3dffb025beb154a92e0e41e7d99300483d81369b6c"
+    },
+    {
+      "path": "persona_runtime/organization.py",
+      "baseline_sha256": "629564ba40e63f4df90f933ed4a48252524deb5456180dd5e212246941acfcad",
+      "sha256": "d71da5943c1e159e96d423b691ba68afc409f28b59a332150680b958a54b1f04"
+    },
+    {
+      "path": "persona_runtime/private_personas.py",
+      "baseline_sha256": "a80da0a2f5667c1ede819be304f72db70829207b2b1af06b586cd56b8297c8f3",
+      "sha256": "c18a27bbbae44bf23a39f34abd92600a0a7584b20e23b906636dc7a3ebeaf40b"
+    },
+    {
+      "path": "persona_runtime/server.py",
+      "baseline_sha256": "3c4fe34483b4f2fa9bb20673d3a53bf504ceb1f2395afc87ebca61392fc14fc5",
+      "sha256": "ea69cdad42cfeba539613de7e68b751c63a9b5d6f3a9376fdeb653653a76a7f6"
+    }
+  ],
+  "new_core_files": [
+    {
+      "path": "persona_runtime/en5_display.py",
+      "sha256": "e1b0390d09db5c174cd546283803d533b307a5112f0d775c6357a168c920eef7"
+    },
+    {
+      "path": "persona_runtime/en5_replay_scope.py",
+      "sha256": "6b3910f1b16ca9d7ba0169a87b2c465f86e0be9bda5fca575cc73f665b731e71"
+    },
+    {
+      "path": "scripts/pcar_en5_preflight.py",
+      "sha256": "85fcb74fd6ffe76e398bb706340b65cb6940f871cdfb6d789b4311a4ce30d99f"
+    }
+  ],
+  "declared_evidence_changes": [],
+  "new_research_tools": [
+    {
+      "path": "experiments/en5_experience_material.py",
+      "sha256": "13fa2a131d41d0f12e6c007d252aa6c71a12bbb3ccf8716e89c1103abb9d54c5"
+    },
+    {
+      "path": "experiments/en5_experience_replay.py",
+      "sha256": "044254b38456b78d127d7cd99e3608c43929c61fc84ad2cf7102696f040ce3d2"
+    },
+    {
+      "path": "experiments/en5_experience_report.py",
+      "sha256": "b792d1a5aeba019f0b2c13dca6d0e8fd732d565985fb0464b6408dba0988a1bd"
+    },
+    {
+      "path": "experiments/en5_experience_setup.py",
+      "sha256": "f019a5ae71e81f6e23d52254d68ae12f0d0a0851ad2b74ffa6a51735e4f08354"
+    },
+    {
+      "path": "tests/test_en5_display.py",
+      "sha256": "26f15adb525a6a92a9710591b87bad220742943a247d808bc0c1683b099c1cd5"
+    },
+    {
+      "path": "tests/test_en5_experience_report.py",
+      "sha256": "6e62cd9c0a5d59fc88d31a37aad1d44a4e61dbfe1549ac9e87a0b9456f62cfba"
+    },
+    {
+      "path": "tests/test_en5_experience_setup.py",
+      "sha256": "a22082902eb4f33eea6c69bae3157222d416299fe440d75c2e181fa121a717c6"
+    },
+    {
+      "path": "tests/test_en5_replay.py",
+      "sha256": "4aff90f0000275ec6f58ec15cd5b74987054f3cbac8faae77075f008c555c4af"
+    },
+    {
+      "path": "tests/test_en5_workbench_flow.py",
+      "sha256": "dd83c6bc1812090db94932acfc7fd158b19896d597bc091e749ed04e1f323c42"
+    }
+  ],
+  "schema": 33,
+  "formal_activation": false
+}

@@ -1,0 +1,37 @@
+{
+  "version": "en5-jev-d4-targeted-reuse-v1",
+  "parent_manifest": "docs/expression/E.N5-D4资料复用修复候选清单.json",
+  "parent_manifest_sha256": "88bc19ac1a9feeac69883adb77495ddf9c38956aaeb6e6273761abba543685b6",
+  "baseline_core_files": 491,
+  "baseline_evidence_files": 134,
+  "declared_core_changes": [],
+  "new_core_files": [
+    {
+      "path": "scripts/pcar_en5_d4_targeted_preflight.py",
+      "sha256": "a5fa4d35c9855e591415aaba896a914239277a6eb31500420e3ee2527ac3ba32"
+    }
+  ],
+  "declared_evidence_changes": [
+    {
+      "path": "experiments/en5_d3_live.py",
+      "sha256": "43091bd79620a7aba3b812ad60d3bb08ef97712fd6a569a113cd790d0ca49c01",
+      "baseline_sha256": "3aae7aa547966cd5fded2688acc0891bf060b9916700caeea551fe3d2686142b"
+    },
+    {
+      "path": "experiments/en5_scene_d4.py",
+      "sha256": "4216c1d46257c2fc141db7aa90b504cf3a2f5a2941c56e5c4f67842e264c1c1a",
+      "baseline_sha256": "e7d28d5cc5a51bfc08714186904a3dfe8b2538fe00f9fc5f1d07d27fd71da403"
+    },
+    {
+      "path": "experiments/en5_scene_d4_report.py",
+      "sha256": "045f28ec15467c33fc8013f725b898aa07b30a9b49718da82adb9781c3dcab1f",
+      "baseline_sha256": "6a3359880a41115544ee6c66143df9918d4cc047437e7450e30a206a3775566e"
+    },
+    {
+      "path": "tests/test_en5_scene_d4.py",
+      "sha256": "da2f0ec07f3da3b37cdbf30079a1470a725af6ad30c9d25d88829b0d2ebc10d3",
+      "baseline_sha256": "cef39b5158f4aed6798d6b2242a2dbf5a6a9dbb19bf7255e7fef044da33ebaf4"
+    }
+  ],
+  "new_research_tools": []
+}

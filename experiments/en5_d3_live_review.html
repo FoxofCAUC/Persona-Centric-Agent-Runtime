@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>角色 · D3 连续对话盲审</title>
+<style>
+*{box-sizing:border-box}body{color:#262a26;background:#fafaf6;margin:0;font:16px/1.65 system-ui,sans-serif}main{max-width:1060px;margin:0 auto;padding:20px}header,section,footer{margin:18px 0 40px}h1,h2,h3,p{margin:.35em 0}small,summary{color:#4a554f}button,select,input,textarea{font:inherit}button,select,input,textarea{border:1px solid #a8b2ac;border-radius:5px;padding:.3em .65em;background:white;color:inherit}button{cursor:pointer}button[aria-pressed=true],.export{background:#224739;color:white}.tabs{display:flex;gap:6px;margin:12px 0}article{border-top:1px solid #c5cec5;padding:12px 0 20px}.user,.body,.bubble{white-space:pre-wrap;overflow-wrap:anywhere}.user{margin:.35em 0;color:#394640}.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.option{background:#fff;border:1px solid #dce1da;padding:10px 12px;border-radius:6px;min-width:0}.bubble{background:#edf2e8;border-radius:10px;padding:5px 10px;margin:5px 0;width:fit-content}.body,.bubble{line-height:1.65}.voting{border:1px solid #c3cbc3;padding:15px;border-radius:6px;background:#f0f3ed}.fields{display:flex;gap:12px;flex-wrap:wrap}label{display:block;margin:.4em 0}textarea{display:block;width:100%;min-height:5em}a{color:#225546}nav{display:flex;flex-wrap:wrap;gap:14px}footer small{display:block}output{display:block} [hidden]{display:none!important}@media(max-width:590px){main{padding:12px}.cols{grid-template-columns:1fr;gap:6px}.option{padding:8px}}
+</style></head><body><main><header><h1>角色 · 连续对话盲审</h1>
+<p>每段 15 轮，甲乙在同一段内各自接续前文，身份在段内固定。先读完整对话，再评价整段。可随时切换到桌面实际显示的气泡。</p><nav id="nav"></nav></header><div id="groups"></div>
+<footer><button type="button" class="export" id="export">导出审阅意见</button><output id="status" aria-live="polite"></output><small>可以导出部分意见，空欄会随文件保留。<a href="evidence.html">查看运行证据及甲乙身份（揭盲）</a></small></footer></main>
+<script id="payload" type="application/json">@@DATA@@</script><script>
+'use strict';
+const data=JSON.parse(document.getElementById('payload').textContent);
+const storageKey=data.version+'-'+data.key_sha256;
+const status=document.getElementById('status');
+const blank=()=>({preference:'',help:'',wait:'',first_service_turn:'',note:''});
+const answers=data.groups.map(blank);
+try{
+ const saved=JSON.parse(localStorage.getItem(storageKey));
+ if(Array.isArray(saved)&&saved.length===answers.length)saved.forEach((v,i)=>{for(const k of Object.keys(answers[i]))if(typeof v?.[k]==='string')answers[i][k]=v[k]});
+}catch{}
+function el(tag,parent,txt,cls){const node=document.createElement(tag);if(txt!==undefined)node.textContent=txt;if(cls)node.className=cls;if(parent)parent.append(node);return node}
+function field(form,i,key,label,choices){
+ const box=el('label',form,label+' ');const ctrl=el(choices?'select':'textarea',box);
+ if(choices){for(const item of ['未填写',...choices]){const opt=el('option',ctrl,item);opt.value=item==='未填写'?'':item}}
+ ctrl.value=answers[i][key];ctrl.addEventListener('input',()=>{answers[i][key]=ctrl.value;try{localStorage.setItem(storageKey,JSON.stringify(answers));status.textContent='意见已暂存到此浏览器。'}catch{status.textContent='此浏览器无法暂存，请导出意见。'}})
+}
+data.groups.forEach((group,i)=>{
+ const section=el('section',document.getElementById('groups'));section.id='session-'+(i+1);
+ const nav=el('a',document.getElementById('nav'),'第 '+(i+1)+' 段');nav.href='#'+section.id;
+ el('h2',section,'第 '+(i+1)+' 段 · '+group.title);
+ const tabs=el('div',section,undefined,'tabs');const modes=['同排版正文','实际气泡'].map(s=>el('button',tabs,s));
+ const turns=el('div',section);
+ for(const row of group.rows){
+  const article=el('article',turns);el('h3',article,'第 '+row.n+' 轮');
+  for(const user of row.users)el('p',article,'对方　'+user,'user');
+  const cols=el('div',article,undefined,'cols');
+  for(const label of ['甲','乙']){
+   const v=row.options[label],option=el('div',cols,undefined,'option');el('strong',option,label);
+   el('div',option,v.body,'body');const bubbles=el('div',option,undefined,'bubbles');for(const b of v.bubbles)el('div',bubbles,b,'bubble');
+   const info=el('details',option);el('summary',info,'查看等待');el('small',info,'从首条输入受理至首泡 '+v.wait.toFixed(2)+' 秒。各泡相对首泡 '+v.offsets.map(x=>(x/1000).toFixed(2)).join('、')+' 秒。')
+  }
+ }
+ function select(mode){modes.forEach((b,j)=>b.setAttribute('aria-pressed',String(j===mode)));turns.querySelectorAll('.body').forEach(n=>n.hidden=mode===1);turns.querySelectorAll('.bubbles').forEach(n=>n.hidden=mode===0)}
+ modes.forEach((b,j)=>b.onclick=()=>select(j));select(0);
+ const form=el('div',section,undefined,'voting');el('h3',form,'这段聊下来，你的感受');const fields=el('div',form,undefined,'fields');
+ field(fields,i,'preference','整体更认可',['甲','乙','两者相当','两者都不可接受','暂时无法判断']);
+ field(fields,i,'help','需要帮助时能接住',['甲乙均可','仅甲','仅乙','两者均欠缺','本段无法判断']);
+ field(fields,i,'wait','首泡等待可接受',['甲乙均可','仅甲','仅乙','两者均偏久','本段无法判断']);
+ field(fields,i,'first_service_turn','从哪一轮开始有客服感',['整段未见',...group.rows.map(r=>String(r.n))]);
+ field(form,i,'note','备注（可注明甲或乙，以及具体发言）');
+});
+document.getElementById('export').onclick=()=>{
+ const feedback={version:'en5-d3-continuous-author-feedback-v1',review_version:data.version,results_sha256:data.results_sha256,key_sha256:data.key_sha256,materials_sha256:data.materials_sha256,groups:answers.map((v,i)=>({session:i+1,...v}))};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(feedback,null,2)],{type:'application/json;charset=utf-8'}));const a=el('a',document.body);a.href=url;a.download='E.N5-角色-D3连续对话盲审意见.json';a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);status.textContent='已生成审阅意见文件。';
+};
+</script></body></html>

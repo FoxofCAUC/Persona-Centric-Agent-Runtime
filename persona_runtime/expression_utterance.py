@@ -20,7 +20,9 @@ def require_supported_channel(db,persona_id,channel):
     """未来人物输出须先具备载体适配；当前候选只开放桌面单元。"""
     row=db.execute('SELECT data_json FROM expression_runtime_policies WHERE persona_id=?',(persona_id,)).fetchone()
     policy=json.loads(row[0]) if row else {}
-    if policy.get('enabled') and policy.get('protocol')==PROFILE and channel!='desktop':
+    from .dialogue_generation import available
+    direct=db.execute("SELECT json_extract(data_json,'$.enabled') FROM dialogue_generation_policies WHERE persona_id=?",(persona_id,)).fetchone() if available(db) else None
+    if channel!='desktop' and ((policy.get('enabled') and policy.get('protocol')==PROFILE) or (direct and direct[0])):
         raise ExpressionAssetError('character_outlet_channel_not_enabled')
 
 
@@ -48,7 +50,7 @@ class CharacterOutlet:
         return True
 
     def _register(self,db,turn,phase,kind,source_id,source_hash,body,policy,voice,context,task_id=None):
-        if (kind,phase) not in (('main_receipt','main'),('organization_receipt','search_notice')):
+        if (kind,phase) not in (('main_receipt','main'),('organization_receipt','search_notice'),('dialogue_reply','main'),('dialogue_reply','search_notice'),('scene_reply','main')):
             raise ExpressionAssetError('speech_source_adapter_required')
         old=db.execute('SELECT * FROM expression_speech_units WHERE source_kind=? AND source_id=?',(kind,source_id)).fetchone()
         if old:
@@ -81,6 +83,10 @@ class CharacterOutlet:
         root=db.execute('SELECT * FROM turns WHERE id=?',(unit['turn_id'],)).fetchone()
         if not root:raise ExpressionAssetError('speech_parent_missing')
         turn=dict(root)
+        if unit['source_kind']=='dialogue_reply':
+            return self.direct.validate_publication(db,unit)
+        if unit['source_kind']=='scene_reply':
+            return self.scene.validate(db,turn,unit)
         mode=db.execute('SELECT cancelled_at,closed_at FROM expression_runtime_turns WHERE turn_id=?',(unit['turn_id'],)).fetchone()
         if mode and (mode[0] or mode[1]):raise ExpressionAssetError('speech_parent_closed')
         from .expression_sources import validate
@@ -250,7 +256,7 @@ class CharacterOutlet:
         from .expression_utterance_publication import SpeechPublication
         with self.store.connection() as db:
             if not self.available(db):return
-            ids=[r[0] for r in db.execute("SELECT id FROM expression_speech_units WHERE turn_id=? AND phase!='main'",(turn_id,))]
+            ids=[r[0] for r in db.execute("SELECT id FROM expression_speech_units WHERE turn_id=? AND (phase!='main' OR source_kind IN ('dialogue_reply','scene_reply'))",(turn_id,))]
         for uid in ids:SpeechPublication(self).cancel(uid,reason)
 
     def recover(self):

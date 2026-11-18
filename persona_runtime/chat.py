@@ -180,7 +180,7 @@ def recall(query, memories):
 
 
 class ChatEngine:
-    def __init__(self, store, config, client=None, *, assist_admission=None, live_admission=None, dialogue_pipeline=None, generation_audit_sink=None, generation_executor=None, expression_runtime=None):
+    def __init__(self, store, config, client=None, *, assist_admission=None, live_admission=None, dialogue_pipeline=None, generation_audit_sink=None, generation_executor=None, expression_runtime=None, dialogue_generation=None):
         self.store, self.config = store, config
         self.generation_audit_sink = generation_audit_sink
         self.generation_executor = generation_executor
@@ -210,6 +210,20 @@ class ChatEngine:
         self.draining = False
         from .expression_runtime import ExpressionRuntime
         self.expression = expression_runtime or ExpressionRuntime(store)
+        from .dialogue_outlet import DirectReplies
+        self.direct = DirectReplies(self.expression, dialogue_generation)
+        from .scene_runtime import SceneRuntime, SceneDialogue
+        from .scene_publication import ScenePublication
+        self.scene = SceneRuntime(self)
+        self.scene_publication = ScenePublication(self)
+        self.expression.outlet.scene = self.scene_publication
+        self.cognitive.dialogue = SceneDialogue(store,self)
+
+    def scene_for(self, db, turn):
+        return self.scene.selected(db,turn)
+
+    def await_notice_scene(self, turn):
+        self.scene.before_notice(turn)
 
     def recover(self):
         with self.store.connection(write=True) as conn:
@@ -226,6 +240,8 @@ class ChatEngine:
         from .delivery import DeliveryService
         DeliveryService(self.store).recover()
         self.expression.recover()
+        self.direct.recover()
+        self.scene_publication.recover()
 
     @staticmethod
     def _session(conn, persona_id, channel, session_id=None, fresh=False, origin=None):
@@ -261,6 +277,8 @@ class ChatEngine:
     async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None, test_reply_mode=None, public_task=None):
         from .migration import ensure_cloud_ready
         ensure_cloud_ready(self.store.paths)
+        if (self.store.paths.home/'runtime/en5-experience.json').is_file():
+            raise RuntimeErrorBase('en5_desktop_ingress_required')
         if self.draining:
             raise RuntimeErrorBase("service_draining")
         require_text(text, "text")
@@ -329,6 +347,8 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,persona_id),ensure_ascii=False),turn_id))
                 from .context_policy import current as context_policy
                 accepted_context=context_policy(conn,persona_id,channel)
+                from .scene_policy import KEY as SCENE_KEY
+                if SCENE_KEY in accepted_context:raise RuntimeErrorBase('scene_workbench_required')
                 from .companion import freeze_auxiliary
                 auxiliary=freeze_auxiliary(self.config.load()['character_selector'],accepted_context)
                 conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=1 WHERE id=?',(json.dumps(accepted_context),json.dumps(auxiliary),turn_id))
@@ -386,7 +406,12 @@ class ChatEngine:
         value['selection_attempts']=[{k:v for k,v in dict(r).items() if k!='model_snapshot'} for r in conn.execute('SELECT * FROM character_selection_attempts WHERE turn_id=? ORDER BY rowid',(turn_id,))]
         value["attempt_count"] = conn.execute("SELECT count(*) FROM attempts WHERE turn_id=?", (turn_id,)).fetchone()[0]
         from .expression_runtime import enabled as expression_enabled
-        if expression_enabled(conn,turn_id):
+        from .dialogue_generation import enabled as direct_enabled
+        if direct_enabled(conn, turn_id):
+            value['dialogue_generation']={'enabled':True}
+            from .dialogue_outlet import DirectReplies
+            value['expression']=DirectReplies.main_info(conn,turn_id)
+        elif expression_enabled(conn,turn_id):
             mode=conn.execute('SELECT policy_json FROM expression_runtime_turns WHERE turn_id=?',(turn_id,)).fetchone()
             draft=conn.execute('SELECT id,valid,body_hash FROM expression_main_receipts WHERE turn_id=?',(turn_id,)).fetchone()
             run=conn.execute('SELECT id,state,attempt_id,usage_json,error_code FROM expression_runs WHERE turn_id=?',(turn_id,)).fetchone()
@@ -419,6 +444,9 @@ class ChatEngine:
             if not turn_usable(conn, turn_id):
                 value.update(status='failed',error_code='knowledge_evidence_changed',reply=None,
                              display_reply=None,reply_batch=None,display_messages=[])
+        from .scene_publication import ScenePublication
+        speech=ScenePublication.view(conn,turn_id)
+        if speech is not None:value['scene_speech']=speech
         value.update(progress(conn, value))
         value["queue_position"] = conn.execute(
             "SELECT count(*) FROM turns t WHERE t.persona_id IS ? AND (t.status='running' OR "
@@ -452,7 +480,10 @@ class ChatEngine:
             self.service._owned(conn, "sessions", session_id, persona_id)
             latest = conn.execute("SELECT coalesce(max(a.seq),0) FROM request_activity a "
                                   "JOIN turns t ON t.id=a.turn_id WHERE t.session_id=?", (session_id,)).fetchone()[0]
-            return {"version": latest, "turns": None if version == latest else [self._view(conn, row[0]) for row in conn.execute(
+            from .tk_notice import waiting
+            pending=waiting(conn,session_id)
+            return {**({'pending_notices':pending} if pending else {}),
+                    "version": latest, "turns": None if version == latest else [self._view(conn, row[0]) for row in conn.execute(
                 "SELECT id FROM turns WHERE session_id=? ORDER BY rowid", (session_id,))]}
 
     def requests(self):
@@ -470,6 +501,9 @@ class ChatEngine:
         return messages
 
     async def _prepare_context(self, *args):
+        return await self.scene.prepare(self._prepare_context_worker,*args)
+
+    async def _prepare_context_worker(self, *args):
         # Cancelling an asyncio waiter cannot stop its worker thread. Keep its
         # lifetime owned until it observes cancellation and releases the DB.
         task = asyncio.create_task(asyncio.to_thread(self.cognitive.prepare, *args))
@@ -491,11 +525,23 @@ class ChatEngine:
             try:
                 latest=self.get(turn_id)
                 if latest['status']!='queued' or latest['execution_revision']!=initial['execution_revision']:return
+                self.scene_publication.stop_before(latest)
                 await self.expression.wait_prior(latest)
                 with self.store.connection() as conn:
                     accepted_turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
                 from .companion import read as companion_read
                 companion=companion_read(accepted_turn)
+                from .scene_policy import frozen as scene_frozen
+                scene_on = bool(scene_frozen(accepted_turn))
+                if scene_on and self.dialogue_pipeline is not None:
+                    raise ModelError('scene_pipeline_conflict')
+                from .style_study import policy_for as style_policy, verify_dispatch
+                study=style_policy(accepted_turn)
+                if study is not None:
+                    if not callable(getattr(self,'style_study_dispatch_guard',None)):
+                        raise ModelError('style_study_specific_input_approval_required')
+                    if self.knowledge.processing and self.knowledge.processing.enabled(accepted_turn):
+                        raise ModelError('style_study_web_must_be_disabled')
                 if companion and self.dialogue_pipeline is not None:raise ModelError('companion_pipeline_conflict')
                 if self.dialogue_pipeline is not None:
                     prepared=await self.dialogue_pipeline.prepare(self,turn_id)
@@ -511,13 +557,18 @@ class ChatEngine:
                         return
                     model = json.loads(turn["model_snapshot"])
                     from .private_personas import guard_cloud_dispatch
-                    guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
+                    direct_on=self.direct.generation.enabled(conn,turn_id)
+                    if not direct_on:guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
                     prepared=self.cognitive.finalize(conn,turn,prepared)
                     from .expression_runtime import enabled as expression_enabled
-                    expression_on=expression_enabled(conn,turn_id)
+                    expression_on=not direct_on and expression_enabled(conn,turn_id)
                     if expression_on and self.generation_executor is not None:raise ModelError('expression_completion_receipt_executor_required')
                     evaluation=getattr(self,'evaluation_session',None)
                     if evaluation:evaluation.before_dispatch(self,turn,prepared)
+                    if study is not None:
+                        if direct_on or expression_on:
+                            raise ModelError('style_study_incompatible_route')
+                        verify_dispatch(self,conn,turn,prepared['details'],prepared['messages'])
                     messages=prepared['messages'];turn['_context_details']={k:v for k,v in prepared['details'].items() if k!='prompt_assembly'}
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
@@ -530,13 +581,21 @@ class ChatEngine:
                                  (attempt_id, turn_id, time.time(), turn["model_snapshot"]))
                     context_id=self.cognitive.persist(conn,prepared['manifest'],turn=turn,attempt_id=attempt_id)
                     turn['_context_details']['context_id']=context_id
-                    expression_context=self.expression.capture_context(conn,turn,turn['_context_details']) if expression_on else None
+                    expression_context=self.expression.capture_context(conn,turn,turn['_context_details']) if expression_on or scene_on else None
+                    if scene_on:
+                        self.scene.selected(conn,turn)
+                        expression_context['logical_attempt_id']=attempt_id
                     conn.execute("INSERT INTO context_uses VALUES (?,?,?,?,?,?)", (attempt_id, turn_id, turn["persona_id"], LOCAL_USER_ID,
                                  json.dumps(turn["_context_details"], ensure_ascii=False), timestamp()))
                     conn.execute("UPDATE turns SET status='running', updated_at=? WHERE id=?", (timestamp(), turn_id))
                     from .references import record_check
                     record_check(conn,turn,turn["_context_details"].get("references",{}),attempt_id=attempt_id)
                     record_progress(conn, turn_id, "provider_started", attempt_id)
+                    if direct_on:
+                        direct_unit=self.direct.register(conn,turn,'main',model,messages,turn['_context_details'],attempt_id)
+                if direct_on:
+                    await self.direct.main(direct_unit,model)
+                    return
                 from .reply_batch import ReplySchemaError, validate_reply
                 from .generation_retry import audited_complete
                 def save_generation_audit(value):
@@ -553,8 +612,17 @@ class ChatEngine:
                             raise ModelError('generation_retry_request_inactive')
                         from .private_personas import guard_cloud_dispatch
                         guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
+                        if scene_on:
+                            if state['attempts'] or state['prior_failures']:
+                                raise ModelError('scene_first_attempt_only')
+                            self.scene.selected(conn,current)
+                            from .expression_sources import validate
+                            validate(self.store,conn,current,expression_context)
                         fresh=self.cognitive.finalize(conn,current,prepared)
                         if fresh['messages']!=messages:raise ModelError('generation_retry_sources_changed')
+                        if study is not None:
+                            if state['attempts'] or state['prior_failures']:raise ModelError('style_study_first_attempt_only')
+                            verify_dispatch(self,conn,current,fresh['details'],messages)
                 def validate_generation(text):
                     try:return validate_reply(text,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
                     except ReplySchemaError as error:
@@ -572,8 +640,11 @@ class ChatEngine:
                     validate=validate_generation,
                     save=save_generation_audit,before_attempt=before_generation_attempt,
                     **({'paths':self.store.paths} if self.generation_executor is None else {}),
-                    **({'save_completion':save_main_completion} if expression_on else {}))
+                    **({'save_completion':save_main_completion} if expression_on or scene_on else {}))
                 raw_reply, usage = completion
+                if scene_on:
+                    self.scene_publication.main(turn_id,attempt_id)
+                    return
                 if expression_on:
                     outcome=await self.expression.execute(turn_id,model)
                     if outcome['state'] in ('blocked','cancelled'):
@@ -694,6 +765,12 @@ class ChatEngine:
         ensure_cloud_ready(self.store.paths)
         if self.draining:
             raise RuntimeErrorBase("service_draining")
+        from .scene_policy import frozen as scene_frozen
+        with self.store.connection() as conn:
+            direct=self.direct.generation.enabled(conn,turn_id)
+            scene=bool(scene_frozen(self.scene.root(conn,turn_id)))
+        if direct:return await self.resume_direct(turn_id)
+        if scene:return self.resume_scene(turn_id)
         with self.store.connection(write=True) as conn:
             turn = self._view(conn, turn_id)
             if turn.get('error_code')=='migration_requires_review':
@@ -702,6 +779,14 @@ class ChatEngine:
             if turn['persona_id']:active(conn,turn['persona_id'])
             if turn["status"] not in ("failed", "interrupted"):
                 return turn
+            from .style_study import KEY as study_key
+            from .context_policy import current as live_context
+            frozen_row=conn.execute('SELECT context_policy_snapshot FROM turns WHERE id=?',(turn_id,)).fetchone()
+            study=json.loads(frozen_row[0] or '{}').get(study_key)
+            if study is not None and live_context(conn,turn['persona_id'],turn['channel']).get(study_key)!=study:
+                raise RuntimeErrorBase('style_study_revision_changed')
+            if study is not None and (turn.get('cancelled_at') or turn['attempt_count']):
+                raise RuntimeErrorBase('style_study_new_position_required')
             from .generation_retry import assert_manual_retry_safe
             assert_manual_retry_safe(conn,turn_id)
             from .sessions import assert_writable
@@ -710,9 +795,12 @@ class ChatEngine:
                                    (turn["persona_id"],)).fetchone()[0]
             if waiting >= 10:
                 raise RuntimeErrorBase("queue_full")
-            conn.execute("UPDATE turns SET status='queued',cancelled_at=NULL,error_code=NULL,model_snapshot=?,updated_at=? WHERE id=?",
-                         (json.dumps(self.config.load()["model"]), timestamp(), turn_id))
-            if turn['persona_id']:
+            if study is not None:
+                conn.execute("UPDATE turns SET status='queued',error_code=NULL,updated_at=? WHERE id=?",(timestamp(),turn_id))
+            else:
+                conn.execute("UPDATE turns SET status='queued',cancelled_at=NULL,error_code=NULL,model_snapshot=?,updated_at=? WHERE id=?",
+                             (json.dumps(self.config.load()["model"]), timestamp(), turn_id))
+            if turn['persona_id'] and study is None:
                 from .profile import snapshot
                 conn.execute('UPDATE turns SET profile_snapshot=? WHERE id=?',(json.dumps(snapshot(conn,turn['persona_id']),ensure_ascii=False),turn_id))
                 from .character import head as character_head
@@ -723,6 +811,9 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET reply_mode_snapshot=?,expression_snapshot=? WHERE id=?',(reply_mode,json.dumps(json.loads(reply_policy[1]).get('expression') or expression_snapshot(reply_mode,reply_policy[2],version=1) if reply_policy else expression_snapshot(reply_mode,version=1)),turn_id))
                 from .context_policy import current as context_policy
                 accepted_context=context_policy(conn,turn['persona_id'],turn['channel'])
+                from .scene_policy import KEY as SCENE_KEY
+                accepted_context.pop(SCENE_KEY,None)
+                if study_key in accepted_context:raise RuntimeErrorBase('style_study_new_position_required')
                 from .companion import freeze_auxiliary
                 auxiliary=freeze_auxiliary(self.config.load()['character_selector'],accepted_context)
                 conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=execution_revision+1 WHERE id=?',(json.dumps(accepted_context),json.dumps(auxiliary),turn_id))
@@ -734,7 +825,66 @@ class ChatEngine:
         self._schedule(turn_id)
         return self.get(turn_id)
 
+    def resume_scene(self, turn_id):
+        from .scene_voice import require
+        with self.store.connection(write=True) as db:
+            turn=self.scene.root(db,turn_id)
+            if turn['status'] not in ('interrupted','failed'):
+                return self._view(db,turn_id)
+            require(not turn['cancelled_at'] and turn['error_code']!='migration_requires_review','first_position_preserved')
+            attempt=db.execute('SELECT id FROM attempts WHERE turn_id=?',(turn_id,)).fetchone()
+            if attempt:
+                source=db.execute('SELECT * FROM expression_main_receipts WHERE logical_attempt_id=? AND valid=1',
+                                  (attempt[0],)).fetchone()
+                require(source and not self.scene_publication.view(db,turn_id),'first_position_preserved')
+                self.scene_publication.issue(db,turn|{'status':'running'},source)
+                return self._view(db,turn_id)
+            self.scene.current(db,turn|{'status':'queued'})
+            db.execute("UPDATE turns SET status='queued',error_code=NULL,updated_at=? WHERE id=?",
+                       (timestamp(),turn_id))
+            record_progress(db,turn_id,'retry_queued')
+        self._schedule(turn_id)
+        return self.get(turn_id)
+
+    async def resume_direct(self, turn_id):
+        from .migration import ensure_cloud_ready
+        ensure_cloud_ready(self.store.paths)
+        if self.draining:raise RuntimeErrorBase('service_draining')
+        with self.store.connection() as db:
+            if not self.direct.generation.enabled(db,turn_id):
+                raise RuntimeErrorBase('dialogue_turn_not_enabled')
+            view=self._view(db,turn_id)
+            uid=self.direct.find(db,turn_id,'main')
+        if view.get('cancelled_at') or view['expression']['publication']:
+            return view
+        if not uid:
+            task=self.tasks.get(turn_id)
+            if task and not task.done():return view
+            if view['status'] not in ('failed','interrupted'):return view
+            if view['error_code']=='migration_requires_review':raise RuntimeErrorBase('dialogue_turn_closed')
+            with self.store.connection() as db:
+                notice=self.direct.find(db,turn_id,'search_notice')
+            if notice:
+                await self.direct.resume_notice_organization(notice,self.config.load()['model'],self.knowledge.processing.engine.managed)
+            with self.store.connection(write=True) as db:
+                row=db.execute('SELECT closed_at,policy_json FROM dialogue_generation_turns WHERE turn_id=?',(turn_id,)).fetchone()
+                if row['closed_at'] or json.loads(row['policy_json'])!=self.direct.generation._policy(db,view['persona_id']):
+                    raise RuntimeErrorBase('dialogue_turn_closed')
+                changed=db.execute("UPDATE turns SET status='queued',error_code=NULL,updated_at=? WHERE id=? AND status IN ('interrupted','failed') AND cancelled_at IS NULL",
+                    (timestamp(),turn_id)).rowcount
+                if changed:record_progress(db,turn_id,'retry_queued')
+            if changed:self._schedule(turn_id)
+            return self.get(turn_id)
+        async with self.locks[view['persona_id']]:
+            with self.store.connection() as db:
+                current=self._view(db,turn_id)
+                if current.get('cancelled_at') or current['expression']['publication']:return current
+            await self.direct.main(uid,self.config.load()['model'])
+        return self.get(turn_id)
+
     async def resume_expression(self, turn_id):
+        with self.store.connection() as db:direct=self.direct.generation.enabled(db,turn_id)
+        if direct:return await self.resume_direct(turn_id)
         from .expression_runtime import enabled as expression_enabled
         with self.store.connection() as db:
             if not expression_enabled(db,turn_id):raise RuntimeErrorBase('expression_turn_not_enabled')
@@ -752,6 +902,20 @@ class ChatEngine:
             if task:await asyncio.gather(task,return_exceptions=True)
             return self.get(turn_id)
         if raw.get('cancelled_at'):return self.get(turn_id)
+        with self.store.connection() as db:direct=self.direct.generation.enabled(db,turn_id)
+        from .scene_policy import frozen as scene_frozen
+        if direct or scene_frozen(raw):
+            if raw['status']=='completed':return self.get(turn_id)
+            with self.store.connection(write=True) as db:
+                changed=db.execute("UPDATE turns SET status='interrupted',cancelled_at=?,error_code='cancelled_by_user',updated_at=? WHERE id=? AND status!='completed'",(timestamp(),timestamp(),turn_id)).rowcount
+                if changed and scene_frozen(raw):record_progress(db,turn_id,'cancelled')
+            self.direct.generation.cancel_root(turn_id)
+            self.expression.outlet.cancel_root(turn_id)
+            task=self.tasks.get(turn_id)
+            if task:
+                task.cancel()
+                await asyncio.gather(task,return_exceptions=True)
+            return self.get(turn_id)
         from .expression_runtime import enabled as expression_enabled
         with self.store.connection() as conn:expression_on=expression_enabled(conn,turn_id)
         if expression_on:
@@ -789,6 +953,7 @@ class ChatEngine:
                          (now, now, turn_id))
             record_progress(conn, turn_id, "cancelled")
             result = self._view(conn, turn_id)
+        self.direct.generation.cancel_root(turn_id)
         self.expression.outlet.cancel_root(turn_id)
         task = self.tasks.get(turn_id)
         if task:

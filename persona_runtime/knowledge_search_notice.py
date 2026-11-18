@@ -77,33 +77,60 @@ class SearchNotice:
         from .expression_runtime import accepted
         from .expression_persona_draft import PROFILE
         policy=accepted(db,root['id'])['data']
+        from .dialogue_generation import enabled as direct_enabled
+        if direct_enabled(db,root['id']):
+            return {'messages':messages,'manifest':manifest,'turn':dict(root),'direct_details':details}
         if runtime.outlet.available(db) and policy.get('enabled') and policy.get('protocol')==PROFILE:
             runtime.outlet.freeze_notice(db,dict(root),task,runtime.capture_context(db,dict(root),details))
+        else:
+            from . import tk_notice
+            if tk_notice.required(db,dict(root)):tk_notice.freeze_sources(db,dict(root),task['id'],details)
         return {'messages': messages, 'manifest': manifest}
 
-    def publish(self, db, task, payload, response, audit):
+    @staticmethod
+    def validated_recall(db,root,task_id):
+        from .recall_runtime import validate
+        manifest=db.execute('SELECT organization_attempt_id,manifest_json FROM context_manifests WHERE organization_task_id=? ORDER BY rowid DESC LIMIT 1',(task_id,)).fetchone()
+        meta=json.loads(manifest['manifest_json']).get('recall_support') if manifest else None
+        validate(db,root,meta)
+        return manifest,meta
+
+    def display_body(self, db, turn, raw):
         from .reply_batch import validate_reply
+        from .scene_policy import frozen
+        if frozen(turn):
+            from .scene_style import without_directions
+            self.processor.engine.chat.scene.selected(db,turn)
+            raw=without_directions(raw)
+        return validate_reply(raw,'legacy_full').text
+
+    def publish(self, db, task, payload, response, audit, *, presented=None):
         if audit.get('provider', {}).get('finish_reason') in ('length', 'content_filter'):
             raise RuntimeErrorBase('search_notice_output_incomplete')
-        text = validate_reply(response, 'legacy_full').text
         root = dict(db.execute('SELECT * FROM turns WHERE id=?',
             (payload['knowledge_processing']['root_turn_id'],)).fetchone())
-        from .recall_runtime import validate as validate_recall,queue_feedback
-        manifest=db.execute('SELECT organization_attempt_id,manifest_json FROM context_manifests WHERE organization_task_id=? ORDER BY rowid DESC LIMIT 1',(task['id'],)).fetchone()
-        meta=json.loads(manifest['manifest_json']).get('recall_support') if manifest else None
-        validate_recall(db,root,meta)
+        text=self.display_body(db,root,response)
+        from .recall_runtime import queue_feedback
+        manifest,meta=self.validated_recall(db,root,task['id'])
         key = 'knowledge.search_notice.turn.' + root['id']
         old = db.execute('SELECT value FROM knowledge_control WHERE key=?', (key,)).fetchone()
+        from .dialogue_generation import enabled as direct_enabled
+        if direct_enabled(db,root['id']) and (not old or not json.loads(old[0])['data'].get('fully_presented')):
+            raise RuntimeErrorBase('speech_notice_not_fully_presented')
         if old:
             value = json.loads(old[0])['data']
             if value['task_id'] != task['id'] or value['response_hash'] != fingerprint(response):
                 raise RuntimeErrorBase('search_notice_receipt_conflict')
             return {'event_id': value['event_id'], 'published': True}
+        from . import tk_notice
+        if presented is None and tk_notice.required(db,root):
+            return tk_notice.prepare(db,root,task['id'],response)
         event_id = identifier()
         db.execute("INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES(?,?,?,?,'persona',?,?)",
             (event_id, root['session_id'], root['persona_id'], LOCAL_USER_ID, text, timestamp()))
         value = {'event_id': event_id, 'task_id': task['id'], 'channel': root['channel'],
             'version': payload['knowledge_processing']['input']['notice_profile'], 'response_hash': fingerprint(response)}
+        if presented:value.update(notice_id=presented,fully_presented=True)
         db.execute('INSERT INTO knowledge_control VALUES(?,?)',
             (key, json.dumps({'revision': 0, 'data': value}, ensure_ascii=False)))
         from .progress import record

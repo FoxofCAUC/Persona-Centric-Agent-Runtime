@@ -100,7 +100,7 @@ def attach(messages,details,result,turn):
     details=deepcopy(details)
     remaining=json.loads(turn['model_snapshot'])['max_input_chars']-sum(len(m['content']) for m in messages)
     from .knowledge_translation import context
-    body,sources,translation=context(result,remaining)
+    body,sources,translation=context(result,remaining,scene_voice=bool(details.get('scene_voice')))
     if body:
         messages=[dict(m) for m in messages];messages[0]['content']+=body
         if details.get('prompt_assembly'):

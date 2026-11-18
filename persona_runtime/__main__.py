@@ -73,6 +73,9 @@ def parser() -> argparse.ArgumentParser:
                     cmd.add_argument("--limit", type=int, default=20)
             if group == "data":
                 cmd.add_argument("--name", help="File name within the configured export/backup directory")
+                if action == 'migration-export':
+                    cmd.add_argument('--include-corpus', type=Path, action='append', default=[],
+                                     help='Include this entire independent corpus, with its originals and speaker identity files')
                 if action in ('import','migration-import'):cmd.add_argument('--file',type=Path,required=True)
                 if action in ('migration-import','migration-activate','migration-rollback'):
                     cmd.add_argument('--apply',action='store_true');cmd.add_argument('--dry-run',action='store_true')
@@ -111,7 +114,7 @@ def dispatch(args, paths: RuntimePaths):
         return {key: str(value) for key, value in paths.directories().items()}
     if args.group=='data' and args.action.startswith('migration-'):
         from .migration import export_instance,import_instance,activate_instance,rollback_instance
-        if args.action=='migration-export':return export_instance(paths,args.name)
+        if args.action=='migration-export':return export_instance(paths,args.name,include_corpora=args.include_corpus)
         if args.action=='migration-import':return import_instance(paths,args.file,apply=args.apply and not args.dry_run)
         if args.action=='migration-rollback':return rollback_instance(paths,apply=args.apply and not args.dry_run)
         return activate_instance(paths,apply=args.apply and not args.dry_run,authorize_visible=args.authorize_visible,resume_background=args.resume_background)

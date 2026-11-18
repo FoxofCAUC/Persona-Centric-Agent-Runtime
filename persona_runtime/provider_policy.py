@@ -3,8 +3,13 @@ from urllib.parse import urlsplit
 from .provider_compat import CURRENT_DEEPSEEK
 
 
-def require_generation_provider(model, *, allow_loopback_fixture=False):
+def require_generation_provider(model, *, allow_loopback_fixture=False, allow_reply_decision_tool=False):
     try:
+        if '_reply_decision_tool' in model:
+            if not allow_reply_decision_tool:raise ValueError()
+            from .deepseek_reply_decision import model_profile
+            model_profile(model)
+            return
         raw=model['base_url'];url=urlsplit(raw)
         if (allow_loopback_fixture and url.hostname in ('127.0.0.1','localhost','::1')
                 and url.scheme in ('http','https') and not url.username and not url.password):

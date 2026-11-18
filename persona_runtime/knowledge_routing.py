@@ -33,9 +33,9 @@ class KnowledgeRouting:
         try:
             model=self.model();return {'base_url':model['base_url'],'name':model['name'],'key_configured':True,'purpose':'need_web','retired':False}
         except RuntimeErrorBase as error:return {'name':None,'key_configured':False,'purpose':'need_web','error_code':str(error),'retired':False}
-    def grant(self,pid):
+    def grant(self,pid,*,db=None):
         from .private_personas import guard_cloud_dispatch
-        model=self.model();guard_cloud_dispatch(self.engine.store,pid,'knowledge_router',model);return model
+        model=self.model();guard_cloud_dispatch(self.engine.store,pid,'knowledge_router',model,db=db);return model
     def authorization(self,pid):
         try:self.grant(pid);return {'required':True,'authorized':True,'purpose':'need_web'}
         except RuntimeErrorBase as error:return {'required':True,'authorized':False,'purpose':'need_web','error_code':str(error)}

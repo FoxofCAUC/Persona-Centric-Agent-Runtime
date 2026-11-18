@@ -6,7 +6,7 @@ EVENTS = {"knowledge_routing","knowledge_web_plan","knowledge_search_web","knowl
           "delivery_uncertain", "delivery_failed"}
 
 
-EVENTS.update(('knowledge_search_notice', 'search_notice_published'))
+EVENTS.update(('knowledge_search_notice', 'search_notice_published', 'scene_bubble_presented'))
 
 
 def record(conn, turn_id, event, attempt_id=None):

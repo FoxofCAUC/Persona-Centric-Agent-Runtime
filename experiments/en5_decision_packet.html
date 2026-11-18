@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>角色 · 接话决策审阅</title>
+<style>
+:root{color-scheme:light;--ink:#172e29;--accent:#176450;--muted:#4b635d;--line:#cbd7d1;--paper:#fffefa;--mist:#edf4ef}
+*{box-sizing:border-box}
+body{margin:0;background:#f5f5ef;color:var(--ink);font:16px/1.58 "Source Sans 3","Microsoft YaHei UI",system-ui,sans-serif}
+header,main{width:min(76rem,100%);margin:auto;padding:1.4rem clamp(1rem,4vw,3rem)}
+header{padding-bottom:0}h1{font-size:clamp(1.65rem,3vw,2.3rem);letter-spacing:-.035em;margin:.4rem 0}
+h2{font-size:1.3rem;margin:.15rem 0 .6rem}h3{font-size:1.04rem;margin:.7rem 0 .35rem}
+p{margin:.4rem 0 .9rem}a{color:var(--accent)}label{display:block;font-weight:650;margin:.7rem 0 .25rem}
+button,.file-label{font:inherit;color:var(--ink);background:var(--paper);border:1px solid #9bb0a4;border-radius:.35rem;padding:.43rem .8rem;cursor:pointer}
+button:focus-visible,a:focus-visible,summary:focus-visible,select:focus-visible,textarea:focus-visible,.file-label:focus-within{outline:3px solid #15795f;outline-offset:2px}
+button:hover,.file-label:hover{background:var(--mist)}button:disabled{opacity:.55;cursor:default}
+button.primary,button[aria-pressed="true"]{background:var(--accent);color:white;border-color:var(--accent)}
+button.quiet{padding:.18rem .48rem;font-size:.87rem}nav,.actions,.switches{display:flex;flex-wrap:wrap;gap:.45rem}
+nav{margin:1rem 0 0;border-bottom:1px solid var(--line);padding-bottom:.8rem}
+#status{font-size:.9rem;color:var(--muted);min-height:1.7rem;padding:.3rem 0}
+[hidden]{display:none!important}.columns{display:grid;gap:1.2rem;grid-template-columns:minmax(0,1.45fr) minmax(18rem,.9fr);align-items:start}
+.paper,.source-card{background:var(--paper);border:1px solid var(--line);border-radius:.6rem;padding:1rem 1.12rem;min-width:0}
+.source-card{margin:.55rem 0}.source-card>summary{font-weight:650}.hint,.origin,small{color:var(--muted);font-size:.9rem}
+.origin{overflow-wrap:anywhere}.hint{margin:.35rem 0 .7rem}summary{cursor:pointer}
+textarea,select{width:100%;min-width:0;color:var(--ink);font:inherit;background:white;border:1px solid #a7b7ae;border-radius:.32rem;padding:.45rem .6rem}
+textarea{resize:vertical;line-height:1.5}textarea[readonly]{background:var(--mist)}
+pre,.excerpt{font:inherit;line-height:1.53;white-space:pre-wrap;overflow-wrap:anywhere;margin:.4rem 0 .7rem;padding:.65rem .8rem;background:var(--mist);border-radius:.35rem}
+pre.wire{font: .83rem/1.55 Consolas,"Microsoft YaHei UI",monospace;max-height:30rem;overflow:auto}
+.pick{margin:.4rem 0;border-left:2px solid #82a997;padding:.35rem .55rem}.pick .excerpt{margin:.2rem 0 .4rem;max-height:8rem;overflow:auto}
+hr{border:0;border-top:1px solid var(--line);margin:1rem 0}.positions{display:grid;grid-template-columns:minmax(11rem,.28fr) minmax(0,1fr);gap:1rem;align-items:start}
+.positions aside{position:sticky;top:.7rem}.position-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.25rem}
+.position-grid button{font-size:.85rem;padding:.35rem .1rem}.position-grid .filled:not([aria-pressed="true"]){background:var(--mist);border-color:#529077}
+.inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}
+.message{margin:.45rem 0;padding:.5rem .72rem;border-left:3px solid #b6c7bb;background:#f4f6f2}
+.message[data-current="true"]{border-color:var(--accent);background:#e9f2e9}.message p{margin:.2rem 0;white-space:pre-wrap;overflow-wrap:anywhere}
+details.fold{margin:.65rem 0;border-top:1px solid var(--line);padding:.5rem 0}.export{max-width:48rem}
+.file-label{display:inline-block;margin:0;font-weight:400;position:relative}.file-label input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+@media(max-width:790px){.columns,.positions{grid-template-columns:minmax(0,1fr)}.positions aside{position:static}.position-grid{grid-template-columns:repeat(8,minmax(0,1fr))}.inputs{grid-template-columns:1fr}.paper,.source-card{padding:.8rem}nav button{flex:1;padding:.35rem .2rem}header,main{padding-inline:.78rem}main{padding-top:.8rem}}
+</style>
+</head>
+<body>
+<header>
+<h1>角色的接话决策审阅</h1>
+<p>先圈定 Flash 和 Pro 可以采用的原文，再为 16 个真实位置选择接话目标、动作和任务状态。完成后导出选择文件。</p>
+<nav aria-label="审阅步骤">
+<button type="button" data-tab="sources">原文与供稿</button><button type="button" data-tab="cases">逐轮判断</button><button type="button" data-tab="export">导出选择</button>
+</nav>
+<div id="status" role="status" aria-live="polite"></div>
+</header>
+<main>
+<section id="sources" class="columns">
+<div>
+<h2>MaiBot 原文</h2>
+<p class="hint">固定提交 <span id="commit"></span>。展开条目，在原文框中划选后加入对应说明。没有划选时取整项。源码对照可用于查证原文的职责。</p>
+<div id="source-list"></div>
+</div>
+<aside class="paper">
+<h2>本次供稿</h2>
+<p class="hint">原文按列表顺序拼接，段间加一个换行，你的补充接在最后。真实请求前还会核对所选文字和具体用途。</p>
+<div id="editors"></div>
+<details class="fold"><summary>Flash 的输出字段及 Pro 的目标定位</summary>
+<p>目标字段 target 取本轮消息编号。action 取参与交流、回应求助、承接转题或收尾。task_state 取无待办、进行中、已收束。未定时，target 为空值，另外两项均记为未定。</p>
+<p>Pro 读取同一动作与任务状态。目标转为原 v8 请求中的位置，message_index 从 0 开始，member 从 1 开始。显式引用按已绑定的原始事件定位。模型可见请求在逐轮页逐字展示。</p></details>
+<button type="button" class="primary" data-go="cases">进入逐轮判断</button>
+</aside>
+</section>
+<section id="cases" class="positions" hidden>
+<aside class="paper">
+<h2>16 个固定位置</h2><p class="hint" id="progress"></p><div id="position-nav"></div>
+</aside>
+<article class="paper" id="case">
+<h2 id="case-title"></h2><p class="hint">下列是 Flash 能看到的对话。每条保留真实说话人，当前发言用深色边线标出。</p>
+<div id="thread"></div>
+<div class="inputs">
+<div><label for="target">接哪条消息</label><select id="target"></select></div>
+<div><label for="action">主要接话动作</label><select id="action"></select></div>
+<div><label for="task-state">眼前任务状态</label><select id="task-state"></select></div>
+</div>
+<p class="hint">动作选“未定”时，本轮直接采用原 v8。明确求助与随口感叹可以出现在同一条话里。</p>
+<details class="fold"><summary>原 v8 当时实际读到的全部前文及已呈现正文</summary><div id="original-history"></div><h3>已呈现正文</h3><pre id="old-body"></pre></details>
+<details class="fold"><summary>完整请求预览 · Flash、Pro 与原 v8</summary>
+<p class="hint" id="preview-state"></p><p class="origin" id="endpoint"></p>
+<h3>Flash 决策</h3><pre class="wire" id="flash-wire"></pre><h3>Pro 使用本轮人工判断</h3><pre class="wire" id="pro-wire"></pre>
+<details><summary>原 v8 完整请求及回执指纹</summary><p class="origin" id="hashes"></p><pre class="wire" id="old-wire"></pre></details></details>
+<div class="actions"><button type="button" id="back">上一位置</button><button type="button" class="primary" id="forward">下一位置</button></div>
+</article>
+</section>
+<section id="export" class="paper export" hidden>
+<h2>导出本轮选择</h2><p id="summary"></p>
+<p>导出文件记录你圈选的原文、补充和逐轮判断。把文件交回后，会按这份选择冻结实际请求供你核对。</p>
+<p class="hint">支持本地哈希的浏览器会导出请求指纹，其余浏览器会在这份私有文件中保存完整请求。</p>
+<div class="actions"><button type="button" class="primary" id="submit">导出 16 位选择</button><button type="button" id="draft">导出草稿</button>
+<label class="file-label">恢复导出文件<input type="file" id="restore" accept=".json,application/json" aria-label="恢复导出文件"></label></div>
+<p class="hint" id="export-note"></p>
+<button type="button" id="next-empty">返回待填写位置</button>
+</section>
+<noscript>请用可执行本地 JavaScript 的浏览器打开此文件，以便逐轮选择和导出。</noscript>
+</main>
+<script id="data" type="application/json">@@DATA@@</script>
+<script>
+'use strict';
+const packet = JSON.parse(document.getElementById('data').textContent);
+const byKey = new Map(packet.sources.map(s => [s.key,s]));
+const byPosition = new Map(packet.cases.map(c => [c.position,c]));
+const storageKey = packet.study + '/' + packet.binding;
+const el = id => document.getElementById(id);
+const blankMaterial = () => ({passages:[], addition:''});
+let form = {version:packet.form, study:packet.study, binding:packet.binding, kind:'draft',
+            material:{flash:blankMaterial(),pro:blankMaterial()},decisions:{},previews:{}};
+let active = 0, tab = 'sources';
+const setStatus = text => { el('status').textContent = text; };
+function node(tag, text, cls) {
+  const elem = document.createElement(tag);
+  if (text !== undefined) elem.textContent = text;
+  if (cls) elem.className = cls;
+  return elem;
+}
+function button(label, callback, cls) {
+  const b = node('button',label,cls);
+  b.type = 'button'; b.addEventListener('click',callback); return b;
+}
+function resetChildren(elem) { elem.replaceChildren(); }
+function copy(obj) { return JSON.parse(JSON.stringify(obj)); }
+function blankDecision() { return {target:'',action:'',task_state:''}; }
+function choice(c) { return form.decisions[c.position] || blankDecision(); }
+function valid(c, a) {
+  if (a.target === null && a.action === packet.undetermined && a.task_state === packet.undetermined) return true;
+  return Number.isInteger(a.target) && c.targets.some(t => t.id === a.target)
+    && packet.actions.includes(a.action) && packet.states.includes(a.task_state);
+}
+function checkForm(v) {
+  if (!v || v.version !== packet.form || v.study !== packet.study || v.binding !== packet.binding
+      || !['selection','draft'].includes(v.kind) || !v.material || !v.decisions || typeof v.decisions !== 'object') throw Error('文件来自其他审阅版本或格式不完整。');
+  for (const stage of ['flash','pro']) {
+    const m = v.material[stage];
+    if (!m || typeof m.addition !== 'string' || !Array.isArray(m.passages)) throw Error('供稿内容有缺项。');
+    for (const pick of m.passages) {
+      const s = byKey.get(pick.key);
+      if (!s || !s.stages.includes(stage) || !Number.isInteger(pick.start) || !Number.isInteger(pick.end)
+          || pick.start < 0 || pick.end <= pick.start || pick.end > Array.from(s.text).length) throw Error('所选原文区间与此版本不符。');
+    }
+  }
+  for (const [pos,a] of Object.entries(v.decisions)) {
+    const c = byPosition.get(pos);
+    if (!c || !a || !['target','action','task_state'].every(k => Object.hasOwn(a,k))) throw Error('逐轮判断格式有误。');
+    if (valid(c,a)) continue;
+    if (v.kind === 'selection' || (a.target !== '' && !c.targets.some(t => t.id === a.target))
+        || (a.action && !packet.actions.includes(a.action)) || (a.task_state && !packet.states.includes(a.task_state))) throw Error('逐轮判断超出此轮范围。');
+  }
+  return {version:packet.form,study:packet.study,binding:packet.binding,kind:'draft',material:copy(v.material),decisions:copy(v.decisions),previews:{}};
+}
+function save() {
+  try { localStorage.setItem(storageKey,JSON.stringify(form)); setStatus('草稿已保存在此浏览器。'); }
+  catch { setStatus('本浏览器无法暂存，可在导出页保存草稿。'); }
+}
+function textOf(p) { return Array.from(byKey.get(p.key).text).slice(p.start,p.end).join(''); }
+function instruction(stage, state=form) {
+  const part = state.material[stage], pieces = part.passages.map(textOf);
+  if (part.addition) pieces.push(part.addition);
+  return pieces.join('\n');
+}
+function supplyStatus(stage) {
+  const value = instruction(stage);
+  if (!value.trim()) return '待圈选或补充';
+  const unresolved = Array.from(new Set(value.match(/\{[A-Za-z_][A-Za-z_0-9]*\}/g) || []));
+  return unresolved.length ? '尚有上游插槽 ' + unresolved.join('、') : '已有供稿';
+}
+function showTab(id) {
+  tab=id;
+  for (const s of ['sources','cases','export']) el(s).hidden = s !== id;
+  document.querySelectorAll('nav [data-tab]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.tab === id)));
+  if (id === 'cases') showCase();
+  if (id === 'export') showSummary();
+}
+function sourceList() {
+  el('commit').textContent = packet.commit.slice(0,12);
+  for (const s of packet.sources) {
+    const box = node('details',undefined,'source-card');
+    box.open = s === packet.sources[0];
+    box.append(node('summary',s.title));
+    const link = node('a',s.path+' · '+s.start+'–'+s.end,'origin');
+    link.href=s.url; link.target='_blank'; link.rel='noreferrer noopener';
+    box.append(link,node('p',s.use),node('p','PCAR 放置位置　'+s.placement,'hint'),node('p',s.missing,'hint'));
+    if (s.stages.length) {
+      const area = node('textarea');
+      area.value = s.text; area.readOnly = true; area.rows = Math.min(9,Math.max(3,s.text.split('\n').length));
+      area.setAttribute('aria-label',s.title+'原文'); box.append(area);
+      const actions = node('div',undefined,'actions');
+      for (const stage of s.stages) {
+        actions.append(button('加入 '+(stage==='flash'?'Flash':'Pro'),() => {
+          let lo=area.selectionStart,hi=area.selectionEnd;
+          if(lo===hi){lo=0;hi=s.text.length;}
+          const start=Array.from(s.text.slice(0,lo)).length, end=Array.from(s.text.slice(0,hi)).length;
+          form.material[stage].passages.push({key:s.key,start,end});
+          save(); showPicks(stage); setStatus('已加入 '+(stage==='flash'?'Flash':'Pro')+' 的本次供稿。');
+        }));
+      }
+      box.append(actions);
+    } else { box.append(node('pre',s.text,'wire')); }
+    el('source-list').append(box);
+  }
+}
+function showPicks(stage) {
+  const list=el(stage+'-picks'); resetChildren(list);
+  const picks=form.material[stage].passages;
+  if(!picks.length) list.append(node('small','尚未选入原文。'));
+  picks.forEach((p,i) => {
+    const card=node('div',undefined,'pick'), controls=node('div',undefined,'actions');
+    card.append(node('small',byKey.get(p.key).title),node('div',textOf(p),'excerpt'));
+    if(i) controls.append(button('上移',() => { [picks[i-1],picks[i]]=[picks[i],picks[i-1]];save();showPicks(stage); },'quiet'));
+    if(i+1<picks.length) controls.append(button('下移',() => { [picks[i+1],picks[i]]=[picks[i],picks[i+1]];save();showPicks(stage); },'quiet'));
+    controls.append(button('移除',() => {picks.splice(i,1);save();showPicks(stage);},'quiet'));
+    card.append(controls);list.append(card);
+  });
+}
+function editors() {
+  const root=el('editors');resetChildren(root);
+  for(const stage of ['flash','pro']){
+    const h=stage==='flash'?'Flash 决策说明':'Pro 交接说明';
+    const picks=node('div');picks.id=stage+'-picks';
+    const area=node('textarea');area.id=stage+'-addition';area.rows=3;area.value=form.material[stage].addition;
+    const label=node('label','作者补充原文');label.htmlFor=area.id;
+    area.addEventListener('input',() => {form.material[stage].addition=area.value;save();});
+    root.append(node('h3',h),picks,label,area,node('hr'));showPicks(stage);
+  }
+}
+function setOptions(select, items, value) {
+  resetChildren(select);
+  for(const [val,label] of items) {const option=node('option',label);option.value=val;select.append(option);}
+  select.value=value===null?'':String(value);
+}
+function positionNav() {
+  const root=el('position-nav');resetChildren(root);
+  for(const n of [1,2]) {
+    root.append(node('h3','第'+(n===1?'一':'二')+'段'));
+    const group=node('div',undefined,'position-grid');
+    packet.cases.forEach((c,i) => {
+      if(!c.position.startsWith(n+'-'))return;
+      const filled=valid(c,choice(c));
+      const b=button(c.position+(filled?' ✓':''),() => jump(i));
+      b.dataset.pos=c.position;b.className=filled?'filled':'';
+      b.setAttribute('aria-pressed',String(i===active));group.append(b);
+    });
+    root.append(group);
+  }
+}
+function jump(i) { active=i;showTab('cases');el('case-title').scrollIntoView({block:'nearest'}); }
+function wires(c, a, state=form) {
+  const f=copy(c.flash_base);
+  const flash=instruction('flash',state);
+  if(flash) f.messages[0].content=flash+'\n\n'+f.messages[0].content;
+  if(!valid(c,a)) return {flash:f,pro:null};
+  const b=copy(c.original);
+  if(a.target!==null){
+    const address=c.targets.find(t=>t.id===a.target).pro_target;
+    const fields={target:address,action:a.action,task_state:a.task_state};
+    const note=instruction('pro',state);
+    b.messages[0].content+='\n\n'+(note?note+'\n\n':'')+JSON.stringify(fields);
+  }
+  return {flash:f,pro:b};
+}
+function showPreview() {
+  const c=packet.cases[active],a=choice(c),pair=wires(c,a);
+  el('preview-state').textContent='Flash '+supplyStatus('flash')+'。Pro '+supplyStatus('pro')
+    +'。'+(a.target===null?'本轮人工判断为未定，Pro 复用原版。':'文字和字段会随本页选择更新。');
+  el('flash-wire').textContent=JSON.stringify(pair.flash,null,2);
+  el('pro-wire').textContent=pair.pro?JSON.stringify(pair.pro,null,2):'请先选好本轮判断。';
+  el('old-wire').textContent=JSON.stringify(c.original,null,2);
+  el('endpoint').textContent='官方端点　'+packet.official_endpoint;
+  el('hashes').textContent='实发请求 SHA-256　'+c.original_sha256+'　原生正文 SHA-256　'+c.body_sha256;
+}
+function done() { return packet.cases.filter(c=>valid(c,choice(c))).length; }
+function showCase() {
+  const c=packet.cases[active],a=choice(c);
+  positionNav();el('progress').textContent='已完成 '+done()+' / '+packet.cases.length;
+  el('case-title').textContent='位置 '+c.position;
+  const thread=el('thread');resetChildren(thread);
+  for(const t of c.targets) {
+    const box=node('div',undefined,'message'), isCurrent=t.origins.includes('current');
+    const source=t.origins.map(v=>({recent:'最近前文',current:'本轮',reference:'显式引用'}[v])).join('、');
+    box.dataset.current=String(isCurrent);
+    box.append(node('small',t.id+'　'+(t.role==='user'?'对方':'角色')+' · '+source),node('p',t.text));thread.append(box);
+  }
+  setOptions(el('target'),[['','请选择'],...c.targets.map(t=>[t.id,t.id+' · '+(t.role==='user'?'对方':'角色')+' · '+Array.from(t.text).slice(0,25).join('')])],a.target);
+  setOptions(el('action'),[['','请选择'],...[...packet.actions,packet.undetermined].map(x=>[x,x])],a.action);
+  setOptions(el('task-state'),[['','请选择'],...packet.states.map(x=>[x,x]),...(a.action===packet.undetermined?[[packet.undetermined,packet.undetermined]]:[])],a.task_state);
+  el('target').disabled=el('task-state').disabled=a.action===packet.undetermined;
+  el('back').disabled=active===0;el('forward').textContent=active+1===packet.cases.length?'查看导出':'下一位置';
+  const history=el('original-history');resetChildren(history);
+  c.original.messages.slice(1).forEach((m,i) => {
+    const last=i===c.original.messages.length-2;
+    history.append(node('small',(m.role==='user'?'对方':'角色')+(last?' · 本轮':' · 前文')),node('pre',m.content));
+  });
+  el('old-body').textContent=c.body;
+  showPreview();
+}
+function updateChoice(event) {
+  const c=packet.cases[active], a={...choice(c)};
+  if(event.target===el('action')) {
+    a.action=el('action').value;
+    if(a.action===packet.undetermined){a.target=null;a.task_state=packet.undetermined;}
+    else {if(a.target===null)a.target='';if(a.task_state===packet.undetermined)a.task_state='';}
+  } else if(event.target===el('target')) {a.target=el('target').value?Number(el('target').value):'';}
+  else {a.task_state=el('task-state').value;}
+  form.decisions[c.position]=a;save();showCase();
+}
+function showSummary() {
+  el('summary').textContent='逐轮判断 '+done()+' / '+packet.cases.length+'。Flash '+supplyStatus('flash')+'。Pro '+supplyStatus('pro')+'。';
+  el('submit').disabled=done()!==packet.cases.length;
+  el('next-empty').textContent=done()===packet.cases.length?'返回逐轮查看':'返回待填写位置';
+  el('export-note').textContent='';
+}
+function ordered(v) {
+  if(Array.isArray(v))return v.map(ordered);
+  if(v && typeof v==='object')return Object.fromEntries(Object.keys(v).sort().map(k=>[k,ordered(v[k])]));
+  return v;
+}
+async function proof(wire) {
+  // Some local HTML viewers have no SubtleCrypto. The importer can compare the exact request instead.
+  if(window.crypto && crypto.subtle) {
+    try {
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(ordered(wire))));
+      return Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');
+    } catch {}
+  }
+  return wire;
+}
+async function download(kind) {
+  const out=copy(form);out.kind=kind;out.previews={};
+  if(kind==='selection'){
+    if(done()!==packet.cases.length)throw Error('还有位置待填写。');
+    for(const c of packet.cases){
+      const pair=wires(c,out.decisions[c.position],out);
+      const limit=Math.min(c.capacity,60000);
+      if(Object.values(pair).some(w=>w.messages.reduce((n,m)=>n+Array.from(m.content).length,0)>limit))
+        throw Error('位置 '+c.position+' 的请求超出容量，可以先导出草稿调整。');
+      out.previews[c.position]={flash:await proof(pair.flash),pro:await proof(pair.pro)};
+    }
+  }
+  const name=kind==='selection'?'E.N5-角色-接话决策16位原文与判断.json':'E.N5-角色-接话决策审阅草稿.json';
+  const url=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)+'\n'],{type:'application/json;charset=utf-8'}));
+  const link=node('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  el('export-note').textContent='已请求下载 '+name+'。';setStatus('导出已生成。');
+}
+try {
+  const cached=localStorage.getItem(storageKey);
+  if(cached) {form=checkForm(JSON.parse(cached));setStatus('已恢复此版本在本浏览器内暂存的选择。');}
+} catch { setStatus('可在导出页恢复之前保存的草稿。'); }
+for(const b of document.querySelectorAll('[data-tab],[data-go]'))b.addEventListener('click',()=>showTab(b.dataset.tab||b.dataset.go));
+for(const id of ['target','action','task-state'])el(id).addEventListener('change',updateChoice);
+el('back').addEventListener('click',()=>jump(Math.max(0,active-1)));
+el('forward').addEventListener('click',()=>active+1<packet.cases.length?jump(active+1):showTab('export'));
+el('next-empty').addEventListener('click',()=>jump(Math.max(0,packet.cases.findIndex(c=>!valid(c,choice(c))))));
+for(const [id,kind] of [['submit','selection'],['draft','draft']])el(id).addEventListener('click',()=>download(kind).catch(e=>setStatus(e.message)));
+el('restore').addEventListener('change',async e=>{
+  try {
+    const file=e.target.files[0];if(!file)return;
+    form=checkForm(JSON.parse((await file.text()).replace(/^\uFEFF/,'')));save();editors();showSummary();setStatus('已恢复导出文件中的选择。');
+  } catch(error){setStatus('恢复失败　'+error.message);}
+  e.target.value='';
+});
+sourceList();editors();showTab(tab);
+</script>
+</body>
+</html>

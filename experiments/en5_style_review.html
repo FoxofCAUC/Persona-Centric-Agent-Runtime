@@ -1,0 +1,54 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>角色 · 接话方式盲审</title><style>
+:root{color-scheme:light dark;--edge:#85948866;--bg:#839b8822}body{max-width:64rem;margin:2rem auto;padding:0 1rem;font:16px/1.65 system-ui}
+h1,h2{line-height:1.3}.user,.reply,.past{white-space:pre-wrap;overflow-wrap:anywhere}.reply{padding:.6rem .9rem;background:var(--bg)}
+.case{margin:1.5rem 0;border-top:1px solid var(--edge);padding:.7rem 0}nav a{display:inline-block;margin-right:1em}
+textarea,button,select{font:inherit}textarea{width:min(95%,48rem);min-height:3em}fieldset{margin:.6rem 0;border:1px solid var(--edge)}label{display:inline-block;margin:.25rem .65rem .25rem 0}
+summary,button,label,select{cursor:pointer}button{padding:.3rem .6rem}button+output{margin-left:.5em}
+</style><main><h1>角色的接话方式盲审</h1>
+<p>先读用户原话，再逐份判断这句话能否作为角色的发言。可以接受自然的反问或必要的帮助，也可以否决整轮。每轮单独匿名，相同正文共用一次评价。</p>
+<nav id="nav"></nav><div id="cases"></div><h2>整批意见</h2><label>哪些位置已有改善？哪些正常反应或必要帮助需要保住？<br><textarea id="overall"></textarea></label>
+<p><button id="export">导出审阅意见</button><output id="status"></output></p><details><summary>技术记录（含方案身份）</summary><a href="evidence.html">查看各轮身份、用量和回执</a></details></main>
+<script type="application/json" id="data">@@DATA@@</script>
+<script>
+const study=JSON.parse(document.getElementById('data').textContent),storeKey='pcar-style-v1-'+study.results_sha256;
+let answers={positions:{},overall:''};try{const x=JSON.parse(localStorage.getItem(storeKey));if(x&&x.positions&&typeof x.overall==='string')answers=x;}catch{}
+const make=(tag,txt,cls)=>{const e=document.createElement(tag);if(txt!=null)e.textContent=txt;if(cls)e.className=cls;return e;};
+function opt(s,v,t){const o=make('option',t);o.value=v;s.append(o);}function status(t){document.getElementById('status').textContent=t;}
+function save(){try{localStorage.setItem(storeKey,JSON.stringify(answers));status('已保存到本机');}catch{status('请导出文件保存意见');}}
+const grades=[['','未评价'],['accept','可接受'],['service','出现明显服务化'],['help','求助没有接住'],['reject','不可接受（其他）'],['uncertain','无法判断']];
+for(const c of study.cases){
+ const grouped=[];for(const [label,o] of Object.entries(c.options)){
+  const same=o.state==='completed'?grouped.find(g=>g.o.state==='completed'&&g.o.body===o.body):null;
+  if(same)same.labels.push(label);else grouped.push({labels:[label],o});}
+ const tied=grouped.length===1&&Object.keys(c.options).length>1;
+ const box=make(tied?'details':'section',null,'case');box.id='p'+c.position;
+ const nav=make('a',c.position);nav.href='#'+box.id;document.getElementById('nav').append(nav);
+ box.append(make(tied?'summary':'h2',c.position+(tied?' · 正文相同':'')),make('p',c.user,'user'));
+ const hist=make('details');hist.append(make('summary','原位置的完整前文'));
+ for(const h of c.before){hist.append(make('p',h.turn+' · 用户　'+h.user,'past'),make('p','角色　'+h.reply,'past'));}if(!c.before.length)hist.append(make('p','本段首轮'));box.append(hist);
+ const a=answers.positions[c.position]??={ratings:{},ranks:{},all_unacceptable:false,note:''};const controls=[];
+ const ranks=make('fieldset');ranks.append(make('legend','相对偏好（可留空，同名次表示并列）'));
+ for(const g of grouped){const names=g.labels.join('／'),first=g.labels[0];box.append(make('h3',names),make('p',g.o.body??('本位置缺口 · '+g.o.state),'reply'));
+  if(g.o.state!=='completed')continue;
+  const lab=make('label','可接受性　'),v=make('select');for(const [code,txt] of grades)opt(v,code,txt);
+  v.value=a.ratings[first]||'';lab.append(v);box.append(lab);
+  const heading=make('label',names+'　'),rank=make('select');opt(rank,'','未排');for(let n=1;n<=grouped.filter(x=>x.o.state==='completed').length;n++)opt(rank,String(n),'第'+n+'位');
+  rank.value=a.ranks[first]||'';heading.append(rank);ranks.append(heading);controls.push({labels:g.labels,v,rank});
+  v.onchange=()=>{for(const k of g.labels)a.ratings[k]=v.value;adjust();save();};rank.onchange=()=>{for(const k of g.labels)a.ranks[k]=rank.value;save();};
+ }
+ const all=make('button','本轮全部不可接受');all.type='button';box.append(all,ranks);
+ function adjust(){
+  const complete=controls.length>0&&controls.every(x=>x.v.value);
+  a.all_unacceptable=complete&&controls.every(x=>['service','help','reject'].includes(x.v.value));
+  ranks.disabled=!complete||a.all_unacceptable||controls.length<2;
+  if(ranks.disabled){a.ranks={};for(const x of controls)x.rank.value='';}
+ }
+ all.onclick=()=>{for(const x of controls){if(!['service','help','reject'].includes(x.v.value))x.v.value='reject';for(const k of x.labels)a.ratings[k]=x.v.value;}adjust();save();};adjust();
+ const note=make('details');note.append(make('summary','本轮备注'));const text=make('textarea');text.setAttribute('aria-label','本轮备注');text.value=a.note||'';text.oninput=()=>{a.note=text.value;save();};note.append(text);box.append(note);document.getElementById('cases').append(box);
+}
+const overall=document.getElementById('overall');overall.value=answers.overall;overall.oninput=()=>{answers.overall=overall.value;save();};
+document.getElementById('export').onclick=()=>{const {study_id,input_contract_sha256,results_sha256,blind_key_sha256}=study;
+const out={version:'en5-style-feedback-v1',study_id,input_contract_sha256,results_sha256,blind_key_sha256,...answers};
+const uri=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'})),link=make('a');link.href=uri;link.download='E.N5-角色-接话修复16位审阅意见.json';link.click();setTimeout(()=>URL.revokeObjectURL(uri),1500);status('已导出');};
+</script></html>

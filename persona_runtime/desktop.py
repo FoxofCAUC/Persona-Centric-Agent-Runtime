@@ -50,6 +50,8 @@ ERRORS.update({'web_main_key_missing':'请先在模型页配置主模型密钥�
                "provider_http_403": "提供商拒绝访问，请检查模型权限。", "provider_invalid_response": "提供商响应格式不正确。",
                "request_failed": "本机处理失败，请查看请求详情和诊断记录。"})
 ERRORS.update(DISPLAY_ERRORS)
+ERRORS.update({'search_notice_superseded':'已收到新消息，本轮查找已停止。',
+               'search_notice_not_fully_presented':'查前发言尚未确认呈现，公开查找已停止。'})
 ERRORS.update({'companion_restore_missing':'此旧实验缺少有效的最初恢复点，请先核查原设置，才能升级C2或自动恢复。',
                'companion_restore_invalid':'恢复点无效，当前设置未改变。',
                'companion_restore_conflict':'恢复期间不能同时改写其他设置，请重新读取入口政策。',
@@ -203,6 +205,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.session_id = None
         self.persona_id = None
         self.chat_version = None
+        self.pending_notice_view = None
+        self.notice_confirmed = set()
         self.turns = []
         self.selected_request = None
         self.view_epoch = 0
@@ -239,6 +243,10 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.geometry(f"{min(1120, self.winfo_screenwidth()-50)}x{min(780, self.winfo_screenheight()-100)}")
         self.minsize(780, 560)
         self.build_shell()
+        from .en5_display import DesktopDisplayCapture
+        self.en5_display=DesktopDisplayCapture.attach(self)
+        from .scene_desktop import SceneBubbles
+        self.scene_bubbles=SceneBubbles(self)
         self.load_config_fields()
         self.protocol("WM_DELETE_WINDOW", self.close_window)
         self.after(100, self.tick)
@@ -416,6 +424,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         bar.pack(fill="x")
         self.button(bar, "发送", self.send_chat, {"send"}, True)
         self.button(bar, "按当前设定重试失败请求", self.retry_chat, {"send"})
+        self.button(bar, "停止当前回复", self.stop_current_reply, {"chat-cancel"})
         self.button(bar, "找回未确认消息", self.recover_submissions, {"submission-recovery"})
         self.button(bar, "请求队列与详情", self.request_queue, {"request-list"})
         self.button(bar, "查看本轮记忆使用", self.explain_chat_context, {"org-details"})
@@ -481,7 +490,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         ttk.Label(parent, text="更改账号或端口前，请在故障排查中停止本项目全部服务，包括 QQ。所有地址绑定本机。", wraplength=700).pack(anchor="w", pady=10)
 
     def build_model(self, parent):
-        self.heading(parent, "模型", "使用DeepSeek官方生成连接；完整联网请选择deepseek-flash。Jev使用独立连接。")
+        self.heading(parent, "模型", "人物发言基线使用 deepseek-v4-pro。Jev 判断是否联网，公开资料检索使用官方 Flash。")
         self.fields(parent, self.model_vars, (("base_url", "接口基础地址"), ("name", "模型名称"), ("api_key", "新密钥（留空保留）"),
                     ("timeout", "总超时（秒）"), ("max_tokens", "输出 token 上限"), ("hourly_limit", "自动调用总额／小时（0不限）"),
                     ("max_input_chars", "输入字符上限")), secret="api_key")
@@ -758,6 +767,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
 
     def use_persona(self, persona_id):
         if not self.character_can_leave():return
+        shown=self.painted_notice()
+        bubble=self.scene_bubbles.receipt()
         self.companion_policies={}
         self.chat_mode_text.set('聊天方案：待读取当前人格入口政策。')
         self.update_disposition_companion_controls()
@@ -766,6 +777,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.invalidate_archive()
         self.clear_archive_reference()
         self.view_epoch += 1
+        self.pending_notice_view = None
         self.delivery_rows = []
         self.delivery_tree.delete(*self.delivery_tree.get_children())
         self.show_delivery_parts()
@@ -776,7 +788,11 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             self.refresh_personas()
             self.load_chat()
             self.search_memory()
-        self.run_task("切换人格", {"persona", "chat"}, lambda _: self.client.manage("persona.use", persona_id=persona_id), done)
+        def switch(_):
+            self.confirm_scene_bubble(bubble)
+            self.confirm_painted_notice(shown)
+            return self.client.manage("persona.use",persona_id=persona_id)
+        self.run_task("切换人格", {"persona", "chat"}, switch, done)
 
     def dialog_shell(self, title, size=(620, 330), minimum=(420, 240)):
         """Reserve a non-shrinking action row; only the content row expands."""
@@ -898,6 +914,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
     def load_chat(self, fresh=False, session_id=None):
         if fresh or (session_id and session_id != self.session_id):
             self.view_epoch += 1
+            self.pending_notice_view = None
         epoch = self.view_epoch
         def action(_):
             current = self.client.manage("session.select", channel="desktop", fresh=fresh, session_id=session_id)
@@ -939,6 +956,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.run_task("读取会话列表", {"chat"}, lambda _: self.client.manage("chat.sessions"), done)
 
     def render_chat(self):
+        capture=getattr(self,'en5_display',None)
+        if capture:capture.marks.clear()
         at_bottom = self.transcript.yview()[1] >= .98
         self.transcript.configure(state="normal")
         self.transcript.delete("1.0", "end")
@@ -949,15 +968,28 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                     self.transcript.insert("end", "你：" + member['text'] + "\n")
             else:
                 self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
-            if turn.get('search_notice'):
-                self.transcript.insert('end','人格：'+turn['search_notice']['text']+'\n\n')
+            spoken=turn.get('search_notice')
+            pending=getattr(self,'pending_notice_view',None)
+            if spoken:
+                self.transcript.insert('end','人格：'+spoken['text']+'\n\n')
+            elif (pending and (self.persona_id,self.session_id,turn['id'])==
+                    (pending['persona_id'],pending['session_id'],pending['turn_id']) and turn['status']=='queued' and not turn.get('cancelled_at')):
+                self.transcript.insert('end','人格：'+pending['text']+'\n\n','pending-notice')
+            scene_speech=turn.get('scene_speech')
+            if scene_speech:
+                self.scene_bubbles.insert(turn)
             if turn["status"] == "completed":
                 displayed=turn.get('display_messages')
-                if displayed:
+                if scene_speech:
+                    pass
+                elif displayed:
                     for message in displayed:self.transcript.insert("end", "人格："+message['text']+"\n\n")
                     findings=[str(i) for i,m in enumerate(displayed,1) if m.get('diagnostics',{}).get('quality_findings')]
                     if findings:self.transcript.insert('end','表达检查：第'+ '、'.join(findings)+'条有长度或内部换行提示，正文已完整保留；请在详情中核对。\n\n')
-                else:self.transcript.insert("end", "人格：" + (turn.get('display_reply',turn["reply"]) or "") + "\n\n")
+                else:
+                    body=turn.get('display_reply',turn['reply']) or ''
+                    if not capture or not capture.insert_main(turn,body):
+                        self.transcript.insert('end','人格：'+body+'\n\n')
                 self.transcript.insert("end", "主回复用量：" + compact_usage(turn.get('usage')) + "\n")
                 retrieval_cost=(turn.get('context') or {}).get('knowledge',{}).get('retrieval',{}).get('cost')
                 if retrieval_cost:
@@ -995,12 +1027,14 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.transcript.configure(state="disabled")
         if at_bottom:
             self.transcript.see("end")
+        if capture:capture.schedule()
 
-    def send_chat(self):
+    def send_chat(self, *, request_id=None):
         text = self.chat_input.get("1.0", "end-1c")
         if not text.strip():
             return
-        payload = {"channel": "desktop", "text": text, "request_id": identifier()}
+        from .tk_notice import CONTRACT
+        payload = {"channel": "desktop", "text": text, "request_id": request_id if request_id is not None else identifier(), "desktop_presentation":CONTRACT}
         persona_id = self.persona_id or next((p["id"] for p in self.personas if p["selected"]), None)
         if not persona_id:
             self.notice.set("请先选中人格并恢复或新建会话。")
@@ -1036,7 +1070,71 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             self.load_chat(session_id=self.session_id)
             if 'receipt_id' in turn:self.refresh_batches()
             else:self.watch_turn(turn, epoch)
-        self.run_task("提交消息", {"send"}, lambda _: self.client.submit_input(payload), done)
+        shown=self.painted_notice()
+        bubble=self.scene_bubbles.receipt()
+        def send(_):
+            self.confirm_scene_bubble(bubble)
+            self.confirm_painted_notice(shown)
+            return self.client.submit_input(payload)
+        return self.run_task("提交消息", {"send"}, send, done)
+
+    def painted_notice(self):
+        pending=self.pending_notice_view
+        if pending and pending.get('painted') and pending['notice_id'] not in self.notice_confirmed:
+            return {k:pending[k] for k in ('persona_id','session_id','turn_id','notice_id')}
+        return None
+
+    def confirm_painted_notice(self,shown):
+        # Foreground actions settle a bubble already painted before changing its scope.
+        if shown:self.client.manage('chat.notice.presented',**shown)
+
+    def confirm_scene_bubble(self,bubble):
+        if bubble:
+            self.client.manage('expression.v2.ack',**bubble)
+
+    def stop_current_reply(self):
+        turn=next((r for r in self.turns if r['status'] in ('running','queued') and not r.get('cancelled_at')),None)
+        if not turn:
+            self.notice.set('当前没有等待中的回复。')
+            return
+        epoch=self.view_epoch
+        shown=self.painted_notice()
+        bubble=self.scene_bubbles.receipt()
+        def stop(_):
+            self.confirm_scene_bubble(bubble)
+            self.confirm_painted_notice(shown)
+            return self.client.cancel_request(turn)
+        self.run_task('停止当前回复',{'chat-cancel'},stop,
+            lambda _:self.load_chat(session_id=self.session_id) if self.view_epoch==epoch else None)
+
+    def present_search_notice(self, pending, epoch, session_id):
+        pid=self.persona_id
+        def visible():
+            return (not self.closed and self.current_page=='chat' and not self.tray_hidden and
+                    (self.view_epoch,self.persona_id,self.session_id)==(epoch,pid,session_id)
+                    and self.transcript.winfo_viewable() and self.state() not in ('withdrawn','iconic')
+                    and not any(op.resources & {'send','chat','persona','chat-cancel'} for op in self.hub.active.values()))
+        if not visible():return
+        args=dict(pending,persona_id=pid,session_id=session_id)
+        def paint(value):
+            if value.get('published') or not visible():return
+            turn=next((t for t in self.turns if t['id']==pending['turn_id']),None)
+            if not turn or turn['status']!='queued' or turn.get('cancelled_at') or turn.get('search_notice'):return
+            self.pending_notice_view=args|{'text':value['text']}
+            self.render_chat()
+            marks=self.transcript.tag_ranges('pending-notice')
+            if not marks:return
+            self.transcript.see(marks[0])
+            self.transcript.update_idletasks()
+            if not visible() or not self.transcript.bbox(marks[0]):return
+            self.pending_notice_view['painted']=True
+            if self.en5_display:self.en5_display.notice(turn,pending['notice_id'],value['text'],marks)
+            self.run_task('确认查前发言已呈现',{'notice-display'},
+                lambda _:self.client.manage('chat.notice.presented',**args),
+                lambda _: self.notice_confirmed.add(pending['notice_id']),quiet=True)
+        if pending['notice_id'] not in self.notice_confirmed:
+            self.run_task('读取本次查前发言',{'notice-display'},lambda _:self.client.manage('chat.notice.preview',**args),
+                          paint,quiet=True)
 
     def refresh_conversation(self):
         """Fast conversation refresh is independent of slow OS/service polling."""
@@ -1051,6 +1149,13 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                     if snapshot["turns"] is not None and snapshot["turns"] != self.turns:
                         self.turns = snapshot["turns"]
                         self.render_chat()
+                    pointers=snapshot.get('pending_notices',[])
+                    if self.pending_notice_view and self.pending_notice_view['notice_id'] not in {r['notice_id'] for r in pointers}:
+                        self.pending_notice_view=None
+                        self.render_chat()
+                    self.notice_confirmed.intersection_update(r['notice_id'] for r in pointers)
+                    if pointers:self.present_search_notice(pointers[0],epoch,session_id)
+                    self.scene_bubbles.pump()
                     watched = next((row for row in self.turns if row.get("id") == getattr(self, "chat_watched_id", None)), None)
                     if watched and self.notice.get().startswith("消息已受理："):
                         phase = watched.get("phase", watched["status"])

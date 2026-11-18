@@ -1,0 +1,51 @@
+{
+  "version": "fresh-scene-three-chain-tools-v1",
+  "date": "2026-11-18",
+  "parent_manifest": "docs/expression/E.L4-正文修复回归工具清单.json",
+  "parent_manifest_sha256": "9ed7d40d32381e2bacf659cec6bb1dadc3e39de0b1799648fe20042fc974255f",
+  "new_research_tools": [
+    {
+      "path": "experiments/fresh_scene_assembly.py",
+      "sha256": "4c9e5e986ab8561632bb0dc9a7e6a4ea835d9c1abf64106733491666044681f8"
+    },
+    {
+      "path": "experiments/fresh_scene_journal.py",
+      "sha256": "a3c933e614a50b3cadc4b175470bb0453d135e88b54bb66ae36f5f23f0ad46e3"
+    },
+    {
+      "path": "experiments/fresh_scene_material.py",
+      "sha256": "9eb881ebaf6e643205b427ef8ddc0e23bb5372b83cda6fa81ba2b0deef51ebb6"
+    },
+    {
+      "path": "experiments/fresh_scene_review.html",
+      "sha256": "8bf922b25c53f88d1002f930103ed794e56ef3d42fa3dedf4651b31f8a7d2b92"
+    },
+    {
+      "path": "experiments/fresh_scene_review.py",
+      "sha256": "002596129592aeb0a9828ea9ed4a791b93ac0d88c22dbfc315b997222cbbd54f"
+    },
+    {
+      "path": "experiments/fresh_scene_trial.py",
+      "sha256": "b522bbc602635b75ba8c715bfb71e168819b56be0dbc43a06b6a2d2775b372ae"
+    },
+    {
+      "path": "tests/test_fresh_scene_assembly.py",
+      "sha256": "42e169d2ae64d66a1100c44ec39679cab73967688db3c76c2217d20f3509fee6"
+    },
+    {
+      "path": "tests/test_fresh_scene_journal.py",
+      "sha256": "370922a44582ddd58857871f5b81eac0246a42a197429b8ad66c6892a1697e24"
+    },
+    {
+      "path": "tests/test_fresh_scene_review.py",
+      "sha256": "9c10713f4c4e118de3ffba55e720acc87aff8a3b93382f7a5880f4099e314419"
+    }
+  ],
+  "unchanged_core_files": 455,
+  "fresh_development_scenes": 23,
+  "user_turns": 34,
+  "physical_requests": 192,
+  "unchanged_prompt_words": true,
+  "new_persona_outputs": 102,
+  "formal_activation": false
+}

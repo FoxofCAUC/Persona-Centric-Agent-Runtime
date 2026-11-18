@@ -1,0 +1,34 @@
+{
+  "version": "semantic-selection-body-tools-v1",
+  "date": "2026-11-18",
+  "parent_manifest": "docs/expression/E.L4-语义选材结果工具清单.json",
+  "parent_manifest_sha256": "90b8d9bf4105415d2cbe21a713ddb21324f97aa67d40dc2ead759c55c0bc054c",
+  "unchanged_core_files": 455,
+  "new_research_tools": [
+    {
+      "path": "experiments/semantic_body_comparison.py",
+      "sha256": "81105e86dd87f3082790cacfdc1b3d1d70c0a61964f2e8cf8765c8dd4b41314c"
+    },
+    {
+      "path": "experiments/semantic_body_run.py",
+      "sha256": "8e85a01049b6e4d3c73e5f8724983279ba4402380f4b280a8ba1bbaff69077c3"
+    },
+    {
+      "path": "experiments/semantic_body_report.py",
+      "sha256": "3c43a0aeae9ddf4e99cc57c182d5fc1f2cf0c9a1384e2731b3d5fcd819c44d7a"
+    },
+    {
+      "path": "experiments/semantic_body_review.html",
+      "sha256": "e29f036f31ed83416a77e4bb485567f43990baf769661f064d2490a7ae0d3dc8"
+    },
+    {
+      "path": "tests/test_semantic_body_comparison.py",
+      "sha256": "a30b81a5f63f4ec6d1efd8d4a64a04ebf85950389c6d8b31ecea553e5f85b453"
+    }
+  ],
+  "targeted_tests_passed": 8,
+  "new_pro_requests": 11,
+  "body_receipts_reused": 5,
+  "new_other_requests": 0,
+  "formal_activation": false
+}

@@ -5,6 +5,7 @@ import json
 from .archive import fingerprint
 from .knowledge_service import read
 from .models import RuntimeErrorBase
+from .turn_input import load_turn_input
 
 
 def source_states(db, pid):
@@ -42,14 +43,67 @@ def eligible(db, turn_id):
         for event_id in ids if event_id)
 
 
-def candidates(db, pid, channel):
+def candidates(db, pid, channel, *, acquired_only=False):
     rows = []
-    for (raw,) in db.execute("SELECT value FROM knowledge_control WHERE key LIKE 'knowledge.conversation.record.%' AND json_extract(value,'$.data.persona_id')=? AND json_extract(value,'$.data.channel')=? ORDER BY rowid DESC LIMIT 40", (pid, channel)):
+    for (raw,) in db.execute("""SELECT value FROM knowledge_control WHERE key LIKE 'knowledge.conversation.record.%'
+            AND json_extract(value,'$.data.persona_id')=? AND json_extract(value,'$.data.channel')=?
+            AND (NOT ? OR (json_array_length(value,'$.data.sources')>0
+                 AND (COALESCE(json_extract(value,'$.data.retrieval.used_previous'),0)=0
+                      OR json_extract(value,'$.data.retrieval.material_acquired')=1)))
+            ORDER BY rowid DESC LIMIT 40""", (pid, channel, acquired_only)):
         record = json.loads(raw)['data']
         if eligible(db, record.get('root_turn_id')): rows.append(record)
     for (raw,) in db.execute("SELECT value FROM knowledge_control WHERE key LIKE 'knowledge.native.imported.%' AND json_extract(value,'$.data.persona_id')=? AND json_extract(value,'$.data.channel')=? ORDER BY rowid DESC LIMIT 20", (pid, channel)):
         rows.append(json.loads(raw)['data'])
     return rows
+
+
+def _inherited(record):
+    prior=record.get('retrieval',{})
+    return prior.get('used_previous') is True and prior.get('material_acquired') is not True
+
+
+def _user_text(db, turn):
+    if turn.get('input_batch_id') or turn.get('user_event_id'):
+        return '\n'.join(member['text'] for member in load_turn_input(db,turn))
+    return ''
+
+
+def _origin_query(db, record):
+    root=record.get('root_turn_id')
+    if not root:
+        return ''
+    for task_id in record.get('retrieval',{}).get('task_ids',[]):
+        row=db.execute("""SELECT payload_json FROM organization_tasks
+            WHERE id=? AND persona_id=? AND channel=? AND status='completed'""",
+                       (task_id,record['persona_id'],record['channel'])).fetchone()
+        if not row:
+            continue
+        spec=json.loads(row[0]).get('knowledge_processing',{})
+        if spec.get('root_turn_id')==root and spec.get('stage')=='conversation_native':
+            return spec.get('input',{}).get('public_task',{}).get('question','')
+    return ''
+
+
+def _continuation_anchor(db, turn, current_rowid):
+    """Trace only the uninterrupted same-session chain of readable material."""
+    from .knowledge_native_topic import is_followup
+    source_ids=None
+    for row in db.execute("""SELECT * FROM turns WHERE session_id=? AND persona_id=? AND channel=? AND rowid<?
+            ORDER BY rowid DESC LIMIT 40""",(turn['session_id'],turn['persona_id'],turn['channel'],current_rowid)):
+        if row['status']!='completed' or not eligible(db,row['id']):
+            break
+        record=read(db,'conversation.record.'+row['id'],{})['data']
+        if not record.get('sources'):
+            break
+        ids={s['id'] for s in record['sources']}
+        source_ids=ids if source_ids is None else source_ids & ids
+        if not source_ids:
+            break
+        text=_user_text(db,dict(row))
+        if not _inherited(record) or not is_followup(text):
+            return row['id'],source_ids,text
+    return None
 
 
 def previous(db, turn, question):
@@ -68,10 +122,17 @@ def previous(db, turn, question):
                 sources=[s for s in sources if not supporting or s['id'] in supporting]
                 if any(s['id']==item['source_id'] for s in sources):return {'sources':sources,'organized':organized,'record':record}
         return {'sources':[],'organized':{},'record':None}
-    from .chat import terms
-    query = terms(question); ranked = []
-    for index, record in enumerate(candidates(db, turn['persona_id'], turn['channel'])):
-        if record.get('root_turn_id') == turn['id']: continue
+    from .knowledge_native_topic import is_followup, TopicQuery
+    query=_user_text(db,turn) or question
+    subject=TopicQuery(query)
+    followup=is_followup(query)
+    current=db.execute('SELECT rowid FROM turns WHERE id=?',(turn['id'],)).fetchone() if followup else None
+    anchor=_continuation_anchor(db,turn,current[0]) if current else None
+    earlier_subject=TopicQuery(anchor[2]) if anchor else None
+    ranked=[]
+    for index, record in enumerate(candidates(db, turn['persona_id'], turn['channel'], acquired_only=True)):
+        if record.get('root_turn_id')==turn['id'] or _inherited(record):
+            continue
         sources, organized = apply_states(db, turn['persona_id'], record.get('sources', []), record.get('organized', {}))
         support_ids=set(organized.get('source_ids',[]))
         if support_ids:
@@ -82,14 +143,18 @@ def previous(db, turn, question):
         if sid is None and record.get('root_turn_id'):
             row = db.execute('SELECT session_id FROM turns WHERE id=?', (record['root_turn_id'],)).fetchone()
             sid = row[0] if row else None
-        same = sid == turn['session_id']
-        text = ' '.join(str(row.get(key) or '') for row in sources for key in ('title', 'summary', 'content'))
-        text += ' ' + str(organized.get('notes') or '')
-        score = len(query & terms(text))
-        if not same and not score: continue
-        ranked.append((int(same), score, -index, sources, organized, record))
+        same = sid is not None and sid == turn['session_id']
+        labels={'previous_question':_origin_query(db,record),'titles':[s.get('title') or '' for s in sources],
+                'urls':[s['url'] for s in sources],'notes':organized.get('notes') or ''}
+        score=subject.score(**labels)
+        continuing=bool(anchor and anchor[1].intersection(s['id'] for s in sources) and (
+            record.get('root_turn_id')==anchor[0] or earlier_subject.score(**labels)))
+        # API callers can inspect a proposed turn before it is persisted.
+        if not score and not continuing and not (followup and not current and same):
+            continue
+        ranked.append((score, int(continuing), int(same), -index, sources, organized, record))
     if not ranked: return {'sources': [], 'organized': {}, 'record': None}
-    *_, sources, organized, record = max(ranked, key=lambda item: item[:3])
+    *_, sources, organized, record = max(ranked, key=lambda item: item[:4])
     return {'sources': sources, 'organized': organized, 'record': record}
 
 

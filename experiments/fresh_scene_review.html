@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>角色 · 新场景多轮盲审</title>
+<style>
+:root{color-scheme:light;font:16px/1.65 system-ui,"Microsoft YaHei",sans-serif;background:#f5f6f2;color:#23332b}
+*{box-sizing:border-box}body{margin:0}main{max-width:64rem;margin:auto;padding:1.25rem 1rem 4rem}
+h1,h2,h3,h4,p{margin:0 0 .5rem}h1{font-size:1.6rem}h2{font-size:1.25rem}h3,h4{font-size:1rem}
+header,article,.scene-vote{margin:.7rem 0;background:#fff;border:1px solid #cfd9cf;border-radius:.5rem;padding:1rem 1.15rem}
+pre{margin:.25rem 0 .55rem;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:4}
+.bar,.choices{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.bar{margin:.55rem 0}
+.bar label{display:flex;align-items:center;gap:.35rem;max-width:100%}button,select,textarea{font:inherit;color:inherit}
+select,button{min-height:2.6rem;border:1px solid #919f93;border-radius:.35rem;background:white;padding:.25rem .6rem;cursor:pointer}
+select{max-width:100%;min-width:0}button:disabled{cursor:default;opacity:.5}button[aria-pressed=true]{background:#dcebdc;border-color:#335a42;box-shadow:inset 0 0 0 1px #335a42}
+button.primary{background:#295a43;color:white}.meta,small{color:#465c4d}.meta{font-size:.93rem}.original{background:#f0f5ee;border-left:3px solid #90a693;padding:.45rem .75rem}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.65rem;margin:.65rem 0}.answer{min-width:0;padding:.7rem .8rem;border:1px solid #d5ddd5;border-radius:.35rem}
+textarea{width:100%;margin-top:.45rem;min-height:2.75rem;border:1px solid #adb8ad;border-radius:.3rem;padding:.4rem .55rem;resize:vertical}
+summary{cursor:pointer}details pre{margin-top:.6rem}.scene-heading{margin-top:1.1rem}.unavailable{color:#734930}
+@media(max-width:620px){main{padding:.5rem .55rem 2rem}.pair{grid-template-columns:1fr}header,article,.scene-vote{padding:.8rem}.bar label{width:100%}.choices button{flex:1 1 28%}}
+</style></head><body><main>
+<header><h1>角色 · 新场景多轮盲审</h1>
+<p>沿着每段会话读下去，判断哪份回复更像角色在当时会说的话。甲乙接收相同的真人来话，各自接续自己的发言。同一场景和比较对象内，甲乙身份固定。</p>
+<p class="meta" id="summary"></p>
+<div class="bar"><label>比较对象 <select id="group"></select></label><label>场景 <select id="scene"></select></label>
+<button id="download" class="primary" type="button">导出审阅意见</button></div>
+<p id="progress" class="meta" aria-live="polite"></p><p id="warning" class="meta" hidden>当前浏览器无法保存进度。关闭页面前请导出意见。</p></header>
+<section aria-labelledby="scene-title"><h2 id="scene-title" class="scene-heading"></h2><div id="turns"></div><div id="whole"></div></section>
+<nav class="bar" aria-label="场景翻页"><button id="prev" type="button">上一场景</button><button id="next" type="button">下一场景</button></nav>
+</main><script type="application/json" id="data">@@SCENE_DATA@@</script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const data = JSON.parse($('data').textContent);
+const groupMenu = $('group'), sceneMenu = $('scene');
+Object.entries(data.groups).forEach(([id, label]) => groupMenu.add(new Option(label, id)));
+data.scenes.forEach((s, i) => sceneMenu.add(new Option((i + 1) + ' · ' + s.title, s.id)));
+const binding = {study_id:data.study_id, manifest_sha256:data.manifest_sha256,
+  result_set_hash:data.result_set_hash, blind_key_sha256:data.blind_key_sha256};
+const storageKey = 'pcar-fresh-scene-review-v1:' + JSON.stringify(binding);
+let votes = {};
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+  if (saved && typeof saved === 'object' && !Array.isArray(saved)) votes = saved;
+} catch { $('warning').hidden = false; }
+const choices = {left:'甲更好', right:'乙更好', same:'无明显差别', neither:'两份都不合适', uncertain:'无法判断'};
+function node(tag, text, cls) {
+  const element = document.createElement(tag);
+  if (text != null) element.textContent = text;
+  if (cls) element.className = cls;
+  return element;
+}
+function voteKey(group, scene, turn) {
+  return JSON.stringify([group, scene, turn]);
+}
+function progress() {
+  const scored = Object.values(votes).filter(v => v.choice && v.turn !== null);
+  $('progress').textContent = Object.entries(data.groups).map(([id, label]) =>
+    label + '组已评 ' + scored.filter(v => v.group === id).length + ' / ' + data.comparisons[id].different + ' 个差异轮'
+  ).join('　·　');
+}
+function opinion(scene, turn, title) {
+  const group = groupMenu.value, key = voteKey(group, scene.id, turn);
+  const section = node('div'), buttons = node('div', null, 'choices');
+  buttons.setAttribute('role','group'); buttons.setAttribute('aria-label', title);
+  function save(update) {
+    votes[key] = {group, scene_id:scene.id, turn, ...votes[key], ...update};
+    if (!votes[key].choice && !votes[key].note) delete votes[key];
+    try { localStorage.setItem(storageKey, JSON.stringify(votes)); } catch { $('warning').hidden = false; }
+    progress();
+  }
+  for (const [code, text] of Object.entries(choices)) {
+    const button = node('button', text);
+    button.type = 'button'; button.setAttribute('aria-pressed', String(votes[key]?.choice === code));
+    button.onclick = () => {
+      const picked = votes[key]?.choice === code ? null : code;
+      save({choice:picked});
+      Array.from(buttons.children).forEach(b => b.setAttribute('aria-pressed', String(picked !== null && b === button)));
+    };
+    buttons.append(button);
+  }
+  const note = node('textarea');
+  note.placeholder = '选填 · 影响判断的原句或原因'; note.setAttribute('aria-label', title + '备注');
+  note.value = votes[key]?.note ?? '';
+  note.oninput = () => save({note:note.value});
+  section.append(buttons, note);
+  return section;
+}
+function answer(side, index) {
+  const block = node('div', null, 'answer');
+  block.append(node('h4', index === 0 ? '甲' : '乙'));
+  if (side.text === null) {
+    block.append(node('p', '本轮未取得可呈现的正文（' + side.state + '）', 'unavailable'));
+  } else {
+    block.append(node('pre', side.text));
+  }
+  return block;
+}
+function render() {
+  const scene = data.scenes[sceneMenu.selectedIndex], group = groupMenu.value;
+  const totals = data.comparisons[group];
+  $('summary').textContent = data.scenes.length + ' 个场景，共 ' +
+    (totals.different + totals.identical + totals.incomplete) + ' 轮。本组正文不同 ' + totals.different +
+    ' 轮，逐字相同 ' + totals.identical + ' 轮，回执未齐 ' + totals.incomplete + ' 轮。';
+  $('scene-title').textContent = scene.title;
+  $('turns').replaceChildren();
+  scene.turns.forEach(turn => {
+    const pair = turn.pairs[group], card = node('article');
+    card.append(node('h3', '第 ' + turn.turn + ' 轮'), node('pre', turn.input, 'original'));
+    if (pair.status === 'identical') {
+      const same = node('details');
+      same.append(node('summary', '甲乙正文逐字相同 · 展开全文'), node('pre', pair.sides[0].text));
+      card.append(same);
+    } else {
+      const columns = node('div', null, 'pair');
+      pair.sides.forEach((side, i) => columns.append(answer(side, i)));
+      card.append(columns);
+      if (pair.status === 'different') card.append(opinion(scene, turn.turn, '第 ' + turn.turn + ' 轮'));
+    }
+    $('turns').append(card);
+  });
+  const whole = $('whole'); whole.replaceChildren();
+  if (scene.turns.some(t => t.pairs[group].status === 'different') &&
+      scene.turns.every(t => t.pairs[group].status !== 'incomplete')) {
+    const overall = node('details', null, 'scene-vote');
+    overall.append(node('summary','选填 · 整段会话的感受'), opinion(scene, null, '整段会话'));
+    whole.append(overall);
+  }
+  $('prev').disabled = sceneMenu.selectedIndex === 0;
+  $('next').disabled = sceneMenu.selectedIndex === data.scenes.length - 1;
+  progress();
+}
+groupMenu.onchange = render; sceneMenu.onchange = render;
+function move(delta) { sceneMenu.selectedIndex += delta; render(); window.scrollTo(0, 0); }
+$('prev').onclick = () => move(-1); $('next').onclick = () => move(1);
+$('download').onclick = () => {
+  const feedback = {version:'fresh-scene-feedback-v1', ...binding, exported_at:new Date().toISOString(),
+    votes:Object.values(votes)};
+  const url = URL.createObjectURL(new Blob([JSON.stringify(feedback, null, 2)], {type:'application/json'}));
+  const link = node('a'); link.href = url; link.download = 'E.L4-新场景多轮双组审阅意见.json';
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
+render();
+</script></body></html>

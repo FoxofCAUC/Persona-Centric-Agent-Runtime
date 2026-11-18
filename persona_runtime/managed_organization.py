@@ -148,7 +148,11 @@ class ManagedOrganization:
                 (payload['knowledge_processing']['root_turn_id'],)).fetchone()[0])
         if payload.get('knowledge_processing'):
             from .knowledge_general import processing_model
-            model=processing_model(model,payload['knowledge_processing'])
+            spec=payload['knowledge_processing']
+            if 'native_model_route' in spec:
+                from .knowledge_native_route import model_for_task
+                model=model_for_task(db,payload['persona_id'],spec)
+            model=processing_model(model,spec)
         if payload.get('proactive'):
             from .companion import choose,GENERATION_PROFILE
             model=self.engine.config.load()['model']|{'_companion_profile':choose('minimal_im'),'_generation_profile':GENERATION_PROFILE}
@@ -241,7 +245,11 @@ class ManagedOrganization:
             if payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
                 base=json.loads(db.execute('SELECT model_snapshot FROM turns WHERE id=?',
                     (payload['knowledge_processing']['root_turn_id'],)).fetchone()[0])
-            expected=processing_model(base,payload.get('knowledge_processing',{}))
+            spec=payload.get('knowledge_processing',{})
+            if 'native_model_route' in spec:
+                from .knowledge_native_route import model_for_task
+                base=model_for_task(db,task['persona_id'],spec)
+            expected=processing_model(base,spec)
             if model_contract(model)!=model_contract(expected):raise RuntimeErrorBase('organization_model_changed')
         elif p['provider']!=provider_identity(model) or p['provider']!=provider_identity(self.engine.model()):
             raise RuntimeErrorBase('organization_model_changed')
@@ -251,7 +259,14 @@ class ManagedOrganization:
                 raise RuntimeErrorBase('organization_scope_mismatch')
             if selected['channel']=='qq' and (selected['bot'],selected['peer'])!=(p['qq']['bot'],p['qq']['peer']):
                 raise RuntimeErrorBase('organization_scope_mismatch')
-            guard_cloud_dispatch(self.store,task['persona_id'],'knowledge_router' if routing else 'main' if main_source else 'organization',model)
+            spec=payload['knowledge_processing']
+            from .dialogue_generation import enabled as direct_enabled
+            direct_notice=spec.get('stage')=='conversation_search_notice' and direct_enabled(db,spec['root_turn_id'])
+            if not direct_notice:
+                from .knowledge_native_route import PERMISSION
+                kind=(PERMISSION if 'native_model_route' in spec else
+                      'knowledge_router' if routing else 'main' if main_source else 'organization')
+                guard_cloud_dispatch(self.store,task['persona_id'],kind,model,db=db)
             if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
             self.engine.processing.check(db,task,contract,payload)
             return
@@ -407,12 +422,13 @@ class ManagedOrganization:
         try:require_writable_storage(self.store.paths)
         except RuntimeErrorBase:return False
         self.recover()
-        task=None;aid=None;generation=None;received=None
+        task=None;aid=None;generation=None;received=None;direct_notice=None
         with self.store.connection(write=True) as db:
             foreground = bool(db.execute("SELECT 1 FROM turns WHERE status IN ('queued','running') LIMIT 1").fetchone()
                 or db.execute("SELECT 1 FROM input_batches WHERE state IN ('collecting','sealed_waiting_capacity') LIMIT 1").fetchone())
             from .knowledge_wait import required_tasks
             required = required_tasks(db) if foreground else set()
+            if e.foreground_only and not required:return False
             if foreground and (not required or db.execute("SELECT 1 FROM turns WHERE status='running' LIMIT 1").fetchone()):return False
             slot=db.execute("SELECT * FROM organization_execution WHERE id='singleton'").fetchone()
             if slot['task_id']:return False
@@ -472,7 +488,11 @@ class ManagedOrganization:
                 db.execute('SAVEPOINT organization_manifest')
                 db.execute("INSERT INTO organization_attempts VALUES(?,?,?,'running',NULL,NULL,?)",(aid,task['id'],self.clock(),task['model_snapshot']))
                 try:
-                    if notice_context:e.chat.cognitive.persist(db,notice_context['manifest'],task=task,attempt_id=aid)
+                    if notice_context:
+                        e.chat.cognitive.persist(db,notice_context['manifest'],task=task,attempt_id=aid)
+                        if 'direct_details' in notice_context:
+                            direct_notice=e.chat.direct.register(db,notice_context['turn'],'search_notice',model,
+                                messages,notice_context['direct_details'],aid,task['id'])
                     else:e.chat.cognitive.reflection(db,task,payload,messages,aid)
                 except Exception as error:
                     db.execute('ROLLBACK TO organization_manifest');db.execute('RELEASE organization_manifest')
@@ -508,7 +528,10 @@ class ManagedOrganization:
                 elif payload.get('knowledge_processing',{}).get('stage') in ('conversation_search','conversation_fetch'):
                     value=await e.processing.tools.execute(model,payload)
                 elif payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
-                    value=await _one(e.chat.client,model,messages,'provider_timeout',paths=self.store.paths)
+                    if direct_notice:
+                        value=await e.chat.direct.notice_result(direct_notice,model)
+                    else:
+                        value=await _one(e.chat.client,model,messages,'provider_timeout',paths=self.store.paths)
                 elif payload.get('knowledge_processing',{}).get('stage')=='conversation_native':
                     from .chat import ChatCompletionsClient
                     client=e.client
@@ -535,7 +558,10 @@ class ManagedOrganization:
                     if self.owns(db,task['id'],generation):
                         c=self.contract(db,task['id']);c['data']['phase']='received';self.save(db,c)
             if payload.get('knowledge_processing',{}).get('stage')=='conversation_search_notice':
-                await e.chat.expression.outlet.organization_received(task['id'],aid,e.config.load()['model'])
+                root_id=payload['knowledge_processing']['root_turn_id']
+                with self.store.connection() as db:direct=e.chat.direct.generation.enabled(db,root_id)
+                if direct:await e.chat.direct.present_notice(root_id)
+                else:await e.chat.expression.outlet.organization_received(task['id'],aid,e.config.load()['model'])
             # 原始回执和人物呈现均在事务外完成，提交时再核对任务租约。
             with self.store.connection(write=True) as db:
                 if not self.owns(db,task['id'],generation):raise RuntimeErrorBase('organization_lease_lost')

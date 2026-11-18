@@ -16,15 +16,30 @@ def pause(db):
             'expression_unreceived_preserved_unknown': unknown}
     if 'expression_runtime_policies' in tables:result.update(pause_runtime(db))
     if 'expression_speech_units' in tables:result.update(pause_speech(db))
+    if 'knowledge_control' in tables:
+        from .scene_policy import pause as pause_scene
+        result['scene_policies_paused']=pause_scene(db)
+    if 'dialogue_generation_policies' in tables:
+        from .schema_dialogue import pause as pause_dialogue
+        result.update(pause_dialogue(db))
     return result
 
 
-def pause_speech(db):
+def pause_speech(db, *, scene_persona=None):
     from .models import timestamp
     from .expression_utterance_publication import project_notice
-    db.execute("UPDATE expression_speech_runs SET state='cancelled',error_code='migration_requires_review' WHERE state='prepared'")
-    db.execute("UPDATE expression_speech_runs SET state='unknown',error_code='migration_requires_review' WHERE state='dispatched' AND raw_response IS NULL")
-    for pub in db.execute("SELECT * FROM expression_speech_publications WHERE state NOT IN ('closed','complete')").fetchall():
+    sql = """SELECT p.* FROM expression_speech_publications p JOIN expression_speech_units u
+             ON u.id=p.utterance_id WHERE p.state NOT IN ('closed','complete')"""
+    args = ()
+    reason = 'migration_requires_review'
+    if scene_persona is None:
+        db.execute("UPDATE expression_speech_runs SET state='cancelled',error_code='migration_requires_review' WHERE state='prepared'")
+        db.execute("UPDATE expression_speech_runs SET state='unknown',error_code='migration_requires_review' WHERE state='dispatched' AND raw_response IS NULL")
+    else:
+        sql += " AND u.source_kind='scene_reply' AND u.persona_id=?"
+        args = (scene_persona,)
+        reason = 'scene_route_disabled'
+    for pub in db.execute(sql,args).fetchall():
         unit=db.execute('SELECT * FROM expression_speech_units WHERE id=?',(pub['utterance_id'],)).fetchone()
         visible=[]
         for i,row in enumerate(db.execute('SELECT ordinal,text FROM expression_speech_visible WHERE publication_id=? ORDER BY ordinal',(pub['id'],))):
@@ -33,11 +48,15 @@ def pause_speech(db):
         if visible and pub['canonical_event_id'] is None:
             event=project_notice(db,dict(unit),''.join(visible),False)
             db.execute('UPDATE expression_speech_publications SET canonical_event_id=? WHERE id=?',(event,pub['id']))
-    # 未完成单元留证并暂停，未知片段不被提为可见。
-    db.execute("UPDATE expression_speech_items SET state='cancelled' WHERE state='pending'")
-    db.execute("UPDATE expression_speech_items SET state='unknown' WHERE state='offered'")
-    db.execute("UPDATE expression_speech_publications SET state='closed',reason='migration_requires_review' WHERE state NOT IN ('closed','complete')")
-    db.execute('UPDATE expression_speech_units SET closed_at=? WHERE closed_at IS NULL',(timestamp(),))
+        db.execute("UPDATE expression_speech_items SET state='cancelled' WHERE publication_id=? AND state='pending'",(pub['id'],))
+        db.execute("UPDATE expression_speech_items SET state='unknown' WHERE publication_id=? AND state='offered'",(pub['id'],))
+        db.execute("UPDATE expression_speech_publications SET state='closed',reason=? WHERE id=?",(reason,pub['id']))
+        if unit['source_kind']=='scene_reply' and not visible and not pub['canonical_event_id']:
+            db.execute("UPDATE turns SET status='interrupted',error_code=? WHERE id=? AND status IN ('queued','running')",
+                       (reason,unit['turn_id']))
+        db.execute('UPDATE expression_speech_units SET closed_at=coalesce(closed_at,?) WHERE id=?',(timestamp(),unit['id']))
+    if scene_persona is None:
+        db.execute('UPDATE expression_speech_units SET closed_at=? WHERE closed_at IS NULL',(timestamp(),))
     return {'character_outlet_paused':True,'speech_unknown_receipts_preserved':True}
 
 
