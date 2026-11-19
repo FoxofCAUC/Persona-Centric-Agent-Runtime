@@ -110,6 +110,9 @@ class WorkbenchSubmissions:
                 else:
                     state = "blocked"
             except (TransportUnknown, LocalAPIError, RuntimeErrorBase) as error:
+                if str(error) in ("manual_buffer_full","manual_buffer_scope_changed","input_buffer_policy_changed"):
+                    self.journal.forget(rid)
+                    return {"id":rid, "state":"rejected", "reason":str(error)}
                 transient = isinstance(error, TransportUnknown) or str(error) in ("queue_full","buffer_full","service_draining","local_repair_active")
                 state = "unconfirmed" if transient and row.get("state") != "blocked" else "blocked"
             if not result:
@@ -123,6 +126,7 @@ class WorkbenchSubmissions:
         if result and result.get("status")=="sealed_waiting_capacity":
             state = "waiting_capacity"
         return {"id":rid, "state":state, "text":payload["text"], "draft_revision":row.get("draft_revision"),
+                "awaiting_confirmation":(result or {}).get("status")=="awaiting_confirmation",
                 "turn_id":(result or {}).get("turn_id"), "event_id":(result or {}).get("event_id"),
                 "batch_id":(result or {}).get("batch_id")}
 

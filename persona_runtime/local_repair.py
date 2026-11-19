@@ -20,7 +20,7 @@ READ_OR_RECEIPT={
     'desktop.timeline.snapshot','desktop.retrieval.notes','desktop.browser.show','desktop.submission.status','chat.snapshot','persona.list','persona.show',
     'chat.notice.presented','chat.notice.release','chat.notice.unknown','expression.presentation.ack',
     'expression.presentation.pending_receipts','expression.v2.ack','expression.v2.pending_receipts','quota.current','quota.settings.current',
-    'persona.import.status','persona.import.history','persona.import.history_status','delivery.pending',
+    'persona.import.status','persona.import.history','persona.import.history_status','delivery.pending','interaction.current',
 }
 
 

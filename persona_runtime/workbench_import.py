@@ -130,13 +130,26 @@ class WorkbenchData:
     def live_page(self,pid,sid,version=None,before=None,after=None,anchor=None):
         return self._client.manage("desktop.timeline.snapshot",pid=pid,sid=sid,version=version,before=before,after=after,anchor=anchor)
 
+    def live_set_buffer(self,pid,mode,quiet_ms,manual,expected_version,operation_id):
+        self._require_open()
+        selected=self._client.manage("persona.show")["id"]
+        return self._client.manage("interaction.update",persona_id=pid,channel="desktop",mode=mode,
+            buffer_quiet_ms=quiet_ms,manual_confirmation=manual,expected_version=expected_version,
+            operation_id=operation_id,expected_selected=selected)
+
+    def live_batch_action(self,pid,sid,bid,revision,operation_id,action):
+        self._require_open()
+        require(action in ("confirm","cancel"),"invalid_batch_action")
+        return self._client.call("POST",f"/v2/batches/{bid}/{action}",
+            {"persona_id":pid,"session_id":sid,"expected_revision":revision,"operation_id":operation_id})
+
     def live_retrieved_notes(self,pid,sid,tid):
         return self._client.manage("desktop.retrieval.notes",pid=pid,sid=sid,tid=tid)
 
     def live_location(self,pid=None,sid=None,position=None):
         return self._submissions.location(pid,sid,position)
 
-    def live_submit(self,pid,sid,text,request_id,reference=None,draft_revision=None,public_search=False):
+    def live_submit(self,pid,sid,text,request_id,reference=None,draft_revision=None,public_search=False,input_policy=None):
         self._require_open()
         if public_search is not False:
             from .knowledge_native import public_task
@@ -149,6 +162,8 @@ class WorkbenchData:
             self._submissions.first_session(pid,sid)
         payload = {"persona_id":pid, "session_id":sid, "channel":"desktop", "text":text,
                    "request_id":request_id, "desktop_presentation":CONTRACT}
+        if input_policy is not None:
+            payload["expected_input_policy"]=input_policy["version"]
         if reference is not None:
             payload["reference"] = reference
         if public_search is not False:payload['public_task']=public

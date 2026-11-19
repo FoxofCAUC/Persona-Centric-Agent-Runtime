@@ -103,6 +103,10 @@
     button.bubble { border: 0; font: inherit; color: inherit; text-align: start; cursor: pointer; }
     .history-reference { display: flex; align-items: center; gap: .7rem; color: var(--muted); margin-bottom: 6px; }
     .history-reference span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .input-buffer { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; width: min(100%, 730px); margin: 0 auto 5px; color: var(--muted); font-size: 13px; }
+    .input-buffer span { flex: 1 0 auto; }
+    .input-buffer .button { min-height: 33px; padding: 4px 9px; }
+    .bubble[data-awaiting-confirmation] { outline: 1px dashed var(--line-strong); outline-offset: -1px; }
     .history-actions { justify-self: start; }
     .sample-bubble { width: min(78%, var(--sample-width, 295px)); display: grid; gap: 7px; padding: 16px 17px; }
     .sample-bubble span { height: 4px; display: block; border-radius: 4px; background: #779789; opacity: .6; }
@@ -228,6 +232,12 @@
           <div class="composer-wrap">
             <div id="chat-status" class="history-reference" role="status" hidden><span></span><button type="button" class="button ghost" hidden>更新模型连接</button></div>
             <div id="history-reference" class="history-reference" hidden><span></span><button type="button" class="button ghost">取消引用</button></div>
+            <div id="input-buffer" class="input-buffer" hidden>
+              <button type="button" class="button ghost" id="input-buffer-settings">输入缓冲</button>
+              <span id="input-buffer-status" role="status"></span>
+              <button type="button" class="button ghost" id="input-buffer-cancel" hidden>取消本轮</button>
+              <button type="button" class="button primary" id="input-buffer-confirm" hidden>确认发送本轮</button>
+            </div>
             <form class="composer off" id="composer" autocomplete="off">
               <textarea id="message" rows="1" aria-label="输入消息" placeholder="准备完成后即可输入消息" maxlength="1500" disabled></textarea>
               <button class="button primary" id="send" disabled>发送</button>
@@ -468,11 +478,16 @@
     }
 
     function updateSendButton() {
-      byId("send").disabled = !ready() || currentSession()?.readOnly || !state.connected || window.pcarLive?.offline ||
-        window.pcarLive?.selecting || window.pcarLive?.pendingDraft || !message.value.trim();
+      const session=currentSession(), send=byId("send");
+      const manual=Boolean(window.pcarLive?.active && session?.inputBuffer?.manual);
+      send.textContent=manual?"加入本轮":"发送";
+      send.disabled = !ready() || session?.readOnly || !state.connected || window.pcarLive?.offline ||
+        window.pcarLive?.selecting || window.pcarLive?.pendingDraft || session?.sending || session?.bufferWorking || !message.value.trim();
       const lookup=byId("public-search-send");
-      lookup.hidden=!(window.pcarLive?.active && currentSession()?.publicSearchAvailable);
-      lookup.disabled=lookup.hidden||byId("send").disabled;
+      lookup.hidden=!(window.pcarLive?.active && session?.publicSearchAvailable);
+      lookup.title=manual?"将公开查找加入本轮，确认发送后才会查找":"发送消息并查找选中的公开问题；未选中时使用整条输入";
+      lookup.disabled=lookup.hidden||send.disabled;
+      window.pcarLive?.renderInputBuffer?.();
     }
 
     function render({ scrollToEnd = false } = {}) {

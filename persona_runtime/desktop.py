@@ -1026,7 +1026,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             if batch['id'] in linked_batches:continue
             if batch['session_id']!=self.session_id or batch['persona_id']!=self.persona_id:continue
             for member in batch['members']:self.transcript.insert('end','你：'+member['text']+'\n')
-            self.transcript.insert('end','['+BATCH_LABELS.get(batch['status'],batch['status'])+f" · {batch['remaining_ms']/1000:.1f} 秒]\n\n")
+            remaining=f" · {batch['remaining_ms']/1000:.1f} 秒" if batch['state']=='collecting' else ""
+            self.transcript.insert('end','['+BATCH_LABELS.get(batch['status'],batch['status'])+remaining+"]\n\n")
         self.transcript.configure(state="disabled")
         if at_bottom:
             self.transcript.see("end")

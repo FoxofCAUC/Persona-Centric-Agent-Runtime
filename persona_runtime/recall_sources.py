@@ -82,6 +82,8 @@ def material(db,kind,ref,*,now):
             if projection['status']!='found':return None
             if event['role']=='persona' and turn['channel']=='qq':return None  # semantic output is not a sent receipt
         else:
+            from .ingress import unconfirmed_event
+            if unconfirmed_event(db,event['id']):return None
             if event['id'].startswith('imported.'):
                 return None
             if db.execute('SELECT 1 FROM source_exclusions WHERE event_id=?',(event['id'],)).fetchone():return None

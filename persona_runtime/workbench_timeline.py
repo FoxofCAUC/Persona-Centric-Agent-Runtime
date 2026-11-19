@@ -34,7 +34,26 @@ def selection(store, persona_id):
         sessions = [dict(row) for row in rows]
         head = db.execute("""SELECT session_id FROM session_heads WHERE persona_id=? AND user_id=?
                              AND channel='desktop' AND bot='' AND peer=''""",(persona_id,LOCAL_USER_ID)).fetchone()
-        return {"person":person,"sessions":sessions,"active":head[0] if head else None}
+        return {"person":person,"sessions":sessions,"active":head[0] if head else None,
+                "input_buffer":input_buffer(db,persona_id)}
+
+
+def input_buffer(db, pid, sid=None):
+    from .ingress import PARAMS, buffer_policy, manual_pending
+    policy=db.execute("""SELECT p.id,p.mode,p.data_json FROM interaction_heads h
+        JOIN interaction_policies p ON p.id=h.version_id
+        WHERE h.persona_id=? AND h.user_id=? AND h.channel='desktop'""",(pid,LOCAL_USER_ID)).fetchone()
+    buffer=buffer_policy(dict(policy)) if policy else PARAMS
+    mode=policy["mode"] if policy else "legacy_per_message"
+    held=manual_pending(db,pid,sid) if sid else None
+    batch=None
+    if held:
+        members=[dict(r) for r in db.execute("""SELECT r.request_id,e.text FROM input_batch_members m
+            JOIN ingress_receipts r ON r.id=m.receipt_id JOIN events e ON e.id=m.event_id
+            WHERE m.batch_id=? ORDER BY m.member_order""",(held["id"],))]
+        batch={"id":held["id"],"revision":held["revision"],"members":members}
+    return {"version":policy["id"] if policy else None,"mode":mode,"quiet_ms":buffer["quiet_ms"],
+            "manual":mode=="natural_batch" and buffer.get("manual_confirmation",False),"batch":batch}
 
 
 def require_session(db,pid,sid):
@@ -51,6 +70,9 @@ def visible_reference(db,pid,sid,event_id):
                       AND NOT EXISTS(SELECT 1 FROM source_exclusions WHERE event_id=e.id)""",
                    (event_id,sid,pid,LOCAL_USER_ID)).fetchone()
     if not row or row["role"]=="note":
+        return None
+    from .ingress import unconfirmed_event
+    if unconfirmed_event(db,event_id):
         return None
     if event_id.startswith("imported."):
         from .import_history import history_allowed
@@ -180,7 +202,7 @@ def page(store,pid,sid,version=None,before=None,after=None,anchor=None):
                   "latest":latest_status(store,db,pid,sid),
                   "presentable":store.current(db,required=False)==pid,
                   "session_revision":lifecycle["revision"] if lifecycle else 0,
-                  "sealed":bool(lifecycle and lifecycle["state"]=="sealed")}
+                   "sealed":bool(lifecycle and lifecycle["state"]=="sealed"),"input_buffer":input_buffer(db,pid,sid)}
         from .knowledge_service import POLICY,read as knowledge_read
         reader=knowledge_read(db,'policy.'+pid,POLICY)['data']
         response['public_search_available']=bool(reader['enabled'] and 'desktop' in reader['channels']

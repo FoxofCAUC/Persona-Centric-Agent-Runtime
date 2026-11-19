@@ -149,7 +149,11 @@ class DeliveryService:
         if not latest:
             last_seq = conn.execute("SELECT max(e.seq) FROM events e WHERE e.id=? OR e.id IN (SELECT event_id FROM input_batch_members WHERE batch_id=?)",
                                     (turn['user_event_id'],turn.get('input_batch_id'))).fetchone()[0]
-            row = conn.execute("SELECT e.id FROM events e JOIN raw_events r ON r.event_id=e.id WHERE e.session_id=? AND e.persona_id=? AND e.user_id=? AND e.seq>? AND r.channel=? AND r.bot=? AND r.peer=? ORDER BY e.seq DESC LIMIT 1",
+            row = conn.execute("""SELECT e.id FROM events e JOIN raw_events r ON r.event_id=e.id
+                               WHERE e.session_id=? AND e.persona_id=? AND e.user_id=? AND e.seq>? AND r.channel=? AND r.bot=? AND r.peer=?
+                               AND NOT EXISTS(SELECT 1 FROM input_batch_members m JOIN input_batches b ON b.id=m.batch_id
+                                   WHERE m.event_id=e.id AND b.sealed_at IS NULL AND json_extract(b.policy_json,'$.manual_confirmation')=1)
+                               ORDER BY e.seq DESC LIMIT 1""",
                                (turn['session_id'],turn['persona_id'],LOCAL_USER_ID,last_seq,turn['channel'],origin.get('bot',''),origin.get('sender',''))).fetchone()
             latest = row[0] if row else None
         if latest:

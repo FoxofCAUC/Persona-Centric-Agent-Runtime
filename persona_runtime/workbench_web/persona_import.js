@@ -11,6 +11,15 @@ window.pcarLive = (() => {
     "请选择本地发布版提示词 JSON 文件。","请选择有效的发布版提示词文件。","无法读取提示词文件。",
     "发布版提示词文件无法读取。","发布版提取或成卡模板的指纹不符。"
   ]);
+  const bufferErrors={
+    manual_buffer_full:"本轮缓冲已满，草稿已保留。确认发送或取消本轮后可继续。",
+    manual_buffer_pending:"请先确认发送或取消当前缓冲的消息。",
+    manual_buffer_scope_changed:"会话或模型连接已更新，草稿已保留。恢复原连接或取消本轮后可继续。",
+    manual_confirmation_required:"请点击「确认发送本轮」。",
+    input_buffer_policy_changed:"输入缓冲方式已更新，草稿已保留。请核对后再发送。",
+    pending_batch_resolution_required:"定时缓冲仍有消息，请等本轮发出后再更改模式。",
+    session_has_pending_work:"当前对话还有未处理的消息，请处理后再新建对话。"
+  };
   const run = fn => (...args) => Promise.resolve().then(() => fn(...args)).catch(e => {
     const detail=String(e.message||e);
     const known={session_sealed:"这段对话已封存，可新建对话继续。",session_not_current:"这段对话已归档，可返回当前会话继续。",
@@ -20,7 +29,7 @@ window.pcarLive = (() => {
       backup_not_available:"没有可通过校验的备份。",backup_invalid:"所选备份未通过校验，请选择另一份。",
       backup_index_unverified:"备份登记无法核验，请保留原文件。",
       retrieved_notes_unavailable:"本轮资料或来源权限已变化，暂时无法打开。"};
-    notify(known[detail]||(e instanceof FormError||hostMessages.has(detail)?detail:"操作暂未完成，请稍后重试。"));
+    notify(bufferErrors[detail]||known[detail]||(e instanceof FormError||hostMessages.has(detail)?detail:"操作暂未完成，请稍后重试。"));
   });
   const action = (name, args={}) => api().import_action(name,args);
   const titles = {introduction:"人物介绍", core_traits:"核心特征", expression_style:"表达习惯",
@@ -1244,6 +1253,7 @@ window.pcarLive = (() => {
     person.activeSession=chosen.id;state.current=person.id;
     const target=currentSession();
     if(target){
+      target.inputBuffer=result.input_buffer;
       target.loading=true;
       await Promise.all([draftWrites,locationWrites]);
       if(id!==epoch||stopped)return;
@@ -1278,6 +1288,7 @@ window.pcarLive = (() => {
       const result=await api().live_page(p.id,s.id,null,back?s.older:null,back?null:s.newer);
       if(token!==epoch||s!==currentSession())return;
       s.turns=result.turns;s.older=result.older;s.newer=result.newer;s.version=result.version;s.latest=result.latest;
+      s.inputBuffer=result.input_buffer;
       render();
       const natives=timeline.querySelectorAll('[data-kind="native"]');
       const edge=back?natives[natives.length-1]:natives[0];
@@ -1330,10 +1341,15 @@ window.pcarLive = (() => {
       if(id!==epoch||s!==currentSession())return;
       const scopeChanged=s.readOnly!==Boolean(result.sealed||s.id!==p.writableSession);
       s.readOnly=Boolean(result.sealed||s.id!==p.writableSession);
+      const bufferChanged=JSON.stringify(s.inputBuffer)!==JSON.stringify(result.input_buffer);
+      s.inputBuffer=result.input_buffer;
       if(result.reset){s.turns=result.turns;s.older=result.older;s.newer=result.newer;}
       else if(result.turns)appendTurns(s,result.turns);
       const known=new Set(s.turns.map(t=>t.id));
-      const outbox=submissions.filter(item=>!known.has(item.turn_id));
+      const held=new Set(s.inputBuffer?.batch?.members.map(item=>item.request_id)||[]);
+      const outbox=submissions.filter(item=>item.state!=="rejected"&&!known.has(item.turn_id)&&!held.has(item.id));
+      const rejected=submissions.find(item=>item.state==="rejected");
+      if(rejected)notify(bufferErrors[rejected.reason]);
       const changed=JSON.stringify(outbox)!==JSON.stringify(s.outbox||[]);
       s.outbox=outbox;
       const settled=submissions.filter(item=>(known.has(item.turn_id)||item.state==="stopped")&&!item.legacy).map(item=>item.id);
@@ -1347,10 +1363,10 @@ window.pcarLive = (() => {
       if(result.turns!==null){
         const atEnd=!s.restore && !s.newer && timeline.scrollHeight-timeline.scrollTop-timeline.clientHeight<24;
         const position=capture();
-        if(!result.reset && !rightsChanged && !scopeChanged && !changed && !accepted && updateTurnNodes(s,result.turns)){
+        if(!result.reset && !rightsChanged && !scopeChanged && !changed && !accepted && !bufferChanged && updateTurnNodes(s,result.turns)){
           if(atEnd)timeline.scrollTop=timeline.scrollHeight;else restoreReading(position);
         }else render({scrollToEnd:atEnd});
-      }else if(changed || accepted || rightsChanged || scopeChanged) render();
+      }else if(changed || accepted || rightsChanged || scopeChanged || bufferChanged) render();
       s.version=result.version;
       s.publicSearchAvailable=result.public_search_available;
       updateSendButton();
@@ -1631,27 +1647,115 @@ window.pcarLive = (() => {
       const node=turnNode(t);renderedTurns.set(t.id,node);thread.append(node);
     }
     if(s.newer)button(thread,"查看较新的对话",()=>nativePage(s,false));
+    const held=s.inputBuffer?.batch?.members||[];
+    const heldIds=new Set(held.map(item=>item.request_id));
+    for(const item of held)makeBubble(thread,"user",item.text).dataset.awaitingConfirmation="";
     for(const item of s.outbox||[]){
+      if(heldIds.has(item.id))continue;
       const own=makeBubble(thread,"user",item.text);
       own.dataset.submissionState=item.state;
       const labels={accepted:"已受理，正在等待回复",waiting_capacity:"已受理，正在等待空闲位置。",blocked:"本条消息待核对，可以继续聊天。",
         stopped:"已保留原消息，本轮已停止。",unconfirmed:"正在核对发送结果"};
-      el("small",labels[item.state],thread);
+      if(item.awaiting_confirmation)own.dataset.awaitingConfirmation="";
+      else el("small",labels[item.state],thread);
     }
     if(!thread.childElementCount)el("p","可以发送第一条消息。",thread);
   }
+  const bufferPanel=byId("input-buffer"),bufferStatus=byId("input-buffer-status");
+  const bufferSettings=byId("input-buffer-settings"),bufferConfirm=byId("input-buffer-confirm"),bufferCancel=byId("input-buffer-cancel");
+  const bufferModes={legacy_per_message:"逐条发送",natural_batch:"定时缓冲",manual:"无限缓冲"};
+  const modeOf=settings=>settings.manual?"manual":settings.mode;
+  function renderInputBuffer(){
+    const s=currentSession(), settings=s?.inputBuffer, batch=settings?.batch;
+    bufferPanel.hidden=!active||!ready()||!settings||s.readOnly;
+    if(bufferPanel.hidden)return;
+    const mode=modeOf(settings),count=batch?.members.length||0;
+    const label=count?count+" 条待确认":mode==="natural_batch"?`定时缓冲 · ${settings.quiet_ms/1000} 秒`:bufferModes[mode];
+    if(bufferStatus.textContent!==label)bufferStatus.textContent=label;
+    bufferConfirm.hidden=bufferCancel.hidden=!batch;
+    const busy=stopped||linkState!=="online"||selectionToken!==null||s.sending||s.bufferWorking;
+    const unchecked=s.outbox?.some(item=>item.state==="unconfirmed"||item.awaiting_confirmation);
+    bufferSettings.disabled=busy||unchecked;
+    bufferConfirm.disabled=busy||unchecked||!state.connected;
+    bufferCancel.disabled=busy||unchecked;
+  }
+  async function editInputBuffer(){
+    const person=currentPerson(),s=currentSession(),settings=s?.inputBuffer;
+    if(!settings||bufferSettings.disabled)return;
+    const box=panel("输入缓冲");
+    const modeField=el("label","发送方式",box);modeField.className="field";
+    const mode=el("select",null,modeField);
+    for(const [value,label] of Object.entries(bufferModes))mode.add(new Option(label,value));
+    mode.value=modeOf(settings);
+    const duration=el("label","等待秒数",box);duration.className="field";
+    const seconds=el("input",null,duration);
+    seconds.type="number";seconds.min="1";seconds.max="3600";seconds.step="1";seconds.value=settings.quiet_ms/1000;
+    const help=el("p",null,box);
+    const explain=()=>{
+      duration.hidden=mode.value!=="natural_batch";
+      help.textContent={
+        legacy_per_message:"每次发送都会提交一条消息。",
+        natural_batch:"从最后一条消息起计时，时间到了自动一起发送。",
+        manual:"点击「加入本轮」暂存消息。点击「确认发送本轮」后，才会一起发送。"
+      }[mode.value];
+    };
+    mode.onchange=explain;explain();
+    if(settings.batch)el("p","请先确认发送或取消当前缓冲的消息，再更改方式。",box);
+    const opByChoice=new Map();
+    const save=button(box,"保存",async()=>{
+      if(s!==currentSession())return;
+      if(mode.value==="natural_batch" && (!seconds.value||!seconds.validity.valid))
+        throw new FormError("请输入 1 到 3600 之间的整数秒数。");
+      const manual=mode.value==="manual";
+      const selected=manual?"natural_batch":mode.value;
+      const quiet=mode.value==="natural_batch"?Number(seconds.value)*1000:settings.quiet_ms;
+      const key=JSON.stringify([selected,quiet,manual]);
+      if(!opByChoice.has(key))opByChoice.set(key,newId());
+      s.bufferWorking=true;updateSendButton();
+      try{
+        const policy=await api().live_set_buffer(person.id,selected,quiet,manual,settings.version,opByChoice.get(key));
+        s.inputBuffer={version:policy.id,mode:policy.mode,quiet_ms:policy.buffer_policy.quiet_ms,
+          manual:policy.mode==="natural_batch"&&Boolean(policy.buffer_policy.manual_confirmation),batch:null};
+        dialog.close();
+      }finally{s.bufferWorking=false;updateSendButton();arm(0);}
+    });
+    save.classList.add("primary");save.disabled=Boolean(settings.batch);
+  }
+  async function finishBuffer(action){
+    const person=currentPerson(),s=currentSession(),batch=s?.inputBuffer?.batch;
+    const control=action==="confirm"?bufferConfirm:bufferCancel;
+    if(!batch||control.disabled)return;
+    if(action==="cancel"&&!confirm("取消本轮？暂存的消息将从聊天窗口移除。"))return;
+    const key=JSON.stringify([batch.id,batch.revision,action]);
+    if(s.bufferIntent?.key!==key)s.bufferIntent={key,id:newId()};
+    s.bufferWorking=true;updateSendButton();
+    try{
+      const result=await api().live_batch_action(person.id,s.id,batch.id,batch.revision,s.bufferIntent.id,action);
+      s.inputBuffer={...s.inputBuffer,batch:null};
+      s.outbox=(s.outbox||[]).filter(item=>!item.awaiting_confirmation);
+      if(action==="confirm"&&!s.turns.some(turn=>turn.id===result.turn_id)){
+        const status=result.status==="sealed_waiting_capacity"?"waiting_capacity":"accepted";
+        s.outbox.push(...batch.members.map(item=>({id:item.request_id,text:item.text,state:status,turn_id:result.turn_id})));
+      }
+      if(s===currentSession())render();
+    }finally{s.bufferWorking=false;updateSendButton();arm(0);}
+  }
+  bufferSettings.onclick=run(editInputBuffer);
+  bufferConfirm.onclick=run(()=>finishBuffer("confirm"));
+  bufferCancel.onclick=run(()=>finishBuffer("cancel"));
   byId("public-search-send").addEventListener("click",()=>run(()=>send(true))());
   async function send(publicSearch=false){
     const p=currentPerson(),s=currentSession(),value=message.value;
-    if(stopped||!p||!s||s.readOnly||!value.trim()||s.sending||selectionToken!==null||pendingDraft(s)||linkState!=="online")return;
+    if(stopped||!p||!s||s.readOnly||!value.trim()||s.sending||s.bufferWorking||selectionToken!==null||pendingDraft(s)||linkState!=="online")return;
     if(!state.connected){connection();return;}
-    s.sending=true;
+    s.sending=true;updateSendButton();
     const ref=s.reference?.id || null;
     const request=newId(), revision=s.draftRevision ||= newId();
     try{
-      const args=[p.id,s.id,value,request,ref?{kind:"event",id:ref}:null,revision];
-      if(publicSearch)args.push(message.value.slice(message.selectionStart,message.selectionEnd).trim()||value);
-      const accepted=await api().live_submit(...args);
+      const question=publicSearch?(message.value.slice(message.selectionStart,message.selectionEnd).trim()||value):false;
+      const policy=s.inputBuffer?{version:s.inputBuffer.version}:null;
+      const accepted=await api().live_submit(p.id,s.id,value,request,ref?{kind:"event",id:ref}:null,revision,question,policy);
+      if(accepted.state==="rejected")throw new FormError(bufferErrors[accepted.reason]);
       if(!s.outbox?.some(item=>item.id===accepted.id))s.outbox=[...(s.outbox||[]),accepted];
       let clearing=null;
       if(acceptedSubmission(accepted) && s.draftRevision===revision && (s.reference?.id||null)===ref){
@@ -1665,7 +1769,7 @@ window.pcarLive = (() => {
         await reload(p.id,false,accepted.session_id);
         return;
       }
-    }finally{s.sending=false;}
+    }finally{s.sending=false;updateSendButton();arm(0);}
   }
   async function feedback(pid,tid){
     const samples=await action("feedback",{persona_id:pid,turn_id:tid});
@@ -1995,6 +2099,6 @@ window.pcarLive = (() => {
   if(window.pywebview?.api)run(connect)();
   return {get active(){return active;},get offline(){return linkState!=="online";},get composing(){return composing;},
     get selecting(){return selectionToken!==null;},get pendingDraft(){return Boolean(pendingDraft(currentSession()));},
-    home:run(home),select:run(select),draw,capture,restore:restoreReading,reviseDraft,send:run(send),profile:run(profile),importHistory:run(importHistory),
+    home:run(home),select:run(select),draw,capture,restore:restoreReading,reviseDraft,renderInputBuffer,send:run(send),profile:run(profile),importHistory:run(importHistory),
     diagnostics,connection,stop,resume,wake,repairStatus,exitStatus};
 })();

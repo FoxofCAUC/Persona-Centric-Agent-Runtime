@@ -280,13 +280,18 @@ class ExpressionLearning:
             if not limits['learning_enabled']:return None
             sessions = list(limits['learning_sessions'])
         from .archive import scope as make_scope, find_turn
+        from .ingress import manual_pending
         selected = make_scope(persona_id, 'desktop')
         for sid in sessions:
             with self.store.connection() as db:
                 cursor = db.execute('SELECT last_seq FROM expression_learning_scan WHERE persona_id=? AND session_id=?', (persona_id, sid)).fetchone()
                 after = cursor[0] if cursor else 0
-                events = [dict(r) for r in db.execute('SELECT * FROM events WHERE persona_id=? AND session_id=? AND role=\'user\' AND seq>? ORDER BY seq LIMIT ?',
-                                                     (persona_id, sid, after, limits['learning_max_sources']))]
+                held = manual_pending(db, persona_id, sid)
+                events = [dict(r) for r in db.execute("""SELECT * FROM events WHERE persona_id=? AND session_id=?
+                    AND role='user' AND seq>? AND seq<coalesce(
+                        (SELECT min(e.seq) FROM input_batch_members m JOIN events e ON e.id=m.event_id
+                         WHERE m.batch_id=?),9223372036854775807) ORDER BY seq LIMIT ?""",
+                    (persona_id, sid, after, held['id'] if held else None, limits['learning_max_sources']))]
             sources, last = [], after
             for event in events:
                 with self.store.connection() as db:

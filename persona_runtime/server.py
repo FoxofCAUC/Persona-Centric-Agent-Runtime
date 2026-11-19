@@ -200,7 +200,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     async def batch_action(request):
         if request['role']!='admin':raise web.HTTPForbidden()
         value=await body(request)
-        return web.json_response(ingress.action(request.match_info['id'],request.match_info['action'],value['expected_revision'],value['operation_id'],value['persona_id']))
+        return web.json_response(ingress.action(request.match_info['id'],request.match_info['action'],
+            value['expected_revision'],value['operation_id'],value['persona_id'],session_id=value.get('session_id')))
 
     async def get_request(request):
         turn = engine.get(request.match_info["id"])
@@ -706,7 +707,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     app.router.add_post("/v2/ingress",ingress_accept)
     app.router.add_get("/v2/submissions/{channel}/{request_id:.+}",ingress_lookup)
     app.router.add_get("/v2/batches/{id}",batch_read)
-    app.router.add_post("/v2/batches/{id}/{action:seal|resume|cancel}",batch_action)
+    app.router.add_post("/v2/batches/{id}/{action:seal|resume|cancel|confirm}",batch_action)
     app.router.add_get("/v2/delivery/streams",delivery_streams)
     app.router.add_get("/v2/delivery/streams/{stream_id}",delivery_stream)
     app.router.add_get("/v2/replies/{reply_batch_id}/parts",reply_parts)

@@ -12,15 +12,43 @@ from .context_policy import DEFAULT_CONTEXT, values as context_values, snapshot 
 
 PARAMS={'schema_version':1,'quiet_ms':5000,'max_wait_ms':15000,'max_messages':20,'max_chars':12000,'max_batches':10,'max_pending_chars':120000}
 ROLLING_PARAMS={**PARAMS,'schema_version':2,'max_wait_ms':None}
+CUSTOM_PARAMS={**ROLLING_PARAMS,'schema_version':3,'manual_confirmation':False}
+MAX_QUIET_MS=3_600_000
+MANUAL_WAIT='manual_confirmation_required'
 
 def buffer_policy(policy):
     data=json.loads(policy['data_json']) if 'data_json' in policy else policy
     version=data.get('schema_version',1)
+    if version==3:
+        result={k:data.get(k,v) for k,v in CUSTOM_PARAMS.items()}
+        if (type(result['quiet_ms']) is not int or not 1000<=result['quiet_ms']<=MAX_QUIET_MS
+                or result['max_wait_ms'] is not None or type(result['manual_confirmation']) is not bool
+                or any(result[k]!=v for k,v in PARAMS.items() if k.startswith('max_') and k!='max_wait_ms')):
+            raise RuntimeErrorBase('buffer_policy_invalid')
+        return result
     defaults=ROLLING_PARAMS if version==2 else PARAMS
     result={k:data.get(k,v) for k,v in defaults.items()}
     if version not in (1,2) or result['quiet_ms']!=5000 or result['max_wait_ms']!=(None if version==2 else 15000):
         raise RuntimeErrorBase('buffer_policy_invalid')
     return result
+
+
+def manual_buffer(policy):
+    return policy.get('mode')=='natural_batch' and buffer_policy(policy).get('manual_confirmation',False)
+
+
+def manual_pending(db, persona_id, session_id=None):
+    """Use a non-runnable state so a held batch also stays inert on an older reader."""
+    return db.execute("""SELECT * FROM input_batches WHERE persona_id=? AND channel='desktop'
+        AND state='interrupted_buffer' AND sealed_at IS NULL AND json_extract(policy_json,'$.manual_confirmation')=1
+        AND (? IS NULL OR session_id=?) ORDER BY first_seq LIMIT 1""",
+        (persona_id,session_id,session_id)).fetchone()
+
+
+def unconfirmed_event(db, event_id):
+    return db.execute("""SELECT 1 FROM input_batch_members m JOIN input_batches b ON b.id=m.batch_id
+        WHERE m.event_id=? AND b.sealed_at IS NULL AND json_extract(b.policy_json,'$.manual_confirmation')=1""",
+        (event_id,)).fetchone() is not None
 
 MODES=('legacy_per_message','natural_batch')
 from .reply_batch import REPLY_MODES, expression_snapshot
@@ -48,12 +76,17 @@ class IngressService:
                                    ('collecting','sealed_waiting_capacity','interrupted_buffer') ORDER BY first_seq""").fetchall()
             for row in rows:
                 policy = json.loads(row["policy_json"])
+                if row["channel"]=="desktop" and not row["sealed_at"] and manual_buffer(policy):
+                    if (row["state"],row["seal_reason"])!=("interrupted_buffer",MANUAL_WAIT):
+                        conn.execute("""UPDATE input_batches SET state='interrupted_buffer',seal_reason=?,
+                            revision=revision+1 WHERE id=?""",(MANUAL_WAIT,row["id"]))
+                    continue
                 if row["channel"] != "desktop":
                     if row["state"] != "interrupted_buffer":
                         conn.execute("UPDATE input_batches SET state='interrupted_buffer',revision=revision+1,updated_at=? WHERE id=?", (timestamp(), row["id"]))
                     continue
                 if (row["sealed_at"] and row["model_snapshot"] and (row["state"] == "sealed_waiting_capacity"
-                        or row["seal_reason"] in ("deadline","capacity","legacy","scope_changed","policy_changed","explicit_seal","explicit_resume"))):
+                        or row["seal_reason"] in ("deadline","capacity","legacy","scope_changed","policy_changed","explicit_seal","explicit_resume","explicit_confirm"))):
                     if row["state"] == "interrupted_buffer":
                         conn.execute("UPDATE input_batches SET state='sealed_waiting_capacity',revision=revision+1 WHERE id=?", (row["id"],))
                     continue
@@ -111,12 +144,19 @@ class IngressService:
     def _remember(self,conn,persona,operation_id,fingerprint,result):
         conn.execute('INSERT INTO batch_operations VALUES (?,?,?,?,?,?)',(operation_id,persona,LOCAL_USER_ID,fingerprint,encoded(result),timestamp()))
 
-    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,disposition_mode=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None,situation_observation_mode=None,companion_mode=None,delivery_source=None):
+    def update_policy(self,persona_id,channel,mode,expected_version,operation_id,pending_action=None,disposition_mode=None,reply_mode=None,context_mode=None,cross_session=None,character_retrieval_mode=None,expected_selected=None,conversation_policy_version=None,expression_policy_version=None,situation_observation_mode=None,companion_mode=None,delivery_source=None,buffer_quiet_ms=None,manual_confirmation=None):
+        custom_buffer=buffer_quiet_ms is not None or manual_confirmation is not None
+        if custom_buffer and channel!='desktop':raise RuntimeErrorBase('desktop_buffer_only')
+        if (buffer_quiet_ms is not None and (type(buffer_quiet_ms) is not int or not 1000<=buffer_quiet_ms<=MAX_QUIET_MS)
+                or manual_confirmation is not None and type(manual_confirmation) is not bool
+                or manual_confirmation is True and mode!='natural_batch'):
+            raise RuntimeErrorBase('buffer_policy_invalid')
         if delivery_source not in (None,'user','release') or delivery_source is not None and companion_mode in (None,'disabled'):
             raise RuntimeErrorBase('invalid_delivery_source')
         if companion_mode=='disabled':
             if any(value is not None for value in (disposition_mode,reply_mode,context_mode,cross_session,
-                    character_retrieval_mode,conversation_policy_version,expression_policy_version,situation_observation_mode)):
+                    character_retrieval_mode,conversation_policy_version,expression_policy_version,situation_observation_mode,
+                    buffer_quiet_ms,manual_confirmation)):
                 raise RuntimeErrorBase('companion_restore_conflict')
             return self._disable_companion_policy(persona_id,channel,mode,expected_version,operation_id,
                 pending_action,expected_selected)
@@ -162,7 +202,17 @@ class IngressService:
             if expression_policy_version is not None:value['expression_policy_version']=expression_policy_version
             if companion_mode is not None:value['companion_mode']=companion_mode
             if delivery_source is not None:value['delivery_source']=delivery_source
+            if buffer_quiet_ms is not None:value['buffer_quiet_ms']=buffer_quiet_ms
+            if manual_confirmation is not None:value['manual_confirmation']=manual_confirmation
             old_data=json.loads(current['data_json'])
+            current_buffer=buffer_policy(current)
+            next_buffer=current_buffer
+            if custom_buffer:
+                quiet=current_buffer['quiet_ms'] if buffer_quiet_ms is None else buffer_quiet_ms
+                manual=current_buffer.get('manual_confirmation',False) if manual_confirmation is None else manual_confirmation
+                next_buffer={**CUSTOM_PARAMS,'quiet_ms':quiet,'manual_confirmation':manual} if manual or quiet!=5000 else ROLLING_PARAMS
+            elif conversation_policy_version==2 and current_buffer['schema_version']==1:
+                next_buffer=ROLLING_PARAMS
             companion_changed=selected_companion is not None and selected_companion!=old_data.get('companion')
             from .reply_batch import expression_version
             old_expression=expression_version(old_data.get('expression'))
@@ -176,7 +226,7 @@ class IngressService:
                 raise RuntimeErrorBase('companion_format_conflict')
             from .context_policy import delivery_metadata
             delivery=delivery_metadata(delivery_source or 'user','enabled') if selected_companion is not None else old_data.get('delivery')
-            strategy_changed=companion_changed or delivery!=old_data.get('delivery') or (conversation_policy_version==2 and buffer_policy(current)!=ROLLING_PARAMS) or target_expression!=old_expression
+            strategy_changed=companion_changed or delivery!=old_data.get('delivery') or next_buffer!=current_buffer or target_expression!=old_expression
             fp,old=self._operation(conn,persona_id,operation_id,value)
             if old is not None:return old
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
@@ -188,7 +238,10 @@ class IngressService:
             cross_session=current['cross_session'] if cross_session is None else cross_session
             character_policy=selected_character if selected_character is not None else current['character_retrieval']
             context_changed=observation_changed or (context_mode,cross_session,character_policy)!=(current['context_mode'],current['cross_session'],current['character_retrieval'])
-            pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall() if mode!=current['mode'] or context_changed or reply_mode!=current['reply_mode'] or strategy_changed or disposition_mode!=current.get('disposition_mode','baseline') else []
+            changed=mode!=current['mode'] or context_changed or reply_mode!=current['reply_mode'] or strategy_changed or disposition_mode!=current.get('disposition_mode','baseline')
+            if changed and channel=='desktop' and manual_pending(conn,persona_id):
+                raise RuntimeErrorBase('manual_buffer_pending')
+            pending=conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND state='collecting' ORDER BY first_seq",(persona_id,channel)).fetchall() if changed else []
             if pending and pending_action not in ('seal','cancel'):raise RuntimeErrorBase('pending_batch_resolution_required')
             for row in pending:
                 if pending_action=='seal':self._seal(conn,dict(row),'policy_changed')
@@ -203,7 +256,8 @@ class IngressService:
                         data[RESTORE_KEY]=capture_restore(current)
                     data['companion']=selected_companion
                     data['delivery']=delivery
-                if conversation_policy_version==2:data.update(ROLLING_PARAMS)
+                data.pop('manual_confirmation',None)
+                data.update(next_buffer)
                 conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',(vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,mode,encoded(data),timestamp(),reply_mode))
                 conn.execute('INSERT INTO interaction_heads VALUES (?,?,?,?) ON CONFLICT(persona_id,channel) DO UPDATE SET version_id=excluded.version_id',(persona_id,LOCAL_USER_ID,channel,vid))
                 result=self.policy(conn,persona_id,channel)
@@ -229,6 +283,7 @@ class IngressService:
             current=self.policy(conn,persona_id,channel)
             if current['id']!=expected_version:raise RuntimeErrorBase('version_conflict')
             if mode!=current['mode']:raise RuntimeErrorBase('companion_restore_conflict')
+            if channel=='desktop' and manual_pending(conn,persona_id):raise RuntimeErrorBase('manual_buffer_pending')
             old_data=json.loads(current['data_json'])
             if 'companion' not in old_data or RESTORE_KEY not in old_data:
                 raise RuntimeErrorBase('companion_restore_missing')
@@ -286,10 +341,11 @@ class IngressService:
             data=json.loads(current['data_json'])
             if (current['mode']!='natural_batch'
                     or (expression_policy_version==3 and current['reply_mode']!='natural_structured')
-                    or (buffer_policy(current)==ROLLING_PARAMS and data.get('expression',{}).get('version',1)>=expression_policy_version)):
+                    or (buffer_policy(current)['schema_version']>=2 and data.get('expression',{}).get('version',1)>=expression_policy_version)):
                 result=current
             else:
-                vid=identifier();data.update(ROLLING_PARAMS)
+                vid=identifier()
+                if buffer_policy(current)['schema_version']==1:data.update(ROLLING_PARAMS)
                 data['expression']=expression_snapshot(current['reply_mode'],vid,version=max(expression_policy_version,data.get('expression',{}).get('version',1)))
                 conn.execute('INSERT INTO interaction_policies (id,persona_id,user_id,channel,revision,mode,data_json,created_at,reply_mode) VALUES (?,?,?,?,?,?,?,?,?)',
                     (vid,persona_id,LOCAL_USER_ID,channel,current['revision']+1,current['mode'],encoded(data),timestamp(),current['reply_mode']))
@@ -306,7 +362,8 @@ class IngressService:
         row['members']=[dict(r) for r in conn.execute('SELECT r.id AS receipt_id,r.accepted_seq,e.id AS event_id,e.text,e.created_at FROM input_batch_members m JOIN ingress_receipts r ON r.id=m.receipt_id JOIN events e ON e.id=m.event_id WHERE m.batch_id=? ORDER BY m.member_order',(batch_id,))]
         turn=conn.execute('SELECT id FROM turns WHERE input_batch_id=?',(batch_id,)).fetchone()
         row['turn_id']=turn[0] if turn else None
-        row['status']=self.engine._view(conn,turn[0])['status'] if turn else row['state']
+        row['status']=self.engine._view(conn,turn[0])['status'] if turn else (
+            'awaiting_confirmation' if row['state']=='interrupted_buffer' and manual_buffer(row['policy']) else row['state'])
         clock=self.clocks.get(batch_id)
         row['remaining_ms']=max(0,round((clock[2]-self.monotonic())*1000)) if clock and row['state']=='collecting' else 0
         if clock and row['state']=='collecting':row['buffer_ms']=max(0,round((self.monotonic()-clock[0])*1000))
@@ -322,7 +379,7 @@ class IngressService:
 
     def _receipt(self,conn,row):
         batch=self._view(conn,row['batch_id'])
-        return {'receipt_id':row['id'],'batch_id':row['batch_id'],'accepted_seq':row['accepted_seq'],'persona_id':row['persona_id'],'session_id':row['session_id'],'channel':row['channel'],'origin':batch['origin'],'turn_id':batch['turn_id'],'status':batch['status'],'batch_revision':batch['revision'],'ingress_ms':row['ingress_ms']}
+        return {'receipt_id':row['id'],'event_id':row['event_id'],'batch_id':row['batch_id'],'accepted_seq':row['accepted_seq'],'persona_id':row['persona_id'],'session_id':row['session_id'],'channel':row['channel'],'origin':batch['origin'],'turn_id':batch['turn_id'],'status':batch['status'],'batch_revision':batch['revision'],'ingress_ms':row['ingress_ms']}
 
     def lookup(self,channel,request_id):
         with self.store.connection() as conn:
@@ -331,7 +388,7 @@ class IngressService:
 
     def accept(self,value,*,desktop_ticket=None):
         started=time.perf_counter()
-        allowed={'channel','text','request_id','persona_id','session_id','bot','sender','platform_message_id','platform_time','reference','public_task','desktop_presentation'}
+        allowed={'channel','text','request_id','persona_id','session_id','bot','sender','platform_message_id','platform_time','reference','public_task','desktop_presentation','expected_input_policy'}
         if not isinstance(value,dict) or set(value)-allowed:raise RuntimeErrorBase('unknown_ingress_field')
         channel=value.get('channel','desktop');text=value.get('text');rid=value.get('request_id')
         require_text(text,'text');require_text(rid,'request_id')
@@ -348,6 +405,7 @@ class IngressService:
         if 'reference' in value:value={**value,'reference':target_spec(value['reference'],channel)}
         cfg=self.config.load();bot=peer=''
         if channel=='qq':
+            if 'expected_input_policy' in value:raise RuntimeErrorBase('desktop_buffer_only')
             bot=value.get('bot');peer=value.get('sender');mid=value.get('platform_message_id')
             from .qq_testing import QQTesting
             QQTesting(self.store.paths).check_runtime(peer)
@@ -370,16 +428,19 @@ class IngressService:
             require_open(self.store.paths,cfg['instance_id'])
             # A v1 intent cannot be silently replayed through v2 after upgrade.
             if conn.execute('SELECT 1 FROM turns WHERE source_key=?',(channel+':'+rid,)).fetchone():raise RuntimeErrorBase('legacy_submission_exists')
+            pid=self.engine.service._persona(conn,value.get('persona_id'))['id']
+            pol=self.policy(conn,pid,channel)
+            if 'expected_input_policy' in value and value['expected_input_policy']!=pol['id']:
+                raise RuntimeErrorBase('input_buffer_policy_changed')
             if desktop_ticket is not None:
                 from .desktop_recovery import verify_intent
                 if channel != 'desktop':
                     raise RuntimeErrorBase("invalid_ingress_input")
                 marker = verify_intent(conn, self.store, self.config, value, desktop_ticket)
-            pid=self.engine.service._persona(conn,value.get('persona_id'))['id']
             from .private_personas import guard_acceptance_write
             guard_acceptance_write(self.store,pid)
             sid=self.engine._session(conn,pid,channel,value.get('session_id'),origin={'bot':bot,'sender':peer})
-            pol=self.policy(conn,pid,channel);policy={**buffer_policy(pol),'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol,conn,self.store),'expression':json.loads(pol['data_json']).get('expression') or expression_snapshot(pol['reply_mode'],pol['id'],version=1)}
+            policy={**buffer_policy(pol),'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol,conn,self.store),'expression':json.loads(pol['data_json']).get('expression') or expression_snapshot(pol['reply_mode'],pol['id'],version=1)}
             if channel == "desktop":
                 from .desktop_recovery import model_binding
                 policy["desktop_binding"] = model_binding(cfg)
@@ -394,11 +455,20 @@ class IngressService:
                 raise RuntimeErrorBase('scene_workbench_required')
             frozen=snapshot(conn,pid);character=character_head(conn,pid)
             scope=digest([pid,LOCAL_USER_ID,channel,bot,peer,sid,policy,frozen['core']['id'],frozen['expression']['id'],frozen['relationship']['id'],character['id']])
+            manual=channel=='desktop' and manual_buffer(policy)
+            held=manual_pending(conn,pid,sid) if channel=='desktop' else None
+            if held and (not manual or held['scope_key']!=scope):
+                raise RuntimeErrorBase('manual_buffer_scope_changed')
             # A change in settings or session seals collecting batches at the prior boundary.
             for row in conn.execute("SELECT * FROM input_batches WHERE persona_id=? AND channel=? AND bot=? AND peer=? AND state='collecting' AND scope_key!=? ORDER BY first_seq",(pid,channel,bot,peer,scope)).fetchall():self._seal(conn,dict(row),'scope_changed')
-            row=conn.execute("SELECT * FROM input_batches WHERE scope_key=? AND state='collecting'",(scope,)).fetchone()
+            row=held if manual else conn.execute("SELECT * FROM input_batches WHERE scope_key=? AND state='collecting'",(scope,)).fetchone()
             batch=dict(row) if row else None
-            if batch:
+            if manual:
+                count,chars=conn.execute('SELECT count(*),coalesce(sum(length(e.text)),0) FROM input_batch_members m JOIN events e ON e.id=m.event_id WHERE m.batch_id=?',
+                                        (batch['id'] if batch else None,)).fetchone()
+                if count>=policy['max_messages'] or chars+len(text)>policy['max_chars']:
+                    raise RuntimeErrorBase('manual_buffer_full')
+            elif batch:
                 count,chars=conn.execute('SELECT count(*),coalesce(sum(length(e.text)),0) FROM input_batch_members m JOIN events e ON e.id=m.event_id WHERE m.batch_id=?',(batch['id'],)).fetchone()
                 deadline=self.clocks.get(batch['id'])
                 if (deadline and mono>=deadline[2]) or count>=20 or chars+len(text)>12000:
@@ -412,7 +482,7 @@ class IngressService:
             bid=batch['id'] if batch else identifier();eid=identifier();rawid=identifier();receipt=identifier()
             seq=conn.execute('SELECT coalesce(max(accepted_seq),0)+1 FROM ingress_receipts').fetchone()[0]
             if not batch:
-                conn.execute('INSERT INTO input_batches (id,persona_id,user_id,session_id,channel,bot,peer,scope_key,state,revision,first_seq,first_epoch,last_epoch,deadline_epoch,max_deadline_epoch,sealed_at,seal_reason,policy_json,profile_snapshot,character_snapshot,model_snapshot,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(bid,pid,LOCAL_USER_ID,sid,channel,bot,peer,scope,'collecting',1,seq,now,now,now+policy['quiet_ms']/1000,now+policy['max_wait_ms']/1000 if policy['max_wait_ms'] is not None else 0,None,None,encoded(policy),encoded(frozen),encoded(character),None,timestamp(),timestamp()))
+                conn.execute('INSERT INTO input_batches (id,persona_id,user_id,session_id,channel,bot,peer,scope_key,state,revision,first_seq,first_epoch,last_epoch,deadline_epoch,max_deadline_epoch,sealed_at,seal_reason,policy_json,profile_snapshot,character_snapshot,model_snapshot,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(bid,pid,LOCAL_USER_ID,sid,channel,bot,peer,scope,'interrupted_buffer' if manual else 'collecting',1,seq,now,now,0 if manual else now+policy['quiet_ms']/1000,now+policy['max_wait_ms']/1000 if policy['max_wait_ms'] is not None else 0,None,MANUAL_WAIT if manual else None,encoded(policy),encoded(frozen),encoded(character),None,timestamp(),timestamp()))
                 from .companion import freeze_auxiliary
                 conn.execute('UPDATE input_batches SET observation_model_snapshot=? WHERE id=?',(encoded(freeze_auxiliary(cfg['character_selector'],policy['context'])),bid))
             conn.execute("INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES (?,?,?,?,'user',?,?)",(eid,sid,pid,LOCAL_USER_ID,text,timestamp()))
@@ -427,17 +497,20 @@ class IngressService:
                 capture(conn,eid,archive_scope(pid,channel,bot,peer),value['reference'])
             order=conn.execute('SELECT count(*)+1 FROM input_batch_members WHERE batch_id=?',(bid,)).fetchone()[0]
             conn.execute('INSERT INTO input_batch_members VALUES (?,?,?,?,?,?)',(bid,pid,LOCAL_USER_ID,receipt,eid,order))
-            from .delivery import DeliveryService
-            DeliveryService(self.store).new_input(conn,eid,pid,sid,channel,{'bot':bot,'sender':peer},exclude_batch=bid)
-            first_mono=self.clocks[bid][0] if batch else mono
-            quiet=policy['quiet_ms']/1000
-            maximum=policy['max_wait_ms']
-            deadline_mono=mono+quiet if maximum is None else min(mono+quiet,first_mono+maximum/1000)
-            max_epoch=batch['max_deadline_epoch'] if batch else (now+maximum/1000 if maximum is not None else 0)
-            conn.execute('UPDATE input_batches SET last_epoch=?,deadline_epoch=?,revision=revision+1,updated_at=? WHERE id=?',(now,now+quiet if maximum is None else min(now+quiet,max_epoch),timestamp(),bid))
-            clock_updates[bid]=(first_mono,mono,deadline_mono)
-            chars=conn.execute('SELECT sum(length(e.text)) FROM input_batch_members m JOIN events e ON e.id=m.event_id WHERE m.batch_id=?',(bid,)).fetchone()[0]
-            if pol['mode']=='legacy_per_message' or order>=20 or chars>=12000:self._seal(conn,self._batch(conn,bid),'legacy' if pol['mode']=='legacy_per_message' else 'capacity')
+            if manual:
+                conn.execute('UPDATE input_batches SET last_epoch=?,revision=revision+1,updated_at=? WHERE id=?',(now,timestamp(),bid))
+            else:
+                from .delivery import DeliveryService
+                DeliveryService(self.store).new_input(conn,eid,pid,sid,channel,{'bot':bot,'sender':peer},exclude_batch=bid)
+                first_mono=self.clocks[bid][0] if batch else mono
+                quiet=policy['quiet_ms']/1000
+                maximum=policy['max_wait_ms']
+                deadline_mono=mono+quiet if maximum is None else min(mono+quiet,first_mono+maximum/1000)
+                max_epoch=batch['max_deadline_epoch'] if batch else (now+maximum/1000 if maximum is not None else 0)
+                conn.execute('UPDATE input_batches SET last_epoch=?,deadline_epoch=?,revision=revision+1,updated_at=? WHERE id=?',(now,now+quiet if maximum is None else min(now+quiet,max_epoch),timestamp(),bid))
+                clock_updates[bid]=(first_mono,mono,deadline_mono)
+                chars=conn.execute('SELECT sum(length(e.text)) FROM input_batch_members m JOIN events e ON e.id=m.event_id WHERE m.batch_id=?',(bid,)).fetchone()[0]
+                if pol['mode']=='legacy_per_message' or order>=20 or chars>=12000:self._seal(conn,self._batch(conn,bid),'legacy' if pol['mode']=='legacy_per_message' else 'capacity')
             conn.execute('UPDATE ingress_receipts SET ingress_ms=? WHERE id=?',((time.perf_counter()-started)*1000,receipt))
             result=self._receipt(conn,conn.execute('SELECT * FROM ingress_receipts WHERE id=?',(receipt,)).fetchone())
             if desktop_ticket is not None:
@@ -451,9 +524,20 @@ class IngressService:
         if batch['state'] not in ('collecting','interrupted_buffer','sealed_waiting_capacity'):return
         if batch['state']!='sealed_waiting_capacity':
             config = self.config.load()
+            policy=json.loads(batch["policy_json"])
+            if manual_buffer(policy):
+                if reason!='explicit_confirm':raise RuntimeErrorBase(MANUAL_WAIT)
+                from .desktop_recovery import model_binding
+                if policy.get('desktop_binding')!=model_binding(config):
+                    raise RuntimeErrorBase('manual_buffer_scope_changed')
+                from .delivery import DeliveryService
+                latest=conn.execute('SELECT event_id FROM input_batch_members WHERE batch_id=? ORDER BY member_order DESC LIMIT 1',
+                                    (batch['id'],)).fetchone()
+                if not latest:raise RuntimeErrorBase('batch_not_collecting')
+                DeliveryService(self.store).new_input(conn,latest[0],batch['persona_id'],batch['session_id'],'desktop',{},exclude_batch=batch['id'])
             if batch["id"] in self.restored_clocks:
                 from .desktop_recovery import model_binding
-                if json.loads(batch["policy_json"]).get("desktop_binding") != model_binding(config):
+                if policy.get("desktop_binding") != model_binding(config):
                     conn.execute("""UPDATE input_batches SET state='interrupted_buffer',seal_reason='recovery_unverified',
                                     revision=revision+1 WHERE id=?""", (batch["id"],))
                     return
@@ -514,16 +598,29 @@ class IngressService:
                 WHERE task_id IN (SELECT id FROM organization_tasks WHERE status='queued' AND error_code='organization_network_wait')
                 AND json_extract(data_json,'$.network_probe')""")
 
-    def action(self,batch_id,action,expected_revision,operation_id,persona_id):
+    def action(self,batch_id,action,expected_revision,operation_id,persona_id,session_id=None):
         with self.store.connection(write=True) as conn:
             batch=self._batch(conn,batch_id)
-            if batch['persona_id']!=persona_id or self.store.current(conn)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
-            fp,old=self._operation(conn,persona_id,operation_id,{'batch_id':batch_id,'action':action,'expected_revision':expected_revision})
+            if batch['persona_id']!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
+            if session_id is not None:
+                if batch['channel']!='desktop' or batch['session_id']!=session_id:
+                    raise RuntimeErrorBase('session_conflict')
+                self.engine.service._persona(conn,persona_id)
+            elif self.store.current(conn)!=persona_id:raise RuntimeErrorBase('persona_selection_conflict')
+            op={'batch_id':batch_id,'action':action,'expected_revision':expected_revision}
+            if session_id is not None:op['session_id']=session_id
+            fp,old=self._operation(conn,persona_id,operation_id,op)
             if old is not None:return old
             if type(expected_revision) is not int or batch['revision']!=expected_revision:raise RuntimeErrorBase('version_conflict')
-            if action not in ('seal','resume','cancel'):raise RuntimeErrorBase('invalid_batch_action')
+            if action not in ('confirm','seal','resume','cancel'):raise RuntimeErrorBase('invalid_batch_action')
             if batch['state'] not in ('collecting','interrupted_buffer','sealed_waiting_capacity'):raise RuntimeErrorBase('batch_already_linked')
             if action!='cancel' and self.engine.draining:raise RuntimeErrorBase('service_draining')
+            if action=='confirm':
+                if not session_id or batch['state']!='interrupted_buffer' or batch['sealed_at'] or not manual_buffer(json.loads(batch['policy_json'])):
+                    raise RuntimeErrorBase('batch_not_waiting_confirmation')
+                from .local_repair import require_open
+                require_open(self.store.paths)
+                self.engine._session(conn,persona_id,'desktop',session_id)
             if action=='resume' and batch['state']!='interrupted_buffer':raise RuntimeErrorBase('batch_not_interrupted')
             if action=='seal' and batch['state']!='collecting':raise RuntimeErrorBase('batch_not_collecting')
             if action=='cancel':conn.execute("UPDATE input_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE id=?",(timestamp(),batch_id))
