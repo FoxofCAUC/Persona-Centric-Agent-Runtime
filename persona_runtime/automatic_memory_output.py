@@ -48,13 +48,25 @@ def messages(payload):
 def fail():raise RuntimeErrorBase('automatic_memory_invalid_output')
 
 
-def quotes(payload,sources,user=False,empty=False):
+def quotes(payload,sources,user=False,empty=False,*,summary_index=None,audit=None):
     if not isinstance(sources,list) or len(sources)>20 or not sources and not empty:fail()
     allowed={e['id']:e for e in payload['events']}
-    for source in sources:
+    for index,source in enumerate(sources):
         if not isinstance(source,dict) or set(source)!={'source_id','quote'}:fail()
-        e=allowed.get(source['source_id']);q=source['quote']
-        if not e or not isinstance(q,str) or not q.strip() or q not in e['text'] or user and (e['role']!='user' or e.get('kind','event')!='event'):fail()
+        source_id,quote=source['source_id'],source['quote']
+        if not isinstance(source_id,str) or not source_id.strip() or not isinstance(quote,str) or not quote.strip():fail()
+        event=allowed.get(source_id)
+        if event is None and summary_index is not None:
+            matches=[row for row in allowed.values() if quote in row['text']]
+            if len(matches)!=1:fail()
+            event=matches[0]
+            source['source_id']=event['id']
+            if audit is not None:
+                audit['normalizations'].append({
+                    'path':f'summary[{summary_index}].sources[{index}].source_id',
+                    'reason':'unknown_source_id_resolved_by_unique_exact_quote',
+                })
+        if not event or quote not in event['text'] or user and (event['role']!='user' or event.get('kind','event')!='event'):fail()
     return sources
 
 
@@ -71,19 +83,21 @@ def parse(payload,text,audit=None):
     try:data=json.loads(text)
     except (ValueError,TypeError):fail()
     if not isinstance(data,dict) or type(data.get('format_version')) is not int or data['format_version']!=3:fail()
-    review=payload['automatic_memory']['stage']=='verify'
-    if not review:
+    stage=payload['automatic_memory']['stage']
+    if stage!='verify':
         if set(data)!={'format_version','summary','candidates'}:fail()
         ids=set()
         for kind,limit in (('summary',30),('candidates',10)):
             if not isinstance(data[kind],list) or len(data[kind])>limit:fail()
-            for item in data[kind]:
+            for index,item in enumerate(data[kind]):
                 fields={'id','text','sources'}|({'category','subject','attribute'} if kind=='candidates' else set())
                 if not isinstance(item,dict) or set(item)!=fields:fail()
                 for k in fields-{'sources'}:
                     if not isinstance(item[k],str) or not item[k].strip() or len(item[k])>(3000 if k=='text' and kind=='summary' else 500):fail()
                 if item['id'] in ids:fail()
-                ids.add(item['id']);quotes(payload,item['sources'],user=kind=='candidates')
+                ids.add(item['id'])
+                summary_index=index if stage=='extract' and kind=='summary' else None
+                quotes(payload,item['sources'],user=kind=='candidates',summary_index=summary_index,audit=audit)
                 if kind=='candidates' and item['category'] not in ('user_fact','preference','shared_experience'):fail()
         if sum(len(i['text']) for i in data['summary'])>3000:fail()
         if payload['automatic_memory']['purpose']=='repair' and data['candidates']:fail()

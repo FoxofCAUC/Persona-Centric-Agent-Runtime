@@ -2,7 +2,8 @@
 import json
 import unittest
 from tests import test_m4 as fixtures
-from persona_runtime.models import identifier
+from persona_runtime.automatic_memory_output import parse
+from persona_runtime.models import RuntimeErrorBase, identifier
 
 
 class Model:
@@ -25,6 +26,39 @@ class Model:
                 if self.review_action:self.review_action(kind,i,d,p)
                 decisions.append(d)
         return json.dumps({'format_version':3,'decisions':decisions},ensure_ascii=False),{'total_tokens':3}
+
+
+class SummarySourceTests(unittest.TestCase):
+    def setUp(self):
+        self.extract = {'automatic_memory':{'stage':'extract','purpose':'extract'}, 'events':[
+            {'id':'7101','role':'user','text':'7210'},
+            {'id':'7102','role':'persona','text':'7220'},
+        ]}
+        self.summary = {'id':'7310','text':'7210','sources':[{'source_id':'7103','quote':'7210'}]}
+
+    def test_rebind_requires_one_exact_match_and_an_unknown_id(self):
+        ambiguous = dict(self.extract, events=self.extract['events']+[{'id':'7104','role':'user','text':'7210'}])
+        for payload,source in (
+            (ambiguous,self.summary['sources'][0]),
+            (self.extract,{'source_id':'7103','quote':'7230'}),
+            (self.extract,{'source_id':'7102','quote':'7210'}),
+            (self.extract,{'source_id':[],'quote':'7210'}),
+        ):
+            with self.subTest(source=source), self.assertRaisesRegex(RuntimeErrorBase,'automatic_memory_invalid_output'):
+                summary=dict(self.summary,sources=[source])
+                parse(payload,json.dumps({'format_version':3,'summary':[summary],'candidates':[]}))
+
+    def test_facts_and_review_require_the_original_source_id(self):
+        candidate=dict(self.summary,category='preference',subject='7311',attribute='7312')
+        with self.assertRaisesRegex(RuntimeErrorBase,'automatic_memory_invalid_output'):
+            parse(self.extract,json.dumps({'format_version':3,'summary':[],'candidates':[candidate]}))
+        verified_summary=dict(self.summary,sources=[{'source_id':'7101','quote':'7210'}])
+        review=dict(self.extract,automatic_memory={'stage':'verify','purpose':'extract'},
+                    proposals={'summary':[verified_summary],'candidates':[]},existing_memories=[])
+        decision={'id':self.summary['id'],'action':'summary','reason':'7313','subject':None,'attribute':None,
+                  'target_memory_id':None,'effective_at':None,'valid_until':None,'sources':self.summary['sources']}
+        with self.assertRaisesRegex(RuntimeErrorBase,'automatic_memory_invalid_output'):
+            parse(review,json.dumps({'format_version':3,'decisions':[decision]}))
 
 
 class MemoryTests(unittest.IsolatedAsyncioTestCase):
@@ -62,6 +96,53 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         await self.seed();self.install_model();self.enable();self.org.automatic.tick(force=True)
         await self.org.run_next();self.assertFalse(self.service.search_memories())
         self.org.automatic.tick(force=True);await self.org.run_next();self.assertEqual(len(self.service.search_memories()),1)
+
+    async def test_saved_bad_summary_source_rebinds_without_repeating_extraction(self):
+        from unittest.mock import patch
+        from persona_runtime.organization_output import receipt
+
+        turn, = await self.seed()
+        model=self.install_model()
+        self.enable()
+        self.org.automatic.tick(force=True)
+        complete=model.complete
+
+        async def unknown_summary_source(settings,messages):
+            text,usage=await complete(settings,messages)
+            output=json.loads(text)
+            output['summary'][0]['sources'][0]['source_id']='7103'
+            return json.dumps(output,ensure_ascii=False),usage
+
+        with (patch.object(model,'complete',side_effect=unknown_summary_source),
+              patch.object(self.org,'validate_output',side_effect=RuntimeErrorBase('automatic_memory_invalid_output'))):
+            await self.org.run_next()
+        self.assertFalse(self.service.search_memories())
+        failed=self.org.list()[0]
+        self.assertEqual(failed['status'],'failed')
+        self.org.automatic.tick(force=True)
+        self.org.retry(failed['id'])
+        await self.org.run_next()
+        self.assertEqual(len(model.calls),1)
+        self.org.automatic.tick(force=True)
+        with self.store.connection() as db:
+            row=db.execute("""SELECT r.response_text,r.diagnostic_json,t.payload_json FROM memory_batches b
+                JOIN organization_attempts a ON a.task_id=b.extract_task_id
+                JOIN organization_receipts r ON r.attempt_id=a.id
+                JOIN organization_tasks t ON t.id=b.verify_task_id""").fetchone()
+            raw=json.loads(row['response_text'])
+            audit=json.loads(row['diagnostic_json'])
+            reviewed=json.loads(row['payload_json'])['proposals']
+            self.assertEqual(raw['summary'][0]['sources'][0]['source_id'],'7103')
+            self.assertEqual(audit['response_sha256'],receipt(row['response_text'])['response_sha256'])
+            self.assertEqual(audit['normalizations'],[{'path':'summary[0].sources[0].source_id',
+                'reason':'unknown_source_id_resolved_by_unique_exact_quote'}])
+            self.assertEqual(audit['previous_validation'][0]['error_code'],'automatic_memory_invalid_output')
+            self.assertEqual(reviewed['summary'][0]['sources'],
+                [{'source_id':turn['user_event_id'],'quote':raw['summary'][0]['sources'][0]['quote']}])
+            self.assertFalse(db.execute('SELECT 1 FROM memory_fragments').fetchone())
+        await self.org.run_next()
+        self.assertEqual(len(self.service.search_memories()),1)
+        self.assertEqual(len(model.calls),2)
 
     async def test_one_quarantined_candidate_does_not_block_other_sources(self):
         await self.seed(2);m=self.install_model();self.enable()
