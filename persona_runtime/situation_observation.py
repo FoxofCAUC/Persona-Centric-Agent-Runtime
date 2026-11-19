@@ -211,11 +211,17 @@ class SituationObservationService:
             from .memory_policy import project_capacity_used
             cfg=self.config.load();limit=cfg['model']['hourly_limit']
             # Only the automatic observation is metered; the main reply is manual.
-            if limit and project_capacity_used(conn,now-3600,turn_id)+1>limit:return {'status':'project_quota'}
+            from .call_limits import gate,granted,turn_scope as quota_turn,CallLimitPending
+            scope=quota_turn(turn)
+            bypass=granted(conn,scope)
+            if not bypass and limit and project_capacity_used(conn,now-3600,turn_id)+1>limit:
+                raise CallLimitPending(scope,'selector_project',now+1)
             for field,period in (('hourly_limit',3600),('daily_limit',86400)):
                 from .generation_retry import call_count
                 count=sum(call_count(conn,t,now-period,automatic_only=True) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
-                if cfg['character_selector'][field] and count>=cfg['character_selector'][field]:return {'status':'auxiliary_quota'}
+                if not bypass and cfg['character_selector'][field] and count>=cfg['character_selector'][field]:
+                    raise CallLimitPending(scope,'selector',now+1)
+            gate(conn,self.store,'observation',scope)
             conn.execute('INSERT INTO situation_observation_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (aid,turn_id,turn['execution_revision'],turn['persona_id'],LOCAL_USER_ID,'running',now,None,encoded(model),policy['version'],fingerprint(payload),encoded(turn_scope(conn,turn)),encoded(evidence),None,None,None,timestamp()))
             manifest={'context_id':identifier(),'task_type':'situation_observation','turn_id':turn_id,'observation_attempt_id':aid,

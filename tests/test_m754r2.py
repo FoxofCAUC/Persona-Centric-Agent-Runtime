@@ -84,7 +84,7 @@ class SelectorTests(prior.IntegrationTests):
         with patch.object(self.rt,'local_pool',side_effect=self.pool):result=self.rt.preview(self.pid,'书店',channel='desktop',mode='hybrid_llm')
         self.assertEqual(result['effective_mode'],'lexical');self.assertFalse(self.model.calls)
         path=self.service.export_persona()['path'];value=json.loads(__import__('pathlib').Path(path).read_text(encoding='utf-8'))
-        self.assertEqual(value['format_version'],18);self.assertNotIn('encrypted_key',json.dumps(value))
+        self.assertEqual(value['format_version'],20);self.assertNotIn('encrypted_key',json.dumps(value))
 
     async def test_probe_durable_no_turn_and_idempotent(self):
         self.enable();op=identifier()
@@ -144,7 +144,7 @@ class SelectorTests(prior.IntegrationTests):
         from persona_runtime.config import atomic_json
         atomic_json(quota.journal,{'status':'active','restore_limits':{'project_hourly':7,'background_hourly':2,'background_daily':3}})
         quota.end_acceptance();self.assertEqual(quota.current()['limits']['project_hourly'],7)
-        self.assertEqual(quota.current()['limits']['selector_daily'],2000)
+        self.assertEqual(quota.current()['limits']['selector_daily'],0)
 
     async def test_cancel_retry_while_cloud_inflight_does_not_reply_old_run(self):
         self.enable();t=await self.turn('书店');started=asyncio.Event();gate=asyncio.Event()

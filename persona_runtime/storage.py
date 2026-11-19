@@ -404,6 +404,29 @@ class Store:
                 from .schema_dialogue import migrate as migrate_dialogue
                 migrate_dialogue(conn)
             if SCHEMA_VERSION >= 33:
+                conn.execute("""CREATE TABLE IF NOT EXISTS organization_foreground_execution (
+                    id TEXT PRIMARY KEY CHECK(id='singleton'), task_id TEXT REFERENCES organization_tasks(id),
+                    owner TEXT, generation INTEGER NOT NULL DEFAULT 0, lease_until REAL NOT NULL DEFAULT 0)""")
+                conn.execute("INSERT OR IGNORE INTO organization_foreground_execution(id) VALUES ('singleton')")
+                from .call_limits import initialize as initialize_call_limits
+                initialize_call_limits(conn)
+                conn.execute("CREATE TABLE IF NOT EXISTS memory_scan_positions(name TEXT PRIMARY KEY,position INTEGER NOT NULL)")
+                conn.execute("""CREATE INDEX IF NOT EXISTS desktop_paused_backlog ON turns(persona_id,session_id)
+                    WHERE channel='desktop' AND error_code IN ('desktop_network_wait','desktop_storage_wait') AND status IN ('queued','running') AND cancelled_at IS NULL""")
+                conn.execute("""CREATE INDEX IF NOT EXISTS organization_network_backlog ON organization_tasks(id)
+                    WHERE status='queued' AND error_code='organization_network_wait'""")
+                conn.execute("CREATE INDEX IF NOT EXISTS memory_scan_session ON sessions(persona_id)")
+                conn.execute("""CREATE INDEX IF NOT EXISTS memory_scan_native ON turns(session_id)
+                    WHERE status='completed' AND source_key NOT GLOB 'imported.*'""")
+                conn.execute("""CREATE INDEX IF NOT EXISTS memory_scan_imported ON turns(session_id)
+                    WHERE status='completed' AND source_key GLOB 'imported.*'""")
+                conn.execute("CREATE INDEX IF NOT EXISTS memory_scan_pending ON memory_coverage(persona_id,disposition,turn_id)")
+                conn.execute("""CREATE INDEX IF NOT EXISTS desktop_native_turn_page ON turns(persona_id,session_id)
+                             WHERE channel='desktop' AND source_key NOT GLOB 'imported.*'""")
+                conn.execute("CREATE INDEX IF NOT EXISTS non_desktop_session ON turns(session_id) WHERE channel!='desktop'")
+                conn.execute("""CREATE INDEX IF NOT EXISTS structured_turns_by_session ON turns(persona_id,session_id,channel)
+                                WHERE reply_mode_snapshot='natural_structured'""")
+                conn.execute("CREATE INDEX IF NOT EXISTS context_uses_turn ON context_uses(turn_id)")
                 from .portable_memory import protect_history_remaps
                 protect_history_remaps(conn)
             if conn.execute("PRAGMA foreign_key_check").fetchone():

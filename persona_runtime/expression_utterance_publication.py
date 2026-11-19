@@ -64,6 +64,8 @@ class SpeechPublication:
                 'run':dict(run) if run else None,'publication':self.plan(persona_id,session_id,utterance_id)}
 
     def publish(self,db,unit,kind,body,segments,reason,*,replace_unoffered=False):
+        if unit['closed_at'] or unit['cancelled_at']:
+            raise ExpressionAssetError('speech_utterance_closed')
         old=db.execute('SELECT * FROM expression_speech_publications WHERE utterance_id=?',(unit['id'],)).fetchone()
         if old:
             if not replace_unoffered:return dict(old)
@@ -88,6 +90,8 @@ class SpeechPublication:
                 (revision,kind,body,text_hash(body),reason,pid))
         else:db.execute('INSERT INTO expression_speech_publications VALUES(?,?,?,?,?,?,?,?,?,?)',
             (pid,unit['id'],revision,kind,body,text_hash(body),'pending',reason,None,timestamp()))
+        from .progress import record
+        record(db,unit['turn_id'],'desktop_publication_changed')
         plan={'utterance_id':unit['id'],'body_hash':text_hash(body),'bubbles':pieces}
         db.execute('INSERT INTO expression_speech_versions VALUES(?,?,?)',(pid,revision,encoded(plan)))
         for i,s in enumerate(pieces):
@@ -162,23 +166,42 @@ class SpeechPublication:
             return {'id':item['id'],'lease_id':lease,'body':item['text'],'body_hash':item['body_hash'],'state':'offered',
                     'kind':item['kind'],'required':bool(item['required']),'delay_ms':item['delay_ms']}
 
-    def acknowledge(self,persona_id,session_id,utterance_id,fragment_id,lease_id,presenter_id,receipt_id,body_hash,state='presented'):
+    def acknowledge(self,persona_id,session_id,utterance_id,fragment_id,lease_id,presenter_id,receipt_id,body_hash,state='presented',
+                    *,webview=False,publication_id=None,revision=None,ordinal=None):
         text(receipt_id,'receipt_id',200)
         if state not in ('presented','not_presented','unknown'):raise ExpressionAssetError('speech_receipt_state_invalid')
+        if webview and presenter_id!="webview-v2."+receipt_id:
+            raise ExpressionAssetError('speech_receipt_identity_mismatch')
         with self.store.connection() as db:unit=self._owner(db,persona_id,session_id,utterance_id)
         if unit['source_kind']=='main_receipt':return self._legacy().acknowledge(persona_id,session_id,unit['turn_id'],fragment_id,lease_id,presenter_id,receipt_id,body_hash,state)
         with self.store.connection(write=True) as db:
             previous=db.execute('SELECT * FROM expression_speech_receipts WHERE id=?',(receipt_id,)).fetchone()
             if previous:
-                belongs=db.execute('''SELECT 1 FROM expression_speech_items i JOIN expression_speech_publications p
+                belongs=db.execute('''SELECT i.publication_id,i.revision,i.ordinal FROM expression_speech_items i JOIN expression_speech_publications p
                     ON p.id=i.publication_id WHERE i.id=? AND p.utterance_id=?''',(fragment_id,utterance_id)).fetchone()
-                if not belongs:raise ExpressionAssetError('speech_receipt_identity_mismatch')
+                if not belongs or webview and tuple(belongs)!=(publication_id,revision,ordinal):
+                    raise ExpressionAssetError('speech_receipt_identity_mismatch')
                 if tuple(previous)[1:6]!=(fragment_id,lease_id,presenter_id,body_hash,state):raise ExpressionAssetError('speech_receipt_conflict')
                 return {'state':state,'already_applied':True}
             item=db.execute('''SELECT i.* FROM expression_speech_items i JOIN expression_speech_publications p ON p.id=i.publication_id
                 WHERE i.id=? AND p.utterance_id=?''',(fragment_id,utterance_id)).fetchone()
             if not item or (item['lease_id'],item['presenter_id'],item['body_hash'])!=(lease_id,presenter_id,body_hash):raise ExpressionAssetError('speech_receipt_identity_mismatch')
             pub=db.execute('SELECT * FROM expression_speech_publications WHERE id=?',(item['publication_id'],)).fetchone()
+            if webview and (publication_id,revision,ordinal)!=(pub['id'],pub['revision'],item['ordinal']):
+                raise ExpressionAssetError('speech_receipt_identity_mismatch')
+            unit = self._owner(db,persona_id,session_id,utterance_id)
+            if webview and state=="presented" and pub["state"] not in ("closed","complete"):
+                try:
+                    if unit["phase"]=="search_notice":
+                        from .tk_notice import check_root
+                        root=dict(db.execute("SELECT * FROM turns WHERE id=?", (unit["turn_id"],)).fetchone())
+                        check_root(db,root)
+                    self.outlet.validate(db,unit)
+                except RuntimeErrorBase:
+                    self._stop(db,unit,pub,"source_or_permission_changed")
+                    if db.execute("SELECT state FROM expression_speech_publications WHERE id=?", (pub["id"],)).fetchone()[0]=="unknown":
+                        self._close(db,unit,pub,"desktop_presentation_unknown")
+                    return {"state":"closed","already_applied":False}
             if pub['state'] in ('closed','complete'):raise ExpressionAssetError('speech_publication_closed')
             if item['state'] not in ('offered','unknown'):raise ExpressionAssetError('speech_receipt_conflict')
             now=timestamp()
@@ -191,7 +214,15 @@ class SpeechPublication:
                     record(db,unit['turn_id'],'first_output' if item['ordinal']==0 else 'scene_bubble_presented',
                            json.loads(unit['context_json'])['logical_attempt_id'])
             remaining=db.execute("SELECT state FROM expression_speech_items WHERE publication_id=? AND revision=? AND state IN ('pending','offered','unknown')",(pub['id'],pub['revision'])).fetchall()
-            if state=='not_presented':
+            if webview and state=='not_presented' and not unit['cancelled_at']:
+                db.execute("""UPDATE expression_speech_items SET state='pending',lease_id=NULL,presenter_id=NULL,
+                              receipt_id=NULL,offered_at=NULL WHERE id=?""",(fragment_id,))
+                db.execute("UPDATE expression_speech_publications SET state=? WHERE id=?",
+                           ('partial' if item['ordinal'] else 'pending',pub['id']))
+            elif webview and state=='unknown':
+                self._stop(db,unit,pub,'desktop_presentation_unknown')
+                self._close(db,unit,pub,'desktop_presentation_unknown')
+            elif state=='not_presented':
                 self._stop(db,unit,pub,'fragment_not_presented')
             elif remaining:db.execute('UPDATE expression_speech_publications SET state=? WHERE id=?',('unknown' if any(r[0]=='unknown' for r in remaining) else 'partial',pub['id']))
             else:self._close(db,unit,pub,'complete' if not unit['cancelled_at'] else 'cancelled_by_user')

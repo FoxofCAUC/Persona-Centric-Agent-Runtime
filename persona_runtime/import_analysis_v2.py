@@ -1,4 +1,5 @@
 """Run frozen private import batches using separately reviewed extraction and merge requests."""
+from .call_limits import resume_on_limit, external_gate, workflow
 import asyncio
 import json
 
@@ -187,6 +188,7 @@ class ImportAnalysisV2:
                 "模型请求与冻结的内容不一致。")
         return model, checksum
 
+    @resume_on_limit
     async def _receive(self, ident, plan, desc, cached_only, guard):
         model, checksum = self._request_identity(plan, desc)
         allowed, dispatchable = self._permission(ident, plan, checksum, desc)
@@ -203,6 +205,7 @@ class ImportAnalysisV2:
             if sending:
                 if not dispatchable or cached_only or not model.get("encrypted_key"):
                     return "unsent" if cached_only else "awaiting_approval", None
+                external_gate(self,'import','import/'+ident)
                 db.execute("INSERT OR REPLACE INTO calls VALUES(?,?,'sending',NULL,NULL,NULL,?)",
                            (key, ident, timestamp()))
             elif old["raw"] is None:
@@ -295,6 +298,7 @@ class ImportAnalysisV2:
         publish(desc["id"], desc["role"], desc["stage"], state, accepted, rejected)
         return accepted
 
+    @workflow
     async def run(self, ident, plan, *, cached_only, publish, guard):
         guard()
         descriptors = self.preview(ident, plan)

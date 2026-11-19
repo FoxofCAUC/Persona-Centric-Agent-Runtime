@@ -294,7 +294,9 @@ class HistoryService:
         for row in db.execute("""SELECT b.id,b.state,t.status,v.status FROM memory_batches b LEFT JOIN organization_tasks t ON t.id=b.extract_task_id
                                 LEFT JOIN organization_tasks v ON v.id=b.verify_task_id WHERE b.session_id=?""",(sid,)):
             if row[0] in batches:
-                states.update(row[1:])
+                if row[1] in ('extracting','verifying','waiting'):
+                    states.update(row[1:])
+                else:states.add(row[1])
         if states.intersection({"blocked_unknown","cancelled_unknown","unknown","interrupted"}): return "unknown"
         if states.intersection({"blocked_authorization","history_paused"}): return "waiting_configuration"
         if "waiting_quota" in states: return "waiting_quota"
@@ -302,7 +304,13 @@ class HistoryService:
         dispositions=Counter(r[0] for r in db.execute("""SELECT c.disposition FROM turns t LEFT JOIN memory_coverage c ON c.turn_id=t.id
             WHERE t.session_id=? AND t.source_key LIKE 'imported.%' AND (t.user_event_id IS NOT NULL OR t.reply_event_id IS NOT NULL)""",(sid,)))
         if dispositions["input_too_long"] or "blocked_input" in states: return "blocked_input"
+        if 'failed' in states or dispositions['failed']:return 'failed'
+        if 'cancelled' in states or dispositions['cancelled']:return 'cancelled'
+        if 'stale' in states or dispositions['stale']:return 'stale'
         if dispositions["processed_with_quarantine"]: return "quarantined"
+        if set(dispositions)=={'revoked'}:return 'withdrawn'
+        if dispositions['revoked'] and set(dispositions)<={'processed','no_memory','revoked'}:return 'partly_withdrawn'
+        if set(dispositions)=={'no_memory'}:return 'no_memory'
         return "processed" if dispositions and set(dispositions)<={"processed","no_memory"} else "pending"
 
     def update(self, persona_id, session_id, expected_revision, action, confirmed=False, expected_providers=None):

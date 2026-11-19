@@ -677,13 +677,15 @@ class DesktopTests(unittest.TestCase):
             window.finish_console_shutdown();destroy.assert_called();shutdown.assert_called_once();broad.assert_not_called()
         window.managed_lifecycle=False;window.shutdown_started=False;window.closed=False
 
-    def test_managed_console_denied_stop_keeps_window_for_retry(self):
+    def test_managed_console_denied_stop_keeps_window_for_automatic_retry(self):
         window=self.window();window.managed_lifecycle=True
-        with patch.object(window.controller,'shutdown',side_effect=RuntimeError('permission denied')), patch('persona_runtime.emergency.force_stop_all_elevated') as broad, patch.object(window,'destroy_console') as destroy:
-            window.close_window();self.pump(window,lambda:window.shutdown_result is not None)
-            window.finish_console_shutdown();destroy.assert_not_called()
-            self.assertFalse(window.shutdown_started);self.assertTrue(window.winfo_exists())
-            self.assertIn('permission denied',window.notice.get())
+        with patch.object(window.controller,'shutdown',side_effect=[RuntimeError('permission denied'),{'processes_released':True}]) as shutdown, patch('persona_runtime.emergency.force_stop_all_elevated') as broad, patch.object(window,'destroy_console') as destroy:
+            window.close_window();self.pump(window,lambda:'自动复查' in window.notice.get())
+            destroy.assert_not_called()
+            self.assertTrue(window.shutdown_started);self.assertTrue(window.winfo_exists())
+            self.assertIn('自动复查',window.notice.get())
+            self.pump(window,lambda:destroy.called,timeout=8)
+            self.assertEqual(shutdown.call_count,2)
             broad.assert_not_called()
         window.managed_lifecycle=False;window.closed=False
 

@@ -14,7 +14,6 @@ from urllib.parse import unquote
 
 from .app_runtime import AppRuntime
 from .workbench_import import WorkbenchData
-from .config import atomic_json
 from .lifecycle import ServiceController
 from .models import RuntimeErrorBase
 from .workbench_errors import report_failure
@@ -73,6 +72,26 @@ class DesktopControls(WorkbenchData):
     def exit_workbench(self):
         self._post(("exit", None))
 
+    def presentation_visible(self, x=None, y=None):
+        try:
+            form = self._window().native
+            hwnd = wintypes.HWND(form.Handle.ToInt64())
+            user32 = ctypes.WinDLL("user32",use_last_error=True)
+            if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+                return False
+            if x is None or y is None:
+                return True
+            point = wintypes.POINT(int(x),int(y))
+            if not user32.ClientToScreen(hwnd,ctypes.byref(point)):
+                return False
+            user32.WindowFromPoint.argtypes = [wintypes.POINT]
+            user32.WindowFromPoint.restype = wintypes.HWND
+            target = user32.WindowFromPoint(point)
+            user32.IsChild.argtypes = [wintypes.HWND,wintypes.HWND]
+            return bool(target and (target==hwnd.value or user32.IsChild(hwnd,target)))
+        except (AttributeError, OSError, RuntimeError, ValueError, TypeError, OverflowError):
+            return False
+
 
 class WebViewHost:
     def __init__(self, controller):
@@ -87,6 +106,8 @@ class WebViewHost:
         self.timer = None
         self.queue = SimpleQueue()
         self.close_worker = None
+        self.close_retry_at=None
+        self.exit_step=None
         self.failure = None
         self.closed = False
         self.closing = False
@@ -94,6 +115,13 @@ class WebViewHost:
         self.wake_id = None
         self.next_poll = 0
         self.controls = DesktopControls(self.queue.put, self.runtime_status,self.paths,lambda:self.window)
+        self.controls._repair_status=self.repair_status
+        self.controls._client.endpoint_check=self.controller.service_endpoint_state
+        self.controller.repair_notice=lambda record:self.queue.put(("repair",record))
+
+    def repair_status(self):
+        from .local_repair import public,read
+        return self.runtime.repair.status() if self.runtime else public(read(self.paths))
 
     def run(self, webview, html):
         self.encoded_document = b64encode(html.encode("utf-8")).decode("ascii")
@@ -191,11 +219,7 @@ class WebViewHost:
         self.run_script("window.pcarDesktop.notice(" + json.dumps(message) + ")")
 
     def record_display(self, state):
-        lease = self.controller.console_lease
-        if lease is not None and not self.closing:
-            value = lease | {"display_state": state}
-            atomic_json(self.paths.home / "runtime/console.json", value)
-            self.controller.console_lease = value
+        if not self.closing:self.controller.update_console(display_state=state)
 
     def show(self):
         from System.Windows.Forms import FormWindowState
@@ -205,6 +229,7 @@ class WebViewHost:
             self.form.WindowState = FormWindowState.Normal
         self.form.Activate()
         self.in_tray = False
+        self.run_script("window.pcarLive?.wake()")
         try:
             self.record_display("visible")
         except OSError:
@@ -226,7 +251,7 @@ class WebViewHost:
         if self.closing:
             return {"label": "正在结算并释放本机组件。"}
         if self.controller.closing.is_set():
-            return {"label": "退出未完成。请检查本机组件后再次退出。"}
+            return {"label": "正在核对组件的退出状态，工作台会自动复查。"}
         if self.runtime is None:
             return {"label": "工作台正在打开。"}
         try:
@@ -246,6 +271,7 @@ class WebViewHost:
             return True
         if not self.closing:
             self.closing = True
+            self.run_script("window.pcarLive?.exitStatus('stop_admission')")
             self.controller.closing.set()
             if self.runtime is not None:
                 self.runtime.stop()
@@ -257,12 +283,17 @@ class WebViewHost:
     def shutdown(self):
         try:
             with self.controller.lifecycle_lock:
-                if self.controller.console_lease is not None:
-                    released = self.controller.shutdown()["processes_released"]
+                if self.controller.console_lease is not None or self.controller.exit_request:
+                    report=self.controller.shutdown()
+                    released = report["processes_released"]
+                    if not released and report.get('retry_after'):
+                        self.queue.put(('retry_exit',(report['retry_after'],report.get('blocker'))))
+                        return
                 else:
                     released = not self.controller.has_resident_processes()
         except Exception:
-            released = False
+            self.queue.put(('retry_exit',(5,'component_ownership_or_release_unconfirmed')))
+            return
         self.queue.put(("closed", released))
 
     def finish_close(self, released):
@@ -271,9 +302,7 @@ class WebViewHost:
             self.detach()
             self.form.Close()
             return
-        self.closing = False
-        self.show()
-        self.notice("退出未完成。请检查本机组件后再次退出。")
+        self.queue.put(("retry_exit",(5,"component_ownership_or_release_unconfirmed")))
 
     def tick(self, *_):
         try:
@@ -284,6 +313,12 @@ class WebViewHost:
                     break
                 if action == "closed":
                     self.finish_close(value)
+                elif action=="repair" and not self.closing and not self.closed:
+                    self.run_script("window.pcarLive?.repairStatus("+json.dumps(value)+")")
+                elif action=="retry_exit":
+                    delay,blocker=value
+                    self.close_retry_at=time.monotonic()+delay
+                    self.run_script("window.pcarLive?.exitStatus("+json.dumps(blocker or 'releasing')+")")
                 elif action == "exit":
                     self.on_closing()
                 elif action in ("show", "status"):
@@ -295,6 +330,14 @@ class WebViewHost:
                         self.start_runtime()
                     elif action == "tray":
                         self.hide()
+            if self.closing and self.close_retry_at is not None and time.monotonic()>=self.close_retry_at:
+                self.close_retry_at=None
+                self.close_worker=Thread(target=self.shutdown,name="webview-shutdown",daemon=True)
+                self.close_worker.start()
+            if self.closing and self.close_retry_at is None:
+                step=getattr(self.controller,'shutdown_progress',{}).get('phase')
+                if step and step!=self.exit_step:
+                    self.exit_step=step;self.run_script("window.pcarLive?.exitStatus("+json.dumps(step)+")")
             if self.closed or self.closing:
                 return
             now = time.monotonic()

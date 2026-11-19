@@ -176,11 +176,11 @@ class DeliveryService:
         return cancelled
 
     def new_input(self,conn,event_id,persona_id,session_id,channel,origin,exclude_batch=None,exclude_turn=None):
-        rows=conn.execute("SELECT * FROM turns WHERE persona_id=? AND session_id=? AND channel=? AND id!=? AND (input_batch_id IS NULL OR input_batch_id!=?)",
+        rows=conn.execute("""SELECT id,origin_json FROM turns WHERE persona_id=? AND session_id=? AND channel=?
+                          AND reply_mode_snapshot='natural_structured' AND id!=? AND (input_batch_id IS NULL OR input_batch_id!=?)""",
                           (persona_id,session_id,channel,exclude_turn or '',exclude_batch or '')).fetchall()
         for row in rows:
             if channel=='qq' and json.loads(row['origin_json'] or '{}')!=origin:continue
-            if row['reply_mode_snapshot']!='natural_structured':continue
             conn.execute('UPDATE turns SET new_input_event_id=? WHERE id=?',(event_id,row['id']))
             for batch in conn.execute('SELECT id FROM reply_batches WHERE turn_id=?',(row['id'],)).fetchall():
                 self._cancel(conn,batch[0],'new_input',event_id)

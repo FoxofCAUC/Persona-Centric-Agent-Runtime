@@ -36,8 +36,8 @@ class ManagedTests(unittest.IsolatedAsyncioTestCase):
         turn=(await self.seed())[0];p=self.org.preview(turn['session_id'])
         rows=await asyncio.gather(*(asyncio.to_thread(self.org.submit,p,'parallel-'+str(n),automatic=n%3) for n in range(6)))
         self.assertEqual(len({r['id'] for r in rows}),1)
-        for i in range(9):self.org.test_model('queued-'+str(i))
-        with self.assertRaisesRegex(RuntimeErrorBase,'queue_full'):self.org.test_model('eleventh')
+        for i in range(7):self.org.test_model('queued-'+str(i))
+        with self.assertRaisesRegex(RuntimeErrorBase,'queue_full'):self.org.test_model('ninth')
         self.assertFalse(self.model.calls)
 
     async def test_overlapping_work_serializes_without_second_charge_for_covered_sources(self):

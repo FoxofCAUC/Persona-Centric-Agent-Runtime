@@ -47,7 +47,7 @@ def readable_excerpt(text,question,limit):
     return text[best[1]:best[1]+limit]
 
 
-def context(result,budget,*,scene_voice=False):
+def context(result,budget,*,scene_voice=False,completed_handoff=False):
     """Return reference text and the sources actually represented within budget."""
     native=(result.get('retrieval',{}).get('executor')=='deepseek-native-web-v1')
     outcome=result.get('retrieval',{}).get('search_outcome')
@@ -72,11 +72,13 @@ def context(result,budget,*,scene_voice=False):
         notes_characters=len(text)
         pieces.append(header+text);room-=len(pieces[-1])
         ids=set(note.get('source_ids',[]));included=[s for s in sources if s['id'] in ids]
-    for index,source in enumerate(sources,1):
+    # In the final answer the verified synthesis takes precedence over repeated search snippets.
+    display_sources=included[:4] if completed_handoff and notes_characters else sources
+    for index,source in enumerate(display_sources,1):
         label={'page_content':'网页内容','search_content':'检索提供的页面内容','search_summary':'检索摘要',
             'native_search_summary':'服务端检索片段','native_source_metadata':'已取得来源的信息','user_correction':'用户更正'}.get(source.get('kind'),'资料')
         heading=f"\n参考{index}：{source['title']}\n{source['url']}\n{label}"+(('，标注时间：'+source['date']) if source.get('date') else '')+'：\n'
-        available=min(5000,max(0,room-len(heading)-10))
+        available=min(400 if completed_handoff else 5000,max(0,room-len(heading)-10))
         if available<100:break
         original=source.get('content') or source.get('summary') or ''
         text=readable_excerpt(original,result.get('source_query'),available) if native else original[:available]

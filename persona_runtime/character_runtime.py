@@ -33,8 +33,9 @@ def validate_snapshot(conn, turn):
 
 class PreparationCoordinator:
     """One executing job, 32 waiting jobs; terminal diagnostics bounded to 128."""
-    def __init__(self, build):
+    def __init__(self, build, *, clock=time.monotonic):
         self.build = build
+        self.clock=clock
         self.condition = threading.Condition()
         self.pending = deque()
         self.states = OrderedDict()
@@ -46,11 +47,12 @@ class PreparationCoordinator:
         with self.condition:
             if self.closed:return {'state':'stopped', 'task_key':key}
             old = self.states.get(key)
-            if old and (old['state'] in ('queued','running') or not retry):return dict(old)
+            if old and (old['state'] in ('queued','running') or not retry and
+                        (old['state'] not in ('failed','queue_full') or self.clock()<old.get('retry_at',0))):return dict(old)
             if len(self.pending) >= 32:
-                self.states[key]={'state':'queue_full','task_key':key};self._trim()
+                self.states[key]={'state':'queue_full','task_key':key,'retry_at':self.clock()+2};self._trim()
                 return dict(self.states[key])
-            self.states[key] = {'state':'queued','task_key':key}
+            self.states[key] = {'state':'queued','task_key':key,'failures':(old or {}).get('failures',0)}
             self.pending.append((key,payload))
             if self.worker is None:
                 self.worker = threading.Thread(target=self._work, name='pcar-character-prepare', daemon=True)
@@ -70,6 +72,7 @@ class PreparationCoordinator:
                 while not self.pending and not self.closed:self.condition.wait()
                 if self.closed:return
                 key,payload = self.pending.popleft();self.running=key
+                failures=self.states[key].get('failures',0)
                 self.states[key]={'task_key':key,'state':'running'}
             try:
                 self.build(*payload)
@@ -80,6 +83,8 @@ class PreparationCoordinator:
             except Exception:
                 result={'state':'failed','reason':'local_preparation_failed'}
             with self.condition:
+                if result['state']=='failed':
+                    result.update(failures=failures+1,retry_at=self.clock()+min(60,2**min(failures+1,6)))
                 self.states[key]={'task_key':key,**result};self.states.move_to_end(key);self.running=None
                 self._trim()
                 self.condition.notify_all()
@@ -104,6 +109,8 @@ class CharacterRuntime:
         self.indexes={};self.index_lock=threading.Lock()
         self.query_gate=threading.Lock();self.closed=False;self.discovery_error=None
         self.coordinator=PreparationCoordinator(self._build)
+        self.maintenance_cursor=0
+        self.audit_positions={}
 
     def _make_index(self,config):
         provider=CharacterEmbeddingProvider(self.store.paths,self.store.paths.home/'models/character-embedding'/config['model_fingerprint'])
@@ -127,7 +134,7 @@ class CharacterRuntime:
     def enqueue(self,pid,version,policy,*,retry=False):
         return self.coordinator.submit(self._key(pid,version,policy),(pid,version,policy,retry),retry=retry)
 
-    def discover(self,persona_id=None):
+    def discover(self,persona_id=None,*,verify_ready=False):
         """Post-commit/startup only. Discovery failure never undoes a save."""
         needs=[]
         with self.store.connection() as conn:
@@ -145,7 +152,21 @@ class CharacterRuntime:
                 if policy['mode'] in ('hybrid','hybrid_llm'):needs.append((row['persona_id'],json.loads(row['character_snapshot'])['id'],policy))
         with self.store.connection() as conn:
             deleted={r[0] for r in conn.execute('SELECT persona_id FROM persona_lifecycle WHERE deleted_at IS NOT NULL')}
-        return [self.enqueue(*n) for n in needs if n[0] not in deleted]
+        wanted={self._key(*n):n for n in needs if n[0] not in deleted}
+        if verify_ready:
+            ready=sorted(k for k in wanted if self.coordinator.status(k)['state']=='ready')
+            if ready:
+                key=next((k for k in ready if k>self.audit_positions.get(persona_id,'')),ready[0])
+                self.audit_positions[persona_id]=key
+                pid,vid,policy=wanted[key]
+                try:
+                    version=CharacterService(self.store).show(pid,vid)
+                    index=self.index(policy['config'])
+                    index._read(index._spec(version),sources(version))
+                except (RuntimeErrorBase,OSError,sqlite3.Error,MemoryError):
+                    self.enqueue(pid,vid,policy,retry=True)
+            else:self.audit_positions.pop(persona_id,None)
+        return [self.enqueue(*n) for n in wanted.values()]
 
     def notify(self,persona_id):
         try:
@@ -153,6 +174,20 @@ class CharacterRuntime:
         except (RuntimeErrorBase,ValueError,TypeError,KeyError,OSError,sqlite3.Error):
             self.discovery_error='discovery_failed'
             return [{'state':'failed','reason':self.discovery_error}]
+
+    def maintain(self):
+        with self.store.connection() as db:
+            rows=db.execute("SELECT rowid,id FROM personas WHERE rowid>? ORDER BY rowid LIMIT 4",(self.maintenance_cursor,)).fetchall()
+        delayed=False
+        for ordinal,pid in rows:
+            try:
+                states=self.discover(pid,verify_ready=True)
+                delayed=delayed or any(item['state'] in ('failed','queue_full') for item in states)
+            except (RuntimeErrorBase,OSError,sqlite3.Error,KeyError):
+                delayed=True
+            self.maintenance_cursor=ordinal
+        if len(rows)<4:self.maintenance_cursor=0
+        if delayed:raise RuntimeErrorBase('character_index_waiting')
 
     def _scope(self,persona_id,version_id,channel):
         if channel not in ('desktop','qq'):raise RuntimeErrorBase('unsupported_channel')

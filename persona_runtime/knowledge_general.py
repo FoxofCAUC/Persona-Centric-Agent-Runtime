@@ -97,11 +97,25 @@ class IndependentWebTools:
 
 def attach(messages,details,result,turn):
     from copy import deepcopy
+    from .knowledge_handoff import completed_blocks,VERSION as HANDOFF
+    from .prompt_assembly import PromptBlock,assemble
     details=deepcopy(details)
     remaining=json.loads(turn['model_snapshot'])['max_input_chars']-sum(len(m['content']) for m in messages)
+    blocks=completed_blocks(messages,details,result,turn)
+    if blocks is not None:
+        remaining+=len(messages[0]['content'])-sum(len(b.content) for b in blocks)
     from .knowledge_translation import context
-    body,sources,translation=context(result,remaining,scene_voice=bool(details.get('scene_voice')))
-    if body:
+    body,sources,translation=context(result,remaining,scene_voice=bool(details.get('scene_voice')),completed_handoff=blocks is not None)
+    if blocks is not None and body and translation['notes_characters']>0:
+        position=next((i for i,b in enumerate(blocks) if b.name=='history_recorded_at'),len(blocks))
+        blocks.insert(position,PromptBlock('retrieved_material',body,'knowledge_translation',HANDOFF))
+        messages,layout=assemble(blocks,messages[1:-1],messages[-1])
+        details['prompt_assembly'].update(layout)
+        details['input_characters']=layout['input_characters']
+        if details['prompt_assembly'].get('character_consumption'):
+            details['prompt_assembly']['character_consumption']['final_input_hash']=layout['input_snapshot_hash']
+        translation['handoff_version']=HANDOFF
+    elif body:
         messages=[dict(m) for m in messages]
         system = messages[0]['content']
         time_meta = next((b for b in (details.get('prompt_assembly') or {}).get('blocks', [])

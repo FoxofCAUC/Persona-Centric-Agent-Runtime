@@ -62,9 +62,9 @@ def boundaries(pattern, text, ranges):
             yield m.end()
 
 
-def speech(raw, scene):
+def speech(raw, scene, *, post_search_answer=False):
     spoken=without_directions(raw)
-    if scene=='help' or len(spoken)<=SOCIAL_LIMIT or technical(spoken):
+    if post_search_answer or scene=='help' or len(spoken)<=SOCIAL_LIMIT or technical(spoken):
         return spoken
     ends=[i for i in boundaries(STOPS,spoken,protected_ranges(spoken))
           if 30<=i<=SOCIAL_LIMIT and spoken[:i].rstrip()[-1:] in '。！？!?；;”」』】']

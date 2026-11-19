@@ -6,7 +6,7 @@ EVENTS = {"knowledge_routing","knowledge_web_plan","knowledge_search_web","knowl
           "delivery_uncertain", "delivery_failed"}
 
 
-EVENTS.update(('knowledge_search_notice', 'search_notice_published', 'scene_bubble_presented'))
+EVENTS.update(('knowledge_search_notice', 'search_notice_published', 'scene_bubble_presented','desktop_publication_changed'))
 
 
 def record(conn, turn_id, event, attempt_id=None):
@@ -37,6 +37,8 @@ def progress(conn, turn):
         phase=rows[-1]['event']
     if phase=='queued' and rows and rows[-1]['event'] in ('knowledge_search_notice','search_notice_published'):
         phase=rows[-1]['event']
+    if phase=='queued' and rows and rows[-1]['event']=='desktop_publication_changed':
+        phase='knowledge_search_notice'
     queued = latest.get("retry_queued", latest.get("queued"))
     knowledge_done = max((r["at_epoch"] for r in rows[start:] if r["event"] in
         ("knowledge_ready", "knowledge_no_matches", "knowledge_unavailable", "knowledge_failed")), default=None)

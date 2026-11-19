@@ -1,4 +1,5 @@
 """Durable chat orchestration; no window or QQ SDK dependencies."""
+from .call_limits import resume_on_limit
 import asyncio
 from collections import defaultdict
 import json
@@ -45,6 +46,24 @@ class ChatCompletionsClient:
     def __init__(self, *, ssl_context=None, allow_loopback_fixture=False):
         self.ssl_context=ssl_context
         self.allow_loopback_fixture=allow_loopback_fixture
+
+    async def route_reachable(self,model):
+        """Check the configured route without sending headers, credentials or messages."""
+        from urllib.parse import urlsplit
+        from .network_proxy import outbound_proxy
+        from .provider_policy import require_generation_provider
+        require_generation_provider(model,allow_loopback_fixture=self.allow_loopback_fixture)
+        try:route=urlsplit(outbound_proxy(model['base_url']) or model['base_url'])
+        except ModelError as error:
+            if str(error)=='system_proxy_required':return False
+            raise
+        try:
+            async with asyncio.timeout(2):
+                _,writer=await asyncio.open_connection(route.hostname,route.port or (443 if route.scheme=='https' else 80))
+                writer.close()
+                await writer.wait_closed()
+            return True
+        except (OSError,TimeoutError):return False
 
     async def complete(self, model, messages):
         if '_native_web_profile' in model:
@@ -204,6 +223,8 @@ class ChatEngine:
         from .situation_observation import SituationObservationService
         self.observer=SituationObservationService(self)
         self.service = RuntimeService(store)
+        self.desktop_owner = identifier()
+        self.pending_settlements = set()
         self.tasks = {}
         self.preparations = set()
         self.locks = defaultdict(asyncio.Lock)
@@ -217,6 +238,8 @@ class ChatEngine:
         self.scene = SceneRuntime(self)
         self.scene_publication = ScenePublication(self)
         self.expression.outlet.scene = self.scene_publication
+        from .desktop_presentation import PresentationWakeup
+        self.presentation_wakeup = PresentationWakeup()
         self.cognitive.dialogue = SceneDialogue(store,self)
 
     def scene_for(self, db, turn):
@@ -226,15 +249,25 @@ class ChatEngine:
         self.scene.before_notice(turn)
 
     def recover(self):
+        from . import desktop_recovery
+        from .instance import process_identity_alive
+        config = self.config.load()
         with self.store.connection(write=True) as conn:
+            pending = conn.execute("SELECT * FROM turns WHERE status IN ('queued','running')").fetchall()
+            for row in pending:
+                state = desktop_recovery.contract(conn, row) if row["channel"]=="desktop" else None
+                if state and state.get("owner") != self.desktop_owner and process_identity_alive(state.get("process")):
+                    return
             self.selector.recover(conn)
             self.observer.recover(conn)
-            for row in conn.execute("SELECT id FROM turns WHERE status IN ('queued','running')").fetchall():
-                record_progress(conn, row[0], "interrupted")
+            for row in pending:
+                if row["channel"] == "desktop" and desktop_recovery.can_resume(conn, row, config):
+                    continue
+                record_progress(conn, row["id"], "interrupted")
+                conn.execute("""UPDATE turns SET status='interrupted',error_code='service_restarted',
+                                updated_at=? WHERE id=?""", (timestamp(), row["id"]))
             for row in conn.execute("SELECT turn_id FROM deliveries WHERE state='sending'").fetchall():
                 record_progress(conn, row[0], "delivery_uncertain")
-            conn.execute("UPDATE turns SET status='interrupted', error_code='service_restarted', updated_at=? "
-                         "WHERE status IN ('queued','running')", (timestamp(),))
             conn.execute("UPDATE attempts SET status='interrupted', error_code='service_restarted' WHERE status='running'")
             conn.execute("UPDATE deliveries SET state='uncertain', updated_at=? WHERE state='sending'", (timestamp(),))
         from .delivery import DeliveryService
@@ -242,6 +275,58 @@ class ChatEngine:
         self.expression.recover()
         self.direct.recover()
         self.scene_publication.recover()
+        self._recover_saved_replies()
+        self.expression.recover_desktop_publications()
+
+    def _recover_saved_replies(self, *, pending_only=False):
+        from .desktop_recovery import contract, validate_turn
+        from .expression_runtime import enabled
+        from .scene_publication import native_policy
+        from .private_personas import guard_cloud_dispatch
+        from .expression_contract import text_hash
+        if pending_only and not self.pending_settlements:
+            return
+        with self.store.connection() as db:
+            rows = db.execute("""SELECT t.id,r.id AS receipt FROM turns t JOIN expression_main_receipts r
+                               ON r.turn_id=t.id AND r.execution_revision=t.execution_revision
+                               WHERE t.channel='desktop' AND t.status IN ('interrupted','failed')
+                               AND t.error_code IN ('service_restarted','desktop_settlement_pending')
+                               AND (?=0 OR t.error_code='desktop_settlement_pending')
+                               AND t.cancelled_at IS NULL AND r.valid=1
+                               AND json_extract(r.context_json,'$.desktop_plain')=1""", (pending_only,)).fetchall()
+        for row in rows:
+            try:
+                with self.store.connection(write=True) as db:
+                    turn = dict(db.execute("SELECT * FROM turns WHERE id=?", (row["id"],)).fetchone())
+                    state = contract(db, turn)
+                    if (not state or state["instance"] != self.config.load()["instance_id"]
+                            or turn["status"] not in ("failed","interrupted")
+                            or turn.get("cancelled_at") or native_policy(turn) or enabled(db, turn["id"])):
+                        continue
+                    receipt = db.execute("SELECT * FROM expression_main_receipts WHERE id=?", (row["receipt"],)).fetchone()
+                    validate_turn(db, turn)
+                    guard_cloud_dispatch(self.store,turn["persona_id"],"main",json.loads(turn["model_snapshot"]),db=db)
+                    audit = json.loads(receipt["usage_json"])
+                    physical = next((item for item in audit["generation_retry"]["attempts"]
+                                     if item["id"]==receipt["physical_attempt_id"] and item["status"]=="completed"), None)
+                    if (not physical or text_hash(receipt["raw_text"]) != physical.get("output_fingerprint")
+                            or text_hash(receipt["raw_text"]) != receipt["raw_hash"]):
+                        raise ModelError("desktop_receipt_invalid")
+                    context = json.loads(receipt["context_json"])
+                    turn["_context_details"] = context["details"]
+                    completion = ModelCompletion(receipt["raw_text"], audit, physical.get("diagnostics", {}))
+                    db.execute("UPDATE turns SET status='running' WHERE id=?", (turn["id"],))
+                self._finish_reply(turn, receipt["logical_attempt_id"], completion, source_check=context)
+                self.pending_settlements.discard(row["id"])
+            except (ValueError, KeyError, TypeError, OSError, sqlite3.Error) as error:
+                reason = "desktop_settlement_pending" if isinstance(error,(OSError,sqlite3.Error)) else "desktop_receipt_requires_review"
+                if reason == "desktop_settlement_pending":
+                    self.pending_settlements.add(row["id"])
+                else:
+                    self.pending_settlements.discard(row["id"])
+                with self.store.connection(write=True) as db:
+                    db.execute("""UPDATE turns SET status='interrupted',error_code=?
+                                  WHERE id=? AND status IN ('interrupted','running','failed')""", (reason,row["id"]))
 
     @staticmethod
     def _session(conn, persona_id, channel, session_id=None, fresh=False, origin=None):
@@ -250,11 +335,14 @@ class ChatEngine:
             raise RuntimeErrorBase('use_session_service_for_new_session')
         return select(conn,persona_id,channel,session_id,origin)
 
-    def session(self, channel="desktop", session_id=None, fresh=False):
+    def session(self, channel="desktop", session_id=None, fresh=False, persona_id=None):
         from .sessions import SessionService
         if channel not in ('desktop','qq'):raise RuntimeErrorBase('Unsupported channel')
         cfg=self.config.load();origin={'bot':cfg['bot_qq'],'sender':cfg['owner_qq']} if channel=='qq' else None
-        with self.store.connection() as conn:pid=self.service._persona(conn)['id']
+        if persona_id is not None and channel!="desktop":raise RuntimeErrorBase("unsupported_channel")
+        with self.store.connection() as conn:pid=self.service._persona(conn,persona_id)['id']
+        if fresh and persona_id is not None:
+            self.service.use_persona(pid)
         service=SessionService(self.store)
         if fresh:
             current=service.current(pid,channel,(origin or {}).get('bot',''),(origin or {}).get('sender',''))
@@ -275,6 +363,8 @@ class ChatEngine:
                 "ORDER BY s.created_at", (persona_id, LOCAL_USER_ID))]
 
     async def submit(self, channel, text, request_id, session_id=None, *, test=False, origin=None, persona_id=None, test_reply_mode=None, public_task=None):
+        from .local_repair import require_open
+        require_open(self.store.paths)
         from .migration import ensure_cloud_ready
         ensure_cloud_ready(self.store.paths)
         if (self.store.paths.home/'runtime/en5-experience.json').is_file():
@@ -370,7 +460,11 @@ class ChatEngine:
                 DeliveryService(self.store).new_input(conn,event_id,persona_id,session_id,channel,identity if channel=='qq' else {},exclude_turn=turn_id)
             record_progress(conn, turn_id, "accepted")
             record_progress(conn, turn_id, "queued")
+            if channel == "desktop":
+                from .desktop_recovery import register
+                register(conn, turn_id, self.config.load())
         self._schedule(turn_id)
+        self.presentation_wakeup.notify()
         return self.get(turn_id)
 
     def _schedule(self, turn_id):
@@ -448,6 +542,9 @@ class ChatEngine:
         from .scene_publication import ScenePublication
         speech=ScenePublication.view(conn,turn_id)
         if speech is not None:value['scene_speech']=speech
+        if value['channel']=='desktop':
+            plans=ScenePublication.desktop_plans(conn,value)
+            if plans:value['desktop_publications']=plans
         value.update(progress(conn, value))
         value["queue_position"] = conn.execute(
             "SELECT count(*) FROM turns t WHERE t.persona_id IS ? AND (t.status='running' OR "
@@ -516,6 +613,84 @@ class ChatEngine:
         return await asyncio.shield(task)
 
     async def _run(self, turn_id):
+        from .call_limits import flow,turn_scope,finish
+        with self.store.connection() as db:
+            row=db.execute("""SELECT t.id,t.execution_revision FROM turns t WHERE t.id=? AND NOT EXISTS(
+                SELECT 1 FROM turns p WHERE t.channel='desktop' AND p.persona_id=t.persona_id AND p.session_id=t.session_id
+                AND p.channel='desktop' AND p.rowid<t.rowid AND p.error_code IN ('desktop_network_wait','desktop_storage_wait') AND p.cancelled_at IS NULL
+                AND p.status IN ('queued','running'))""",(turn_id,)).fetchone()
+        if not row:return
+        scope=turn_scope(row)
+        token=flow.set(scope)
+        try:return await self._run_turn(turn_id)
+        finally:
+            flow.reset(token)
+            with self.store.connection(write=True) as db:
+                row=db.execute("SELECT status,cancelled_at FROM turns WHERE id=?",(turn_id,)).fetchone()
+                if not row or row['cancelled_at'] or row['status'] not in ('queued','running'):
+                    finish(db,scope)
+
+    async def _run_turn(self,turn_id):
+        from .desktop_presentation import PresentationPending, wait_for_notice, clear_wait
+        from .tk_notice import required
+        while True:
+            with self.store.connection() as db:
+                row = db.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
+                if not row or row["status"] != "queued" or row["cancelled_at"]:
+                    return
+                turn = dict(row)
+                desktop = required(db, turn)
+                from .scene_policy import read
+                parked = read(db,"desktop.wait."+turn_id)
+                if parked and (parked.get("kind")!="notice" or parked.get("revision")!=turn["execution_revision"]):
+                    parked = None
+            try:
+                if parked:
+                    raise PresentationPending(turn_id,parked["dependency"])
+                if desktop:
+                    return await self._run_ready(turn_id)
+                async with self.locks[(turn["persona_id"],turn["session_id"])]:
+                    if await self.expression.wait_prior(turn, self):
+                        return await self._run_ready(turn_id)
+                    return
+            except PresentationPending as wait:
+                try:
+                    await wait_for_notice(self,turn,wait.task_id)
+                    with self.store.connection(write=True) as db:
+                        clear_wait(db,turn,wait.task_id)
+                except (RuntimeErrorBase,OSError) as error:
+                    if str(error) == "knowledge_stopped":
+                        if self.knowledge.closed.is_set() and not self.draining:
+                            with self.store.connection(write=True) as db:
+                                db.execute("""UPDATE turns SET status='interrupted',error_code='knowledge_stopped',updated_at=?
+                                              WHERE id=? AND status='queued' AND execution_revision=?""",
+                                           (timestamp(),turn_id,turn['execution_revision']))
+                        return
+                    if self.draining:
+                        return
+                    with self.store.connection(write=True) as db:
+                        clear_wait(db,turn,wait.task_id)
+                        changed = db.execute("""UPDATE turns SET status='interrupted',error_code=?,updated_at=?
+                            WHERE id=? AND execution_revision=? AND status='queued' AND cancelled_at IS NULL""",
+                            (str(error) if isinstance(error,RuntimeErrorBase) else "desktop_presentation_unavailable",
+                             timestamp(),turn_id,turn["execution_revision"])).rowcount
+                        if changed:
+                            record_progress(db, turn_id, "interrupted")
+                            db.execute("""UPDATE organization_tasks SET status='cancelled',error_code='search_notice_inactive',
+                                updated_at=? WHERE id=? AND status='queued'
+                                AND json_extract(payload_json,'$.knowledge_processing.root_turn_id')=?
+                                AND EXISTS(SELECT 1 FROM organization_contracts c WHERE c.task_id=organization_tasks.id
+                                           AND json_extract(c.data_json,'$.presentation_wait') IS NOT NULL)""",
+                                       (timestamp(),wait.task_id,turn_id))
+                    self.expression.outlet.cancel_root(turn_id,"search_notice_inactive")
+                    return
+
+    @resume_on_limit
+    async def _run_ready(self, turn_id):
+        from .generation_retry import ConnectionPending
+        from .call_limits import CallLimitPending,QuotaShutdown,gate
+        from .local_repair import RepairInProgress
+        from .desktop_presentation import PresentationPending
         initial = self.get(turn_id)
         if initial['status']!='queued' or initial.get('cancelled_at'):return
         async with self.locks[initial["persona_id"]]:
@@ -526,8 +701,32 @@ class ChatEngine:
             try:
                 latest=self.get(turn_id)
                 if latest['status']!='queued' or latest['execution_revision']!=initial['execution_revision']:return
+                from . import desktop_recovery
+                with self.store.connection(write=True) as conn:
+                    current = conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
+                    if current["status"] != "queued" or current["cancelled_at"]:
+                        return
+                    if current["channel"] == "desktop" and not desktop_recovery.claim(conn, current, self.config.load(), self.desktop_owner):
+                        return
+                if current['error_code'] in ('desktop_network_wait','desktop_storage_wait'):
+                    from .config import same_credential
+                    accepted=json.loads(current['model_snapshot']);live=self.config.load()['model']
+                    if ((accepted['base_url'],accepted['name'])!=(live['base_url'],live['name'])
+                            or not same_credential(accepted.get('encrypted_key'),live.get('encrypted_key'))):
+                        raise ModelError('desktop_connection_changed')
+                    probe=getattr(self.client,'route_reachable',None)
+                    if current['error_code']=='desktop_network_wait' and probe and not await probe(accepted):
+                        from .scene_policy import read,save
+                        with self.store.connection(write=True) as db:
+                            still=db.execute("SELECT * FROM turns WHERE id=?",(turn_id,)).fetchone()
+                            if still['status']!='queued' or still['cancelled_at'] or still['execution_revision']!=current['execution_revision']:return
+                            mark=read(db,'desktop.network.'+turn_id) or {'revision':still['execution_revision']}
+                            count=mark.get('probes',0)+1
+                            save(db,'desktop.network.'+turn_id,dict(mark,probes=count,due=time.time()+min(60,2**min(count,6))))
+                            desktop_recovery.release_for_continuation(db,still,self.desktop_owner)
+                        return
                 self.scene_publication.stop_before(latest)
-                await self.expression.wait_prior(latest)
+                self.expression.settle_prior(latest)
                 with self.store.connection() as conn:
                     accepted_turn=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
                 from .companion import read as companion_read
@@ -545,6 +744,10 @@ class ChatEngine:
                     if self.knowledge.processing and self.knowledge.processing.enabled(accepted_turn):
                         raise ModelError('style_study_web_must_be_disabled')
                 if companion and self.dialogue_pipeline is not None:raise ModelError('companion_pipeline_conflict')
+                if accepted_turn["channel"] == "desktop":
+                    with self.store.connection(write=True) as conn:
+                        phase = "custom_pipeline" if self.dialogue_pipeline else "preparing"
+                        desktop_recovery.transition(conn, accepted_turn, self.desktop_owner, phase)
                 if self.dialogue_pipeline is not None:
                     prepared=await self.dialogue_pipeline.prepare(self,turn_id)
                 elif companion and companion['mode']=='minimal':
@@ -586,19 +789,38 @@ class ChatEngine:
                     reference_manifest = turn["_context_details"].get("references")
                     if not model["base_url"] or not model["name"]:
                         raise ModelError("model_not_configured")
-                    # Human main replies (including probes/retries) are audited
-                    # but do not consume the automatic-call quota.
+                    meter=None if direct_on else gate(conn,self.store,'main','turn/'+turn_id+'/'+str(turn['execution_revision']))
                     conn.execute("UPDATE quota_reservations SET state='consumed' WHERE turn_id=? AND execution_revision=? AND state='active'",(turn_id,turn['execution_revision']))
                     attempt_id = identifier()
-                    conn.execute("INSERT INTO attempts VALUES (?,?,?,'running',NULL,NULL,?)",
-                                 (attempt_id, turn_id, time.time(), turn["model_snapshot"]))
-                    context_id=self.cognitive.persist(conn,prepared['manifest'],turn=turn,attempt_id=attempt_id)
+                    from .archive import fingerprint
+                    wire_hash = fingerprint([model, messages])
+                    state = desktop_recovery.contract(conn, turn) if turn["channel"]=="desktop" else None
+                    resume_audit = None
+                    if state and state.get("attempt"):
+                        if state.get("wire") != wire_hash:
+                            raise ModelError("generation_retry_sources_changed")
+                        attempt_id = state["attempt"]
+                        previous = conn.execute("SELECT usage_json FROM attempts WHERE id=? AND turn_id=?", (attempt_id,turn_id)).fetchone()
+                        resume_audit = json.loads(previous[0] or "{}").get("generation_retry")
+                        context_id = json.loads(conn.execute("SELECT details_json FROM context_uses WHERE attempt_id=?", (attempt_id,)).fetchone()[0])["context_id"]
+                        conn.execute("UPDATE attempts SET status='running',error_code=NULL WHERE id=?", (attempt_id,))
+                    else:
+                        conn.execute("INSERT INTO attempts VALUES (?,?,?,'running',NULL,NULL,?)",
+                                     (attempt_id, turn_id, time.time(), turn["model_snapshot"]))
+                        context_id=self.cognitive.persist(conn,prepared['manifest'],turn=turn,attempt_id=attempt_id)
+                    if state:
+                        phase = "main_pending" if not direct_on and self.generation_executor is None else "main"
+                        desktop_recovery.transition(conn, turn, self.desktop_owner, phase, attempt=attempt_id, wire=wire_hash)
                     turn['_context_details']['context_id']=context_id
-                    expression_context=self.expression.capture_context(conn,turn,turn['_context_details']) if expression_on or scene_on else None
+                    save_plain = (turn["channel"] == "desktop" and not direct_on and not expression_on and not scene_on
+                                  and self.generation_executor is None and desktop_recovery.contract(conn, turn) is not None)
+                    expression_context=self.expression.capture_context(conn,turn,turn['_context_details']) if expression_on or scene_on or save_plain else None
+                    if save_plain:
+                        expression_context["desktop_plain"] = True
                     if scene_on:
                         self.scene.selected(conn,turn)
                         expression_context['logical_attempt_id']=attempt_id
-                    conn.execute("INSERT INTO context_uses VALUES (?,?,?,?,?,?)", (attempt_id, turn_id, turn["persona_id"], LOCAL_USER_ID,
+                    conn.execute("INSERT OR IGNORE INTO context_uses VALUES (?,?,?,?,?,?)", (attempt_id, turn_id, turn["persona_id"], LOCAL_USER_ID,
                                  json.dumps(turn["_context_details"], ensure_ascii=False), timestamp()))
                     conn.execute("UPDATE turns SET status='running', updated_at=? WHERE id=?", (timestamp(), turn_id))
                     from .references import record_check
@@ -623,6 +845,11 @@ class ChatEngine:
                         current=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())
                         if current['status']!='running' or current['cancelled_at'] or current['execution_revision']!=turn['execution_revision']:
                             raise ModelError('generation_retry_request_inactive')
+                        if turn["channel"] == "desktop":
+                            desktop_recovery.validate_turn(conn, current)
+                            recovery = desktop_recovery.contract(conn, current)
+                            if recovery and recovery["owner"] != self.desktop_owner:
+                                raise ModelError("desktop_owner_changed")
                         from .private_personas import guard_cloud_dispatch
                         guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
                         if scene_on:
@@ -653,9 +880,16 @@ class ChatEngine:
                     dict(model,_reply_mode=turn.get('reply_mode_snapshot'),_expression_snapshot=turn.get('expression_snapshot')),messages,
                     validate=validate_generation,
                     save=save_generation_audit,before_attempt=before_generation_attempt,
-                    **({'paths':self.store.paths} if self.generation_executor is None else {}),
-                    **({'save_completion':save_main_completion} if expression_on or scene_on else {}))
-                raw_reply, usage = completion
+                    **({'paths':self.store.paths,'first_meter':meter,'park_offline':bool(state and not study and not evaluation)}
+                       if self.generation_executor is None else {}),
+                    **({'resume_audit':resume_audit} if resume_audit else {}),
+                    **({'save_completion':save_main_completion} if expression_on or scene_on else
+                       {'save_valid_completion':save_main_completion} if save_plain else {}))
+                usage = completion[1]
+                if (expression_context or {}).get('details',{}).get('knowledge',{}).get('translation',{}).get('handoff_version'):
+                    with self.store.connection() as db:
+                        outcome=db.execute('SELECT error_code FROM turns WHERE id=?',(turn_id,)).fetchone()
+                        if outcome and outcome[0]=='knowledge_repeated_notice':return
                 if scene_on:
                     self.scene_publication.main(turn_id,attempt_id)
                     return
@@ -665,78 +899,41 @@ class ChatEngine:
                         raise ModelError(outcome.get('reason') or 'expression_request_stopped',usage=usage)
                     if outcome['state']=='unknown':raise ModelError('expression_result_unknown',usage=usage)
                     return
-                provider_diagnostics=getattr(completion,'diagnostics',{'finish_reason':'unreported'})
-                validation_error=None
-                try:
-                    if turn.get('reply_mode_snapshot') in ('natural_structured','context_structured') and provider_diagnostics.get('finish_reason')=='length':
-                        raise ReplySchemaError('reply_output_truncated')
-                    if provider_diagnostics.get('finish_reason')=='content_filter':
-                        raise ReplySchemaError('provider_content_filtered')
-                    reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
-                    output_validation={'status':'accepted','fallback_reason':reply_batch.fallback_reason,
-                                       'schema_version':reply_batch.schema_version,'message_count':len(reply_batch.segments)}
-                except ReplySchemaError as error:
-                    from .reply_protocol import validation_failure
-                    output_validation=validation_failure(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
-                    if str(error)=='reply_output_truncated':output_validation['reason']='provider_length_limit'
-                    if str(error)=='provider_content_filtered':output_validation['reason']='provider_content_filtered'
-                    validation_error=error
-                # Keep only the output fingerprint for failed validation as well as
-                # successful batches; never persist a malformed internal envelope.
-                import hashlib
+                self._finish_reply(turn, attempt_id, completion, source_check=expression_context)
+            except ConnectionPending as wait:
+                with self.store.connection(write=True) as db:
+                    current=db.execute("SELECT * FROM turns WHERE id=?",(turn_id,)).fetchone()
+                    state=desktop_recovery.contract(db,current)
+                    if not state or state['owner']!=self.desktop_owner or current['cancelled_at'] or current['status']!='running':return
+                    if wait.meter:db.execute("DELETE FROM model_call_meter WHERE id=? AND started=?",wait.meter)
+                    db.execute("UPDATE attempts SET usage_json=?,status='failed',error_code=? WHERE id=?",
+                               (json.dumps(wait.audit),str(wait),attempt_id))
+                    count=wait.audit['generation_retry']['connection_wait']['count']
+                    due=time.time()+min(60,2**min(count,6))
+                    desktop_recovery.release_for_continuation(db,current,self.desktop_owner)
+                    from .scene_policy import save
+                    save(db,'desktop.network.'+turn_id,{'due':due,'revision':current['execution_revision']})
+                    db.execute("UPDATE turns SET status='queued',error_code=?,updated_at=? WHERE id=?",(str(wait),timestamp(),turn_id))
+                    record_progress(db,turn_id,'retry_queued')
+                return
+            except QuotaShutdown:
+                with self.store.connection(write=True) as db:
+                    current=db.execute("SELECT * FROM turns WHERE id=?",(turn_id,)).fetchone()
+                    if current and current['status']=='queued':
+                        desktop_recovery.release_for_continuation(db,current,self.desktop_owner)
+                return
+            except (CallLimitPending,RepairInProgress):
+                with self.store.connection(write=True) as db:
+                    desktop_recovery.release_for_continuation(db,initial,self.desktop_owner)
+                raise
+            except PresentationPending as wait:
                 with self.store.connection(write=True) as conn:
-                    active=conn.execute('SELECT status,cancelled_at,execution_revision FROM turns WHERE id=?',(turn_id,)).fetchone()
-                    if active['status']!='running' or active['cancelled_at'] or active['execution_revision']!=turn['execution_revision']:
-                        raise ModelError('generation_cancelled')
-                    details=dict(turn['_context_details'])
-                    details['reply_output_fingerprint']=hashlib.sha256(raw_reply.encode('utf-8')).hexdigest()
-                    details['reply_provider']=provider_diagnostics
-                    details['reply_validation']=output_validation
-                    conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
-                                 (json.dumps(details,ensure_ascii=False),attempt_id))
-                if validation_error:raise validation_error
-                reply=reply_batch.text
-                from dataclasses import asdict
-                from .presentation import batch_view
-                _, presentation=batch_view(reply,[asdict(s) for s in reply_batch.segments])
-                from .chat_display import enabled, plan as display_plan, persist as persist_display
-                display_messages=display_plan([asdict(s) for s in reply_batch.segments],turn.get('expression_snapshot')) if enabled(turn.get('expression_snapshot'),reply_batch.mode) else []
-                if display_messages:
-                    presentation['display_version']=display_messages[0]['transform_version']
-                    presentation['display_count']=len(display_messages)
-                    presentation['planned_wait_ms']=sum(m['wait_ms'] for m in display_messages)
-                with self.store.connection(write=True) as conn:
-                    details['presentation']=presentation
-                    from .history_context import validate as validate_history
-                    validate_history(conn,turn,details.get("import_history_sources"))
-                    from .knowledge_service import validate_used
-                    validate_used(conn,self.store.paths,turn['persona_id'],turn['channel'],details.get('knowledge'))
-                    from .recall_runtime import validate as validate_recall
-                    validate_recall(conn,turn,details.get('recall_support'))
-                    conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
-                                 (json.dumps(details,ensure_ascii=False),attempt_id))
-                    record_progress(conn, turn_id, "generated", attempt_id)
-                    event_id = identifier() if turn["channel"] != "test" else None
-                    if event_id:
-                        conn.execute("INSERT INTO events (id,session_id,persona_id,user_id,role,text,created_at) "
-                                     "VALUES (?,?,?,?, 'persona',?,?)",
-                                     (event_id, turn["session_id"], turn["persona_id"], LOCAL_USER_ID, reply, timestamp()))
-                        batch_id=identifier()
-                        conn.execute('INSERT INTO reply_batches (id,turn_id,attempt_id,persona_id,user_id,schema_version,mode,raw_fingerprint,segment_count,total_chars,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                                     (batch_id,turn_id,attempt_id,turn['persona_id'],LOCAL_USER_ID,reply_batch.schema_version,reply_batch.mode,reply_batch.raw_fingerprint,len(reply_batch.segments),sum(len(item.text) for item in reply_batch.segments),timestamp()))
-                        conn.execute('UPDATE reply_batches SET behavior_intent=?,fallback_reason=? WHERE id=?',(reply_batch.behavior_intent,reply_batch.fallback_reason,batch_id))
-                        conn.executemany('INSERT INTO reply_segments (batch_id,persona_id,user_id,segment_index,text,format,content_kind,cancel_if_new_input,wait_ms) VALUES (?,?,?,?,?,?,?,?,?)',
-                                         [(batch_id,turn['persona_id'],LOCAL_USER_ID,index,item.text,item.format,item.content_kind,int(item.cancel_if_new_input),item.wait_ms) for index,item in enumerate(reply_batch.segments,1)])
-                        if display_messages:persist_display(conn,batch_id,turn,display_messages)
-                        from .delivery import DeliveryService
-                        DeliveryService(self.store).create_for_batch(conn,batch_id,turn)
-                    encoded = json.dumps(usage) if usage is not None else None
-                    conn.execute("UPDATE turns SET status='completed',reply_event_id=?,error_code=NULL,usage_json=?,updated_at=? WHERE id=?",
-                                 (event_id, encoded, timestamp(), turn_id))
-                    conn.execute("UPDATE attempts SET status='completed',usage_json=? WHERE id=?", (encoded, attempt_id))
-                    record_progress(conn, turn_id, "persisted", attempt_id)
-                    from .recall_runtime import queue_feedback
-                    queue_feedback(conn,turn,attempt_id,'main',details.get('recall_support'))
+                    current = dict(conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone())
+                    if current["status"] == "queued" and current["execution_revision"]==initial["execution_revision"]:
+                        from .scene_policy import save
+                        save(conn,"desktop.wait."+turn_id,{"kind":"notice","revision":current["execution_revision"],"dependency":wait.task_id})
+                        desktop_recovery.release_for_continuation(conn,current,self.desktop_owner)
+                raise
             except BaseException as error:
                 interrupted = isinstance(error, asyncio.CancelledError) or str(error) == 'knowledge_stopped'
                 if getattr(error,'usage',None) is not None:usage=error.usage
@@ -744,6 +941,13 @@ class ChatEngine:
                 from .references import ReferenceError,record_check
                 code = str(error) if isinstance(error, (RuntimeErrorBase,ModelError,ReplySchemaError,ReferenceError)) else ("request_interrupted" if interrupted else "request_failed")
                 with self.store.connection(write=True) as conn:
+                    if initial["channel"] == "desktop":
+                        current = conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
+                        state = desktop_recovery.contract(conn, current)
+                        if (current["execution_revision"] != initial["execution_revision"]
+                                or (state and state.get("recovered") and state["owner"] != self.desktop_owner)
+                                or (state and state["owner"] not in (None,self.desktop_owner))):
+                            return
                     cancelled=conn.execute('SELECT cancelled_at FROM turns WHERE id=?',(turn_id,)).fetchone()
                     if cancelled and cancelled[0]:
                         interrupted=True;code='cancelled_by_user'
@@ -759,11 +963,19 @@ class ChatEngine:
                     if attempt_id is None:
                         try:self.cognitive.blocked(conn,initial,code)
                         except (sqlite3.Error,OSError,ModelError):pass
+                    saved_plain = attempt_id and initial["channel"]=="desktop" and conn.execute(
+                        """SELECT 1 FROM expression_main_receipts r JOIN turns t ON t.id=r.turn_id
+                           WHERE r.logical_attempt_id=? AND r.valid=1 AND t.cancelled_at IS NULL
+                           AND r.execution_revision=t.execution_revision
+                           AND json_extract(r.context_json,'$.desktop_plain')=1""",(attempt_id,)).fetchone()
+                    if saved_plain and isinstance(error, (sqlite3.Error, OSError)):
+                        code = "desktop_settlement_pending"
+                        self.pending_settlements.add(turn_id)
                     record_progress(conn, turn_id, "interrupted" if interrupted else "failed", attempt_id)
                     encoded=json.dumps(usage) if usage is not None else None
                     conn.execute("UPDATE turns SET status=?,error_code=?,usage_json=?,updated_at=? WHERE id=?",
                                  ("interrupted" if interrupted else "failed", code, encoded, timestamp(), turn_id))
-                    if attempt_id:
+                    if attempt_id and not saved_plain:
                         if getattr(error,'diagnostics',None):
                             details=dict(turn.get('_context_details',{}));details['reply_provider']=error.diagnostics
                             details['reply_validation']=getattr(error,'output_validation',None) or {'status':'rejected','reason':code}
@@ -776,6 +988,98 @@ class ChatEngine:
             finally:
                 self.selector.release(turn_id)
 
+    def _finish_reply(self, turn, attempt_id, completion, *, source_check=None):
+        from .reply_batch import ReplySchemaError, validate_reply
+        turn_id = turn["id"]
+        raw_reply, usage = completion
+        provider_diagnostics=getattr(completion,'diagnostics',{'finish_reason':'unreported'})
+        validation_error=None
+        try:
+            if turn.get('reply_mode_snapshot') in ('natural_structured','context_structured') and provider_diagnostics.get('finish_reason')=='length':
+                raise ReplySchemaError('reply_output_truncated')
+            if provider_diagnostics.get('finish_reason')=='content_filter':
+                raise ReplySchemaError('provider_content_filtered')
+            reply_batch=validate_reply(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
+            output_validation={'status':'accepted','fallback_reason':reply_batch.fallback_reason,
+                               'schema_version':reply_batch.schema_version,'message_count':len(reply_batch.segments)}
+        except ReplySchemaError as error:
+            from .reply_protocol import validation_failure
+            output_validation=validation_failure(raw_reply,turn.get('reply_mode_snapshot') or 'legacy_full',turn.get('expression_snapshot'))
+            if str(error)=='reply_output_truncated':output_validation['reason']='provider_length_limit'
+            if str(error)=='provider_content_filtered':output_validation['reason']='provider_content_filtered'
+            validation_error=error
+        # Keep only the output fingerprint for failed validation as well as
+        # successful batches; never persist a malformed internal envelope.
+        import hashlib
+        with self.store.connection(write=True) as conn:
+            active=conn.execute('SELECT status,cancelled_at,execution_revision FROM turns WHERE id=?',(turn_id,)).fetchone()
+            if active['status']!='running' or active['cancelled_at'] or active['execution_revision']!=turn['execution_revision']:
+                raise ModelError('generation_cancelled')
+            details=dict(turn['_context_details'])
+            from .knowledge_handoff import repeated_notice,reject_echo
+            if validation_error is None and repeated_notice(conn,turn,reply_batch.text,details):
+                conn.execute("UPDATE attempts SET status='completed',usage_json=? WHERE id=?",
+                             (json.dumps(usage),attempt_id))
+                reject_echo(conn,turn,attempt_id,usage)
+                return
+            details['reply_output_fingerprint']=hashlib.sha256(raw_reply.encode('utf-8')).hexdigest()
+            details['reply_provider']=provider_diagnostics
+            details['reply_validation']=output_validation
+            conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
+                         (json.dumps(details,ensure_ascii=False),attempt_id))
+        if validation_error:raise validation_error
+        reply=reply_batch.text
+        from dataclasses import asdict
+        from .presentation import batch_view
+        _, presentation=batch_view(reply,[asdict(s) for s in reply_batch.segments])
+        from .chat_display import enabled, plan as display_plan, persist as persist_display
+        display_messages=display_plan([asdict(s) for s in reply_batch.segments],turn.get('expression_snapshot')) if enabled(turn.get('expression_snapshot'),reply_batch.mode) else []
+        if display_messages:
+            presentation['display_version']=display_messages[0]['transform_version']
+            presentation['display_count']=len(display_messages)
+            presentation['planned_wait_ms']=sum(m['wait_ms'] for m in display_messages)
+        with self.store.connection(write=True) as conn:
+            current = conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
+            if current["status"] != "running" or current["cancelled_at"] or current["execution_revision"] != turn["execution_revision"]:
+                raise ModelError("generation_cancelled")
+            from .recall_runtime import validate as validate_recall
+            validate_recall(conn,turn,details.get('recall_support'))
+            if source_check:
+                from .expression_sources import validate
+                validate(self.store, conn, turn, source_check)
+            details['presentation']=presentation
+            from .history_context import validate as validate_history
+            validate_history(conn,turn,details.get("import_history_sources"))
+            from .knowledge_service import validate_used
+            validate_used(conn,self.store.paths,turn['persona_id'],turn['channel'],details.get('knowledge'))
+            conn.execute('UPDATE context_uses SET details_json=? WHERE attempt_id=?',
+                         (json.dumps(details,ensure_ascii=False),attempt_id))
+            record_progress(conn, turn_id, "generated", attempt_id)
+            event_id = identifier() if turn["channel"] != "test" else None
+            if event_id:
+                conn.execute("INSERT INTO events (id,session_id,persona_id,user_id,role,text,created_at) "
+                             "VALUES (?,?,?,?, 'persona',?,?)",
+                             (event_id, turn["session_id"], turn["persona_id"], LOCAL_USER_ID, reply, timestamp()))
+                batch_id=identifier()
+                conn.execute('INSERT INTO reply_batches (id,turn_id,attempt_id,persona_id,user_id,schema_version,mode,raw_fingerprint,segment_count,total_chars,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                             (batch_id,turn_id,attempt_id,turn['persona_id'],LOCAL_USER_ID,reply_batch.schema_version,reply_batch.mode,reply_batch.raw_fingerprint,len(reply_batch.segments),sum(len(item.text) for item in reply_batch.segments),timestamp()))
+                conn.execute('UPDATE reply_batches SET behavior_intent=?,fallback_reason=? WHERE id=?',(reply_batch.behavior_intent,reply_batch.fallback_reason,batch_id))
+                conn.executemany('INSERT INTO reply_segments (batch_id,persona_id,user_id,segment_index,text,format,content_kind,cancel_if_new_input,wait_ms) VALUES (?,?,?,?,?,?,?,?,?)',
+                                 [(batch_id,turn['persona_id'],LOCAL_USER_ID,index,item.text,item.format,item.content_kind,int(item.cancel_if_new_input),item.wait_ms) for index,item in enumerate(reply_batch.segments,1)])
+                if display_messages:persist_display(conn,batch_id,turn,display_messages)
+                from .delivery import DeliveryService
+                DeliveryService(self.store).create_for_batch(conn,batch_id,turn)
+            encoded = json.dumps(usage) if usage is not None else None
+            conn.execute("UPDATE turns SET status='completed',reply_event_id=?,error_code=NULL,usage_json=?,updated_at=? WHERE id=?",
+                         (event_id, encoded, timestamp(), turn_id))
+            conn.execute("UPDATE attempts SET status='completed',usage_json=? WHERE id=?", (encoded, attempt_id))
+            record_progress(conn, turn_id, "persisted", attempt_id)
+            if turn["channel"] == "desktop":
+                from .desktop_recovery import finish
+                finish(conn,turn_id)
+            from .recall_runtime import queue_feedback
+            queue_feedback(conn,turn,attempt_id,'main',details.get('recall_support'))
+
     async def retry(self, turn_id):
         from .migration import ensure_cloud_ready
         ensure_cloud_ready(self.store.paths)
@@ -783,6 +1087,9 @@ class ChatEngine:
             raise RuntimeErrorBase("service_draining")
         from .scene_policy import frozen as scene_frozen
         with self.store.connection() as conn:
+            pending = conn.execute("SELECT error_code FROM turns WHERE id=?", (turn_id,)).fetchone()
+            if pending and pending["error_code"] in ("desktop_settlement_pending","desktop_receipt_requires_review"):
+                raise RuntimeErrorBase("generation_already_received")
             direct=self.direct.generation.enabled(conn,turn_id)
             from .scene_publication import native_policy
             scene=bool(native_policy(self.scene.root(conn,turn_id)))
@@ -840,6 +1147,7 @@ class ChatEngine:
                 conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(json.dumps(auxiliary),turn_id))
             record_progress(conn, turn_id, "retry_queued")
         self._schedule(turn_id)
+        self.presentation_wakeup.notify()
         return self.get(turn_id)
 
     def resume_scene(self, turn_id):
@@ -859,6 +1167,8 @@ class ChatEngine:
             from .import_style import frozen as import_frozen
             from .scene_policy import frozen as scene_frozen
             if not import_frozen(turn) and scene_frozen(turn):self.scene.current(db,turn|{'status':'queued'})
+            from .desktop_recovery import release_for_continuation
+            release_for_continuation(db,turn,self.desktop_owner)
             db.execute("UPDATE turns SET status='queued',error_code=NULL,updated_at=? WHERE id=?",
                        (timestamp(),turn_id))
             record_progress(db,turn_id,'retry_queued')
@@ -891,7 +1201,10 @@ class ChatEngine:
                     raise RuntimeErrorBase('dialogue_turn_closed')
                 changed=db.execute("UPDATE turns SET status='queued',error_code=NULL,updated_at=? WHERE id=? AND status IN ('interrupted','failed') AND cancelled_at IS NULL",
                     (timestamp(),turn_id)).rowcount
-                if changed:record_progress(db,turn_id,'retry_queued')
+                if changed:
+                    from .desktop_recovery import release_for_continuation
+                    release_for_continuation(db,view,self.desktop_owner)
+                    record_progress(db,turn_id,'retry_queued')
             if changed:self._schedule(turn_id)
             return self.get(turn_id)
         async with self.locks[view['persona_id']]:
@@ -971,6 +1284,7 @@ class ChatEngine:
             now = timestamp()
             conn.execute("UPDATE turns SET status='interrupted',cancelled_at=?,error_code='cancelled_by_user',updated_at=? WHERE id=?",
                          (now, now, turn_id))
+            conn.execute("DELETE FROM knowledge_control WHERE key=?",('desktop.network.'+turn_id,))
             record_progress(conn, turn_id, "cancelled")
             result = self._view(conn, turn_id)
         self.direct.generation.cancel_root(turn_id)

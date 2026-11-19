@@ -25,6 +25,7 @@ def parser() -> argparse.ArgumentParser:
     gui.add_argument("--frontend", choices=("tk", "webview"), default="tk")
     setup=groups.add_parser('prepare')
     setup.add_argument("--frontend", choices=("tk", "webview"), default="tk")
+    setup.add_argument("--wake-existing",action="store_true")
     setup.add_argument('--base-python',type=Path);setup.add_argument('--local-model-source',type=Path)
     setup.add_argument('--diagnostics',action='store_true');setup.add_argument('--register-existing',action='store_true');setup.add_argument('--no-register',action='store_true')
     model=groups.add_parser('prepare-model');model.add_argument('--local-source',type=Path)
@@ -40,7 +41,7 @@ def parser() -> argparse.ArgumentParser:
         "session": ("create", "list", "show"),
         "event": ("append", "list"),
         "memory": ("add", "search", "show", "revise", "retract"),
-        "data": ("export", "backup", "import", "migration-export", "migration-import", "migration-activate", "migration-rollback"),
+        "data": ("export", "backup","backup-list","restore-backup", "import", "migration-export", "migration-import", "migration-activate", "migration-rollback"),
     }
     for group, actions in commands.items():
         parent = groups.add_parser(group)
@@ -75,7 +76,8 @@ def parser() -> argparse.ArgumentParser:
                     cmd.add_argument("query", nargs="?", default="")
                     cmd.add_argument("--limit", type=int, default=20)
             if group == "data":
-                cmd.add_argument("--name", help="File name within the configured export/backup directory")
+                if action!='backup-list':cmd.add_argument("--name", help="File name within the configured export/backup directory")
+                if action=="restore-backup":cmd.add_argument("--destination",type=Path,required=True)
                 if action == 'migration-export':
                     cmd.add_argument('--include-corpus', type=Path, action='append', default=[],
                                      help='Include this entire independent corpus, with its originals and speaker identity files')
@@ -99,7 +101,7 @@ def dispatch(args, paths: RuntimePaths):
         return ServiceController(paths).start('service')
     if args.group == 'prepare':
         from .installation import register_existing,prepare_desktop
-        if args.register_existing:return register_existing(paths,frontend=args.frontend)
+        if args.register_existing:return register_existing(paths,frontend=args.frontend,wake_existing=args.wake_existing)
         return prepare_desktop(paths,base_python=args.base_python,local_model_source=args.local_model_source,diagnostics=args.diagnostics,register=not args.no_register,frontend=args.frontend)
     if args.group=='prepare-model':
         from .installation import prepare_model
@@ -124,6 +126,10 @@ def dispatch(args, paths: RuntimePaths):
         if args.action=='migration-import':return import_instance(paths,args.file,apply=args.apply and not args.dry_run)
         if args.action=='migration-rollback':return rollback_instance(paths,apply=args.apply and not args.dry_run)
         return activate_instance(paths,apply=args.apply and not args.dry_run,authorize_visible=args.authorize_visible,resume_background=args.resume_background)
+    if args.group=="data" and args.action in ("backup-list","restore-backup"):
+        from .automatic_backup import Backups
+        backups=Backups(paths)
+        return backups.status() if args.action=="backup-list" else backups.restore(args.destination,args.name)
     from .storage import Store
     from .service import RuntimeService
     store = Store(paths)

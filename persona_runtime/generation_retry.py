@@ -7,6 +7,19 @@ import time
 from .models import RuntimeErrorBase, identifier
 
 MAX_RETRIES = 3
+
+
+class ConnectionPending(RuntimeErrorBase):
+    """The transport proved it sent no headers and received no response."""
+
+
+def pause_before_send(code,diagnostics,usage):
+    if (diagnostics.get('request_headers_sent') is not False or diagnostics.get('response_headers_received')
+            or diagnostics.get('effect_unknown') or diagnostics.get('http_status') or usage is not None):return None
+    if code in ('storage_write_fault','storage_low_pause_dispatch','local_repair_active'):return 'storage'
+    if code in ('provider_network_error','provider_connection_timeout','provider_timeout','system_proxy_required'):return 'network'
+    return None
+
 VERSION = 'generation-retry-v1'
 RETRYABLE = frozenset(('provider_timeout','provider_connection_timeout','provider_network_error',
     'provider_empty_response','provider_invalid_response','provider_output_truncated',
@@ -89,10 +102,11 @@ def call_count(conn, table, since, *, automatic_only=False):
     # boundary. Old rows without retry evidence continue to count as one.
     return conn.execute('''SELECT coalesce(sum(CASE WHEN json_valid(usage_json)
         AND json_type(usage_json,'$.generation_retry.attempts')='array'
-        AND json_array_length(usage_json,'$.generation_retry.attempts')>0
+        AND (json_array_length(usage_json,'$.generation_retry.attempts')>0 OR json_type(usage_json,'$.generation_retry.connection_wait')='object')
         THEN (SELECT count(*) FROM json_each(usage_json,'$.generation_retry.attempts') j
               WHERE json_extract(j.value,'$.started_epoch')>?)
-        ELSE CASE WHEN started_epoch>? THEN 1 ELSE 0 END END),0) FROM '''+table+' AS counted'+condition,(since,since)).fetchone()[0]
+        ELSE CASE WHEN started_epoch>? THEN 1 ELSE 0 END END),0) FROM '''+table+' AS counted'+condition+
+        ((' AND ' if condition else ' WHERE ')+"coalesce(counted.error_code,'') NOT IN ('organization_network_wait','organization_storage_wait')" if table=='organization_attempts' else ''),(since,since)).fetchone()[0]
 
 
 async def _one(client, model, messages, timeout_code, *, paths=None, received=None):
@@ -103,6 +117,8 @@ async def _one(client, model, messages, timeout_code, *, paths=None, received=No
         from .migration import ensure_cloud_ready
         ensure_cloud_ready(paths)
         require_writable_storage(paths)
+        from .local_repair import require_open
+        require_open(paths)
     except (OSError,RuntimeErrorBase) as error:
         from .chat import ModelError
         raise ModelError(str(error) if isinstance(error,RuntimeErrorBase) else 'storage_unavailable',
@@ -163,7 +179,8 @@ async def _one(client, model, messages, timeout_code, *, paths=None, received=No
 
 
 async def audited_complete(client, model, messages, *, validate, save, before_attempt,
-                           prior_failures=0, timeout_code='provider_timeout', sleep=None, paths=None, save_completion=None):
+                           prior_failures=0, timeout_code='provider_timeout', sleep=None, paths=None, save_completion=None,
+                           save_valid_completion=None, resume_audit=None, meter_first=False, park_offline=False, first_meter=None):
     from .archive import fingerprint
     from .provider_compat import build_request,usage_fields,request_timeout
     from .chat import ModelCompletion
@@ -172,8 +189,35 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
         raise RuntimeErrorBase('generation_retry_state_invalid')
     state={'version':VERSION,'max_retries':MAX_RETRIES,'prior_failures':prior_failures,'attempts':[]}
     request_hash=fingerprint(build_request(model,messages)[0])
+    if resume_audit is not None:
+        previous = resume_audit["attempts"]
+        offline=resume_audit.get('connection_wait',{})
+        if (resume_audit.get("version") != VERSION or not previous and not (park_offline and offline.get('wire')==request_hash)
+                or previous and previous[-1]["index"]>=MAX_RETRIES
+                or any(row["request_hash"] != request_hash or row["status"] != "failed"
+                       for row in previous)):
+            raise RuntimeErrorBase("generation_retry_state_invalid")
+        state = dict(resume_audit, attempts=list(previous))
+        prior_failures = previous[-1]["index"] + 1 if previous else prior_failures
     for index in range(prior_failures,MAX_RETRIES+1):
-        before_attempt(state)
+        from .call_limits import CallLimitPending,wait_for_budget
+        from .local_repair import RepairInProgress,wait_until_open
+        from .storage import Store
+        metered=paths is not None and (meter_first or index!=prior_failures)
+        meter=first_meter if index==prior_failures else None
+        while True:
+            try:
+                if paths is not None:await wait_until_open(Store(paths))
+                before_attempt(state)
+                if metered:
+                    from .call_limits import gate
+                    store=Store(paths)
+                    with store.connection(write=True) as db:meter=gate(db,store,'generation','retry/'+request_hash)
+                break
+            except CallLimitPending as wait:
+                await wait_for_budget(Store(paths),wait)
+            except RepairInProgress:
+                await wait_until_open(Store(paths))
         row={'id':identifier(),'index':index,'status':'running','started_epoch':time.time(),
              'request_hash':request_hash,'timeout_seconds':request_timeout(model)}
         state['attempts'].append(row);save(aggregate(state))
@@ -195,17 +239,22 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
             row['diagnostics']=safe_diagnostics(getattr(result,'diagnostics',None))
             row['output_fingerprint']=hashlib.sha256(result[0].encode('utf-8')).hexdigest()
             if validation_error is not None:row['validation']=getattr(validation_error,'output_validation',None) or {'status':'rejected','reason':str(validation_error)}
-            save_completion(result,aggregate(state),row,validation_error)
+            if validation_error is not None and save_completion is None:
+                terminal_seen=False
+                raise validation_error
+            callback = save_completion or save_valid_completion
+            callback(result,aggregate(state),row,validation_error)
             receipt_saved=True
             if validation_error is not None:raise validation_error
         try:
-            value=await _one(client,model,messages,timeout_code,paths=paths,**({'received':received} if save_completion is not None else {}))
+            callback_enabled = save_completion is not None or save_valid_completion is not None
+            value=await _one(client,model,messages,timeout_code,paths=paths,**({'received':received} if callback_enabled else {}))
             finish=getattr(value,'diagnostics',{}).get('finish_reason')
             if finish=='length':raise RuntimeErrorBase('provider_output_truncated')
             if finish=='content_filter':raise RuntimeErrorBase('provider_content_filtered')
-            if save_completion is None:validate(value[0])
+            if not callback_enabled:validate(value[0])
         except BaseException as error:
-            if save_completion is not None and terminal_seen:
+            if callback_enabled and terminal_seen:
                 # 外部完整结果已收到。本地持久化、校验或取消失败不成为第二次模型请求。
                 if not receipt_saved:
                     try:save(aggregate(state))
@@ -230,6 +279,14 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
             elif code=='provider_content_filtered':validation={'status':'rejected','reason':code}
             if validation:row['validation']=validation
             if value:row['output_fingerprint']=hashlib.sha256(value[0].encode('utf-8')).hexdigest()
+            pause=pause_before_send(code,row['diagnostics'],row['usage'])
+            if park_offline and pause:
+                state['attempts'].pop()
+                count=state.get('connection_wait',{}).get('count',0)+1
+                state['connection_wait']={'count':count,'wire':request_hash,'code':code,'headers_sent':False}
+                wait=ConnectionPending('desktop_'+pause+'_wait')
+                wait.audit=aggregate(state);wait.meter=meter
+                raise wait from None
             save(aggregate(state))
             if interrupted or not isinstance(error,Exception) or not retryable(error):
                 if isinstance(error,Exception):
@@ -243,7 +300,7 @@ async def audited_complete(client, model, messages, *, validate, save, before_at
         row['usage_known']=row['usage'] is not None
         row['diagnostics']=safe_diagnostics(getattr(value,'diagnostics',None))
         row['output_fingerprint']=hashlib.sha256(value[0].encode('utf-8')).hexdigest()
-        if save_completion is None:save(aggregate(state))
+        if not callback_enabled:save(aggregate(state))
         diagnostics=dict(getattr(value,'diagnostics',{}))
         diagnostics.update(retry_count=index,provider_attempt_count=len(state['attempts']),retry_version=VERSION)
         return ModelCompletion(value[0],aggregate(state),diagnostics,native=getattr(value,'native',None))

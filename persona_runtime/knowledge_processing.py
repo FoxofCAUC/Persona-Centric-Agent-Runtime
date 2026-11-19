@@ -126,12 +126,16 @@ class KnowledgeProcessing:
             # already dispatched retrieval work for the same frozen question.
             context_guard=fingerprint(self.context(db,turn))
             previous=[]
+            from .desktop_recovery import contract
+            recovery = contract(db, turn) if turn['channel']=='desktop' else None
             for row in db.execute("SELECT * FROM organization_tasks WHERE persona_id=? AND json_extract(payload_json,'$.knowledge_processing.root_turn_id')=? AND json_extract(payload_json,'$.knowledge_processing.stage')=? ORDER BY rowid",(turn['persona_id'],turn['id'],stage)):
                 payload=json.loads(row['payload_json']);data=payload['knowledge_processing']
                 if ((data['input']==inputs or stage in ('conversation_native','conversation_web_decision','conversation_search_notice')) and data['pipeline']==VERSION
                         and (data.get('decision_binding')==decision_binding or stage=='conversation_web_decision')
                         and data['context_guard']==context_guard and payload['scope']==turn_scope(db,turn)):
                     previous.append(row)
+                elif recovery and recovery.get("recovered"):
+                    raise RuntimeErrorBase("knowledge_prior_execution_requires_review")
             from .knowledge_native_route import for_new_work
             native_route=(json.loads(previous[-1]['payload_json'])['knowledge_processing'].get('native_model_route')
                           if previous else for_new_work(db,turn,stage))
@@ -140,6 +144,9 @@ class KnowledgeProcessing:
             for row in previous:
                 if row['status']=='completed':
                     return copy.deepcopy(read(db,'processing.result.'+row['id'],{})['data']),row['id']
+                if recovery and recovery.get("recovered") and row["status"] in ("queued","waiting_quota","running"):
+                    resumed = {"id":row["id"]}
+                    continue
                 if row['status'] in ('queued','waiting_quota','running') and stage=='conversation_search_notice':
                     from .dialogue_generation import enabled as direct_enabled
                     contract=self.engine.managed.contract(db,row['id'])
@@ -187,6 +194,11 @@ class KnowledgeProcessing:
             with self.store.connection() as db:
                 row=db.execute('SELECT status,error_code FROM organization_tasks WHERE id=?',(task['id'],)).fetchone()
                 if row['status']=='completed':return copy.deepcopy(read(db,'processing.result.'+task['id'],{})['data']),task['id']
+                if stage == 'conversation_search_notice':
+                    from .desktop_presentation import pending_speech, PresentationPending
+                    speech = pending_speech(db,task['id'])
+                    if speech and not speech['closed_at']:
+                        raise PresentationPending(turn['id'], task['id'])
                 if row['status'] not in ('queued','running','waiting_quota'):
                     error=RuntimeErrorBase(row['error_code'] or 'retrieval_unavailable');error.task_id=task['id'];raise error
             self.service.closed.wait(.1)

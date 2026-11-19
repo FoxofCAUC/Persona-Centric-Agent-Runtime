@@ -15,7 +15,7 @@ VERSION = 'expression-assets-v1'
 DEFAULTS = {'version': VERSION, 'enabled': False, 'learning_enabled': False,
             'learning_sessions': [],
             'max_candidates': 5, 'max_context_chars': 3000, 'max_assets': 256,
-            'learning_hourly_limit': 1, 'learning_daily_limit': 4,
+            'learning_hourly_limit': 0, 'learning_daily_limit': 0,
             'learning_max_sources': 10, 'learning_max_input_chars': 12000, 'learning_max_tokens': 1024}
 
 
@@ -70,7 +70,12 @@ def authority(db, pid):
 def policy(db, pid):
     persona(db, pid)
     row = db.execute('SELECT * FROM expression_asset_policies WHERE persona_id=?', (pid,)).fetchone()
-    return {'revision': row['revision'], 'data': json.loads(row['data_json'])} if row else {'revision': 0, 'data': deepcopy(DEFAULTS)}
+    if not row:return {'revision':0,'data':deepcopy(DEFAULTS)}
+    data=json.loads(row['data_json'])
+    if (data.get('learning_hourly_limit'),data.get('learning_daily_limit'))==(1,4) and not db.execute(
+            "SELECT 1 FROM knowledge_control WHERE key=?",('expression.learning.limits.'+pid,)).fetchone():
+        data.update(learning_hourly_limit=0,learning_daily_limit=0)
+    return {'revision':row['revision'],'data':data}
 
 
 def _event(db, pid, selected, event_id):
@@ -175,11 +180,13 @@ class ExpressionAssets:
                         row = db.execute('SELECT s.id,l.channel FROM sessions s LEFT JOIN session_lifecycle l ON l.session_id=s.id WHERE s.id=? AND s.persona_id=? AND s.user_id=?', (sid, persona_id, LOCAL_USER_ID)).fetchone()
                         if not row or row['channel'] not in (None, 'desktop'):
                             raise ExpressionAssetError('expression_learning_session_scope_invalid')
-                elif key != 'version' and (type(value) is not int or not 0 < value <= 100000):
+                elif key != 'version' and (type(value) is not int or not (0 if key in ('learning_hourly_limit','learning_daily_limit') else 1)<=value<=100000):
                     raise ExpressionAssetError('expression_policy_invalid')
             if data['max_candidates'] > 5 or data['max_assets'] > 5000 or data['learning_max_sources'] > 30:
                 raise ExpressionAssetError('expression_policy_capacity_invalid')
             revision = current['revision'] + 1
+            if {'learning_hourly_limit','learning_daily_limit'} & changes.keys():
+                db.execute("INSERT OR IGNORE INTO knowledge_control VALUES(?,?)",('expression.learning.limits.'+persona_id,'1'))
             db.execute('INSERT INTO expression_asset_policies VALUES(?,?,?) ON CONFLICT(persona_id) DO UPDATE SET revision=excluded.revision,data_json=excluded.data_json',
                        (persona_id, revision, json.dumps(data, ensure_ascii=False)))
             db.execute('DELETE FROM expression_asset_vectors WHERE asset_id IN (SELECT id FROM expression_assets WHERE persona_id=?)', (persona_id,))

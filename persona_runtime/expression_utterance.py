@@ -1,4 +1,6 @@
 """通用人物出口：源稿与口吻冻结，主回复兼容31，查前发言独立记账。"""
+from .call_limits import resume_on_limit, gate, turn_scope as quota_turn, CallLimitPending
+from .local_repair import RepairInProgress
 import asyncio
 import hashlib
 import json
@@ -128,24 +130,15 @@ class CharacterOutlet:
         unit=self.prepare_notice(task_id,attempt_id)
         if unit is None:return False
         await self.execute(unit['id'],model)
-        from .expression_utterance_publication import SpeechPublication
-        publisher=SpeechPublication(self)
-        while True:
-            with self.store.connection() as db:
-                fresh=self.unit(db,unit['id'])
-                pub=db.execute('SELECT * FROM expression_speech_publications WHERE utterance_id=?',(unit['id'],)).fetchone()
-                if pub and pub['state']=='complete':return True
-                if fresh['cancelled_at'] or fresh['closed_at'] or (pub and pub['state']=='closed'):
-                    raise ExpressionAssetError('speech_notice_not_fully_presented')
-                try:self.validate(db,fresh)
-                except RuntimeErrorBase:
-                    invalid=True
-                else:invalid=False
-            if invalid:
-                publisher.cancel(unit['id'],'source_or_permission_changed')
-                raise ExpressionAssetError('speech_notice_source_changed')
-            await asyncio.sleep(.05)
+        with self.store.connection() as db:
+            fresh=self.unit(db,unit['id'])
+            pub=db.execute('SELECT state FROM expression_speech_publications WHERE utterance_id=?',(unit['id'],)).fetchone()
+            if pub and pub['state']=='complete':return True
+            if not pub or fresh['cancelled_at'] or fresh['closed_at'] or pub['state']=='closed':
+                raise ExpressionAssetError('speech_notice_not_fully_presented')
+        return unit['id']
 
+    @resume_on_limit
     async def execute(self,utterance_id,model):
         from .expression_utterance_publication import SpeechPublication
         publisher=SpeechPublication(self)
@@ -186,8 +179,10 @@ class CharacterOutlet:
                     if (model['base_url'],model['name'])!=(public['base_url'],public['name']):raise ExpressionAssetError('expression_model_changed')
                     from .private_personas import guard_cloud_dispatch
                     guard_cloud_dispatch(self.store,unit['persona_id'],'expression',public|{'encrypted_key':model['encrypted_key']})
+                    gate(db,self.store,'expression',quota_turn(turn))
                     attempt=identifier()
                     db.execute("UPDATE expression_speech_runs SET state='dispatched',attempt_id=?,started_epoch=? WHERE id=?",(attempt,time.time(),run['id']))
+        except (CallLimitPending,RepairInProgress):raise
         except (RuntimeErrorBase,ExpressionPayloadError) as error:return publisher.fallback(utterance_id,str(error))
         if run['raw_response'] is not None:return self.finalize(run['id'])
         if run['attempt_id']:return publisher.fallback(utterance_id,run['error_code'] or 'expression_result_unknown')

@@ -39,6 +39,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.notifier=patch.object(self.rt,'notify',return_value=[]);self.notifier.start()
         self.addCleanup(self.notifier.stop)
         self.store.character_committed=self.rt.notify
+        self.addAsyncCleanup(self.engine.wait)
 
     def save(self,data):
         return self.characters.update(self.pid,data,self.characters.current(self.pid)['id'],identifier())
@@ -145,6 +146,8 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.rt,'_hybrid',side_effect=AssertionError('write must not embed')):
             with self.store.connection(write=True) as db:q=self.engine.cognitive.finalize(db,self.raw(t['id']),p)
         self.assertEqual(q['manifest']['character_retrieval']['effective_mode'],'hybrid')
+        # Exercise revalidation on a mutable preparation before the conversation is frozen.
+        q=deepcopy(p)
         q['character_prepared']['parts'][0]['text']='tampered optional prepared text'
         with patch.object(self.rt,'_hybrid',side_effect=AssertionError('write must not embed')):
             with self.store.connection(write=True) as db:r=self.engine.cognitive.finalize(db,self.raw(t['id']),q)
@@ -195,8 +198,12 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(p['manifest']['character_retrieval']['candidates']['lore'][0]['semantic_member_index'],1)
 
     async def test_retry_uses_current_policy_preserving_old_manifest(self):
-        t=await self.turn('书店');await self.engine._run(t['id'])
-        with self.store.connection(write=True) as db:db.execute("UPDATE turns SET status='failed' WHERE id=?",(t['id'],))
+        from persona_runtime.chat import ModelError
+        t=await self.turn('书店')
+        async def reject(model,messages):
+            self.model.calls.append(messages)
+            raise ModelError('provider_http_401',diagnostics={'http_status':401,'response_headers_received':True})
+        with patch.object(self.model,'complete',side_effect=reject):await self.engine._run(t['id'])
         self.policy(character_retrieval_mode='hybrid')
         with patch.object(self.engine,'_schedule'):await self.engine.retry(t['id'])
         with patch.object(self.rt,'_hybrid',side_effect=self.hybrid):await self.engine._run(t['id'])
@@ -247,9 +254,28 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         versions={call.args[1] for call in enqueue.call_args_list}
         self.assertEqual(versions,{self.version['id'],new['id']})
         other=self.service.create_persona(prior.generic_persona())['id']
+        self.service.use_persona(other)
+        entry=self.ingress.current_policy(other,'desktop')
+        with patch.object(self.engine,'_schedule'):
+            if entry.get('companion'):
+                entry=self.ingress.update_policy(other,'desktop',entry['mode'],entry['id'],identifier(),companion_mode='disabled')
+            self.ingress.update_policy(other,'desktop',entry['mode'],entry['id'],identifier(),character_retrieval_mode='hybrid_llm')
         with patch.object(self.rt,'enqueue') as enqueue:self.rt.discover(other)
         self.assertTrue(enqueue.call_args_list)
         self.assertTrue(all(call.args[0]==other and call.args[2]['mode']=='hybrid_llm' for call in enqueue.call_args_list))
+
+    async def test_maintenance_rebuilds_a_damaged_previously_ready_index(self):
+        entry=self.policy(character_retrieval_mode='hybrid')
+        index=Mock()
+        index._read.side_effect=SemanticFailure('character_cache_invalid')
+        coordinator=self.rt.coordinator
+        with patch.object(coordinator,'build',return_value=None) as build,patch.object(self.rt,'index',return_value=index):
+            self.rt.enqueue(self.pid,self.version['id'],entry['character_retrieval'])
+            with coordinator.condition:self.assertTrue(coordinator.condition.wait_for(lambda:not coordinator.running and not coordinator.pending,2))
+            self.rt.maintain()
+            with coordinator.condition:self.assertTrue(coordinator.condition.wait_for(lambda:not coordinator.running and not coordinator.pending,2))
+            self.assertEqual(build.call_count,2)
+            self.assertTrue(build.call_args.args[-1])
 
     async def test_admin_api_and_bridge_permissions_and_health_during_preparation(self):
         from aiohttp import ClientSession

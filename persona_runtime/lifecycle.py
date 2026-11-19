@@ -16,6 +16,8 @@ from .desktop_client import LocalClient
 from .models import RuntimeErrorBase, identifier, timestamp
 from .instance import InstanceLock, current_process_identity, process_identity_alive
 
+DRAIN_SECONDS=30
+
 
 def read_console(paths):
     try:
@@ -34,6 +36,16 @@ def require_console(paths, token=None):
             or not process_identity_alive(lease.get("process"))):
         raise RuntimeErrorBase("控制窗口未运行或已关闭，请先打开 PCAR 工作台。")
     return lease
+
+
+def closing_console(paths,instance=None):
+    marker=paths.home/'runtime/application-closing.json'
+    try:record=json.loads(marker.read_text(encoding='utf-8'))
+    except FileNotFoundError:return False
+    except (ValueError,OSError):return False
+    lease=read_console(paths)
+    return bool(isinstance(record,dict) and lease and lease.get('state')=='active' and lease.get('token')==record.get('token')
+                and (instance is None or lease.get('instance_id')==instance) and process_identity_alive(lease.get('process')))
 
 
 def ps_json(script):
@@ -90,6 +102,24 @@ def listener(port):
     return process_info(value) if type(value) is int else None
 
 
+def loopback_listeners(port):
+    """Return owners of IPv4 listeners that can receive a connection to 127.0.0.1."""
+    import ctypes
+    import struct
+    api=ctypes.WinDLL('iphlpapi').GetExtendedTcpTable
+    size=ctypes.c_ulong()
+    for _ in range(3):
+        data=ctypes.create_string_buffer(size.value) if size.value else None
+        error=api(data,ctypes.byref(size),False,socket.AF_INET,3,0)
+        if error==122:continue
+        if error!=0 or data is None:return None
+        raw=data.raw;count=struct.unpack_from('<I',raw)[0]
+        if 4+24*count>len(raw):return None
+        return {pid for _,address,local_port,_,_,pid in struct.iter_unpack('<6I',raw[4:4+24*count])
+                if address in (0,0x0100007f) and socket.ntohs(local_port&65535)==port}
+    return None
+
+
 class ServiceAdapter(Protocol):
     def health(self) -> dict: ...
     def start(self): ...
@@ -130,6 +160,8 @@ class ServiceController:
         self.app_processes = None
         self.closing = threading.Event()
         self.lifecycle_lock = threading.RLock()
+        self.lease_state_lock=threading.RLock()
+        self.exit_request=None
         self.login_health = None
         self.adapters = {role: ManagedService(self, role) for role in ("service", "astrbot", "napcat")}
 
@@ -143,20 +175,8 @@ class ServiceController:
                 raise RuntimeErrorBase("已有 PCAR 控制窗口运行，请返回现有窗口。")
             from .app_processes import AppProcesses
             self.app_processes = AppProcesses()
-            persona_id = None
-            database = self.paths.home / 'data/database/runtime.sqlite3'
-            if database.exists():
-                import sqlite3
-                from contextlib import closing
-                with closing(sqlite3.connect(database.as_uri()+'?mode=ro',uri=True)) as db:
-                    row = db.execute("SELECT value FROM settings WHERE key='current_persona'").fetchone()
-                    persona_id = row[0] if row else None
             cfg=self.config.load()
-            if cfg['runtime']['qq_persona_id']:persona_id=cfg['runtime']['qq_persona_id']
-            elif persona_id:
-                cfg['runtime']['qq_persona_id']=persona_id
-                cfg['runtime']['revision']+=1
-                atomic_json(self.config.file,cfg)
+            persona_id=cfg['runtime']['qq_persona_id'] or None
             try:last_exit=json.loads((self.paths.home/'runtime/last-exit.json').read_text(encoding='utf-8'))
             except (OSError,ValueError):last_exit=None
             exit_matches=bool(previous and last_exit and last_exit.get('console_token')==previous.get('token'))
@@ -171,6 +191,8 @@ class ServiceController:
                      "previous_stale": bool(previous and previous.get("state") != "closed")}
             atomic_json(self.paths.home / "runtime/console.json", lease)
             self.console_lease, self.console_lock = lease, lock
+            self.exit_request=None
+            self.closing.clear()
             return lease
         except BaseException:
             if self.app_processes is not None:
@@ -178,21 +200,33 @@ class ServiceController:
             lock.close()
             raise
 
+    def _close_jobs(self):
+        if self.app_processes is not None:
+            self.app_processes.close();self.app_processes=None
+            self.processes.clear()
+
     def end_console(self):
-        lease = self.console_lease
-        try:
-            current = read_console(self.paths)
-            if lease and current and current.get("token") == lease["token"]:
-                atomic_json(self.paths.home / "runtime/console.json", current | {"state": "closed", "closed_at": timestamp()})
-        finally:
-            if self.app_processes is not None:
-                self.app_processes.close();self.app_processes=None
-            if self.console_lock is not None:
-                self.console_lock.close()
-            self.console_lock = self.console_lease = None
+        self._close_jobs()
+        with self.lease_state_lock:
+            lease=self.console_lease
+            try:
+                current=read_console(self.paths)
+                if lease and current and current.get("token")==lease["token"]:
+                    atomic_json(self.paths.home/"runtime/console.json",current|{"state":"closed","closed_at":timestamp()},durable=True)
+            finally:
+                if self.console_lock is not None:self.console_lock.close()
+                self.console_lock=self.console_lease=None
+
+    def update_console(self,**fields):
+        with self.lease_state_lock:
+            if self.closing.is_set() or not self.console_lease:return
+            lease=require_console(self.paths,self.console_lease['token'])
+            lease.update(fields)
+            atomic_json(self.paths.home/'runtime/console.json',lease)
+            self.console_lease=lease
 
     def has_resident_processes(self):
-        instance_id = self.config.load()["instance_id"]
+        instance_id=(self.console_lease or self.exit_request or {}).get('instance_id') or self.config.load()['instance_id']
         for role in self.adapters:
             saved = self.record(role)
             if saved and saved.get("instance_id") == instance_id:
@@ -220,6 +254,25 @@ class ServiceController:
         command = identity.get("CommandLine") or ""
         return "persona_runtime.host" in command and f"--role {role}" in command and saved["instance_id"] in command
 
+    def can_release_owned(self,role):
+        saved=self.record(role)
+        if (not self.console_lease or not self.app_processes or role not in self.app_processes.roles or not saved
+                or saved.get('console_token')!=self.console_lease['token'] or not self.owned(role)):return False
+        if role=='service':
+            port=self.config.load()['service_port']
+            if port_open(port):
+                return self.service_endpoint_state(port)=='online'
+        return True
+
+    def service_endpoint_state(self,port):
+        owners=loopback_listeners(port)
+        if owners==set():return 'disconnected'
+        saved=self.record('service') or {}
+        if (not owners or owners!={saved.get('host',{}).get('ProcessId')} or not self.owned('service')
+                or self.console_lease and saved.get('console_token')!=self.console_lease['token']):
+            return 'wrong_instance'
+        return 'online'
+
     def health(self, role):
         cfg = self.config.load()
         if role == 'napcat' and cfg['qq_backend'] == 'snowluma':
@@ -245,6 +298,8 @@ class ServiceController:
         if not listening:
             return result
         if role == "service":
+            if self.service_endpoint_state(port)!='online':
+                return result | {"state":"外部程序占用","reason":"服务端口归属未通过核验。"}
             try:
                 proof = self.client.call("GET", "/v1/health")
                 if proof.get("instance_id") == cfg["instance_id"] and proof.get("service") == "persona-runtime":
@@ -371,6 +426,7 @@ class ServiceController:
                 self.console_lease['login_confirmation_required']=False
                 atomic_json(self.paths.home/'runtime/console.json',self.console_lease)
             if automatic and not self.config.load()['runtime']['components'].get(role):return
+            if role in ('astrbot','napcat') and self.console_lease:self.ensure_binding()
             if not automatic:self.set_desired(role,True)
             return self._start(role)
 
@@ -386,7 +442,7 @@ class ServiceController:
 
     def ensure_binding(self):
         cfg=self.config.load()
-        if cfg['runtime']['qq_persona_id'] or not self.console_lease:return
+        if cfg['runtime']['qq_persona_id'] or not self.console_lease or self.closing.is_set():return
         database=self.paths.home/'data/database/runtime.sqlite3'
         if not database.exists():return
         import sqlite3
@@ -397,11 +453,13 @@ class ServiceController:
         lock=InstanceLock(self.paths.home/'runtime/config-write.lock')
         try:
             cfg=self.config.load()
-            if not cfg['runtime']['qq_persona_id']:
-                cfg['runtime']['qq_persona_id']=row[0];cfg['runtime']['revision']+=1
-                atomic_json(self.config.file,cfg)
-                self.console_lease['qq_persona_id']=row[0]
-                atomic_json(self.paths.home/'runtime/console.json',self.console_lease)
+            if not cfg['runtime']['qq_persona_id'] and self.console_lease and not self.closing.is_set():
+                with self.lease_state_lock:
+                    if self.closing.is_set() or not self.console_lease:return
+                    require_console(self.paths,self.console_lease['token'])
+                    cfg['runtime']['qq_persona_id']=row[0];cfg['runtime']['revision']+=1
+                    atomic_json(self.config.file,cfg)
+                    self.update_console(qq_persona_id=row[0])
         finally:lock.close()
 
     def _start(self, role):
@@ -442,13 +500,14 @@ class ServiceController:
         require_console(self.paths, console["token"])
         if self.app_processes is None or not self.console_lease or self.console_lease['token'] != console['token']:
             raise RuntimeErrorBase('请从拥有当前组件的工作台执行启动。')
+        if self.closing.is_set() or generation!=self.stop_generation:raise RuntimeErrorBase('service_draining')
         env=child_environment(self.paths)
         if console.get('qq_persona_id'):env['PCAR_QQ_PERSONA_ID']=console['qq_persona_id']
         self.processes[role] = self.app_processes.start(role,[str(python), "-B", "-m", "persona_runtime.host", "--role", role,
                           "--instance", cfg["instance_id"], "--console-token", console["token"]], cwd=REPO, env=env)
         deadline = time.monotonic()+60
         while time.monotonic() < deadline:
-            if generation != self.stop_generation:
+            if generation != self.stop_generation or self.closing.is_set():
                 raise RuntimeErrorBase("启动已被强制停止操作取消。")
             time.sleep(.5)
             state = self.health(role)
@@ -535,34 +594,100 @@ class ServiceController:
         self.processes.pop(role,None)
 
     def shutdown(self):
-        """Bounded close: 30s drain, 10s logout, 5s release; unknown stays unknown."""
-        if self.console_lease is None:raise RuntimeErrorBase('只有当前工作台可以结束整个应用。')
-        self.closing.set();self.stop_generation+=1
-        report={'at':timestamp(),'instance_id':self.config.load()['instance_id'],
-                'console_token':self.console_lease['token'],
-                'logout_confirmed':False,'logout_reason':'not_logged_in_or_unavailable','errors':[]}
-        def progress(phase):
-            self.shutdown_progress={'token':report['console_token'],'at':report['at'],'phase':phase,'updated_at':timestamp(),'maximum_seconds':45}
-            try:atomic_json(self.paths.home/'runtime/application-closing.json',self.shutdown_progress)
+        """Fence new work before draining. Repeated close requests share one result."""
+        self.closing.set()
+        with self.lifecycle_lock:
+            if self.exit_request and self.exit_request.get('processes_released'):return self.exit_request
+            if self.console_lease is None and self.exit_request is None:
+                raise RuntimeErrorBase('只有当前工作台可以结束整个应用。')
+            if self.exit_request is None:
+                self.stop_generation+=1
+                lease=self.console_lease
+                self.exit_request={'at':timestamp(),'instance_id':lease.get('instance_id') or self.config.load()['instance_id'],
+                    'console_token':lease['token'],'exit_id':identifier(),'phases':[],'errors':[],
+                    'logout_confirmed':False,'logout_reason':'not_logged_in_or_unavailable'}
+            report=self.exit_request
+            if not report.get('settled'):
+                try:self._drain_exit(report)
+                except Exception as error:
+                    report['errors'].append('drain_'+type(error).__name__)
+                finally:
+                    self._exit_phase(report,'checkpoint')
+                    try:
+                        from .shutdown_evidence import observe
+                        report['outstanding']=observe(self.paths)
+                    except (OSError,ValueError,sqlite3.Error):
+                        report['errors'].append('checkpoint_unavailable')
+                    report['settled']=True
+                    self._exit_phase(report,'settled')
+                    try:
+                        if report.get('verified_service') and self.owned('service') and self.can_release_owned('service'):
+                            self.client.call('POST','/v1/control/stop',{'closing':True,'instance_id':report['instance_id'],
+                                             'exit_id':report['exit_id']},timeout=2)
+                    except (RuntimeErrorBase,OSError,subprocess.SubprocessError):report['errors'].append('stop_ack_unconfirmed')
+            released=False
+            for delay in (0,.2,.5,1):
+                if delay:time.sleep(delay)
+                self._exit_phase(report,'releasing')
+                try:
+                    self._close_jobs()
+                except Exception as error:
+                    reason='console_cleanup_'+type(error).__name__
+                    if reason not in report['errors']:report['errors'].append(reason)
+                try:released=self.app_processes is None and not self.has_resident_processes()
+                except (OSError,ValueError,subprocess.SubprocessError):released=False
+                if released:
+                    try:self.end_console()
+                    except OSError:report['errors'].append('console_marker_unwritable')
+                    break
+            report['processes_released']=released
+            report['phase']='components_released' if released else 'release_unconfirmed'
+            if released:
+                report.pop('blocker',None);report.pop('retry_after',None)
+            else:
+                report['release_rounds']=report.get('release_rounds',0)+1
+                report['retry_after']=min(30,2**min(report['release_rounds'],5))
+                if self.app_processes is None:report['blocker']='component_ownership_or_release_unconfirmed'
+            self._exit_phase(report,report['phase'])
+            try:atomic_json(self.paths.home/'runtime/last-exit.json',report,durable=True)
             except OSError:
-                if 'closing_marker_write_failed' not in report['errors']:report['errors'].append('closing_marker_write_failed')
-        progress('draining')
-        report['qq_backend'] = self.config.load()['qq_backend']
-        external = report['qq_backend'] == 'snowluma'
-        report['external_qq_session'] = external
-        report['qq_was_running']=not external and self.owned('napcat')
-        if external:
-            report['logout_reason'] = 'external_session_connection_only'
+                if 'exit_report_write_failed' not in report['errors']:report['errors'].append('exit_report_write_failed')
+            return report
+
+    def _exit_phase(self,report,phase):
+        if not report['phases'] or report['phases'][-1]['phase']!=phase:
+            report['phases'].append({'phase':phase,'at':timestamp()})
+        self.shutdown_progress={'token':report['console_token'],'exit_id':report['exit_id'],'instance_id':report['instance_id'],
+            'at':report['at'],'phase':phase,'updated_at':timestamp(),'drain_timeout_seconds':DRAIN_SECONDS}
+        if 'outstanding' in report:self.shutdown_progress['outstanding']=report['outstanding']
+        try:atomic_json(self.paths.home/'runtime/application-closing.json',self.shutdown_progress,durable=True)
+        except OSError:
+            if 'closing_marker_write_failed' not in report['errors']:report['errors'].append('closing_marker_write_failed')
+
+    def _drain_exit(self,report):
+        self._exit_phase(report,'stop_admission')
+        supervisor=getattr(self,'runtime_supervisor',None)
+        if supervisor:
+            supervisor.stop()
+            if not supervisor.join(3):
+                report['maintenance_at_exit']=supervisor.pending_maintenance()
+        backend=self.config.load()['qq_backend']
+        external=backend=='snowluma'
+        report.update(qq_backend=backend,external_qq_session=external,qq_was_running=not external and self.owned('napcat'))
+        if external:report['logout_reason']='external_session_connection_only'
         if not report['qq_was_running'] and not external:
             try:
-                previous=json.loads((self.paths.home/'runtime/last-qq-logout.json').read_text())
-                if previous.get('console_token')==(self.console_lease or {}).get('token') and previous.get('bot')==self.config.load()['bot_qq']:
-                    report.update({k:v for k,v in previous.items() if k!='console_token'})
+                previous=json.loads((self.paths.home/'runtime/last-qq-logout.json').read_text(encoding='utf-8'))
+                if previous.get('console_token')==report['console_token'] and previous.get('bot')==self.config.load()['bot_qq']:
+                    report.update({k:v for k,v in previous.items() if k in ('logout_confirmed','logout_reason','qq_was_running')})
             except (OSError,ValueError):pass
-        try:
-            deadline=time.monotonic()+30
-            if self.owned('service'):
-                try:self.client.call('POST','/v1/control/drain',{'closing':True,'instance_id':report['instance_id']},timeout=2)
+        self._exit_phase(report,'draining')
+        request={'closing':True,'instance_id':report['instance_id'],'exit_id':report['exit_id']}
+        if self.owned('service'):
+            if self.can_release_owned('service'):
+                report['verified_service']=True
+                deadline=time.monotonic()+DRAIN_SECONDS
+                try:self.client.call('POST','/v1/control/drain',request,timeout=2)
                 except RuntimeErrorBase:report['errors'].append('drain_unconfirmed')
                 while time.monotonic()<deadline:
                     try:
@@ -570,25 +695,17 @@ class ServiceController:
                         if not status['pending'] and not status.get('background_running') and not status.get('sending_parts'):break
                     except RuntimeErrorBase:break
                     time.sleep(.2)
-            # Fence the sender before logout and never launch a replacement while closing.
-            self.release_role('astrbot')
-            progress('logout')
-            if not external and self.owned('napcat'):
-                try:
-                    from .qq_session import logout_verified
-                    report.update(logout_verified(self.paths,self.record('napcat'),timeout=10))
-                except Exception as exc:report['logout_reason']=type(exc).__name__
-        finally:
-            progress('releasing')
-            try:self.end_console()
-            except Exception as error:report['errors'].append('console_cleanup_'+type(error).__name__)
-            deadline=time.monotonic()+2
-            while self.has_resident_processes() and time.monotonic()<deadline:time.sleep(.1)
-            report['processes_released']=not self.has_resident_processes()
-            report['phase']='components_released' if report['processes_released'] else 'release_unconfirmed'
-            try:atomic_json(self.paths.home/'runtime/last-exit.json',report)
-            except OSError:report['errors'].append('exit_report_write_failed')
-        return report
+                else:report['drain_deadline_reached']=True
+                try:self.client.call('POST','/v1/control/checkpoint',request,timeout=2)
+                except RuntimeErrorBase:report['errors'].append('settlement_unconfirmed')
+            else:report['errors'].append('service_endpoint_owner_unconfirmed')
+        self.release_role('astrbot')
+        self._exit_phase(report,'logout')
+        if report['qq_was_running']:
+            try:
+                from .qq_session import logout_verified
+                report.update(logout_verified(self.paths,self.record('napcat'),timeout=10))
+            except Exception as exc:report['logout_reason']=type(exc).__name__
 
     def force_stop_all(self):
         from .emergency import force_stop_all_elevated

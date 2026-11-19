@@ -111,6 +111,81 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         self.assertIn(self.gate.parts[0],latest);self.assertNotIn(self.gate.parts[1],latest);self.assertNotIn('隐藏主稿',latest)
         self.publisher.cancel(next_turn['id'])
 
+    async def test_webview_new_input_closes_prior_and_only_reads_confirmed_prefix(self):
+        from persona_runtime.ingress import IngressService
+        from persona_runtime.tk_notice import CONTRACT
+        prior=await self.submit()
+        self.acknowledge(prior,0)
+        ingress=IngressService(self.chat)
+        received=ingress.accept({"persona_id":self.pid,"channel":"desktop","session_id":prior["session_id"],
+                                 "request_id":identifier(),"text":"811","desktop_presentation":CONTRACT})
+        if not received["turn_id"]:
+            received=ingress.action(received["batch_id"],"seal",received["batch_revision"],identifier(),self.pid)
+        await asyncio.wait_for(self.chat.wait(),10)
+        self.assertEqual(self.chat.get(prior["id"])["reply"],self.gate.parts[0])
+        history=json.dumps(self.main.calls[-1],ensure_ascii=False)
+        self.assertIn(self.gate.parts[0],history)
+        self.assertNotIn(self.gate.parts[1],history)
+        self.assertEqual(len(self.main.calls),2)
+
+    async def test_legacy_webview_known_not_presented_reuses_only_same_fragment(self):
+        turn=await self.submit()
+        key=dict(persona_id=self.pid,session_id=turn["session_id"],turn_id=turn["id"])
+        plan=self.publisher.plan(**key)
+        position=dict(publication_id=plan["id"],revision=plan["revision"],ordinal=0)
+        slot=dict(key,**position,presenter_id="webview-v2.815")
+        first=self.publisher.offer(**slot)
+        decision=dict(slot,utterance_id=first["id"],receipt_id="815",lease_id=first["lease_id"],
+                      body_hash=first["body_hash"],webview=True,state="not_presented")
+        self.publisher.acknowledge(**decision)
+        self.assertTrue(self.publisher.acknowledge(**decision)["already_applied"])
+        second=self.publisher.offer(**(slot|{"presenter_id":"webview-v2.816"}))
+        self.assertNotEqual(first["lease_id"],second["lease_id"])
+        self.publisher.acknowledge(**(decision|{"receipt_id":"816","presenter_id":"webview-v2.816",
+                                               "lease_id":second["lease_id"],"state":"presented"}))
+        self.assertEqual(self.publisher.visible(**key)[0]["text"],first["body"])
+        self.publisher.cancel(turn["id"])
+
+    async def test_webview_new_input_settles_prior_with_only_saved_draft(self):
+        from persona_runtime.ingress import IngressService
+        from persona_runtime.tk_notice import CONTRACT
+        async def interrupted(*args):raise RuntimeError("812")
+        with patch.object(self.runtime,"execute",side_effect=interrupted):
+            prior=await self.submit()
+        self.assertIsNotNone(prior['expression']['draft'])
+        ingress=IngressService(self.chat)
+        received=ingress.accept({"persona_id":self.pid,"channel":"desktop","session_id":prior["session_id"],
+                                 "request_id":identifier(),"text":"813","desktop_presentation":CONTRACT})
+        if not received["turn_id"]:
+            ingress.action(received["batch_id"],"seal",received["batch_revision"],identifier(),self.pid)
+        await asyncio.wait_for(self.chat.wait(),10)
+        self.assertEqual(self.chat.get(prior["id"])["error_code"],"desktop_reply_superseded")
+        self.assertIsNone(self.chat.get(prior["id"])["reply"])
+        self.assertEqual(len(self.main.calls),2)
+
+    async def test_reopen_can_present_saved_webview_reply_without_new_model_call(self):
+        from persona_runtime.ingress import IngressService
+        from persona_runtime.tk_notice import CONTRACT
+        ingress=IngressService(self.chat)
+        async def interrupted(*args):raise RuntimeError("814")
+        with patch.object(self.runtime,"execute",side_effect=interrupted):
+            receipt=ingress.accept({"persona_id":self.pid,"channel":"desktop","text":"817",
+                                    "request_id":identifier(),"desktop_presentation":CONTRACT})
+            if not receipt["turn_id"]:
+                receipt=ingress.action(receipt["batch_id"],"seal",receipt["batch_revision"],identifier(),self.pid)
+            await self.chat.wait()
+        tid=receipt["turn_id"]
+        self.chat.recover()
+        self.chat.recover()
+        current=self.chat.get(tid)
+        self.assertEqual(current["expression"]["publication"]["producer_kind"],"draft")
+        self.assertEqual(current["desktop_publications"][0]["state"],"pending")
+        self.assertIsNone(current["reply"])
+        with self.store.connection() as db:
+            expected=db.execute("SELECT body FROM expression_main_receipts WHERE turn_id=?",(tid,)).fetchone()[0]
+        self.assertEqual(self.all_visible(current)["reply"],expected)
+        self.assertEqual((len(self.main.calls),len(self.gate.calls)),(1,0))
+
     async def test_invalid_gate_transport_uses_saved_main_without_second_main(self):
         self.gate.raw_override=' ' * 50;turn=await self.submit()
         self.assertEqual(turn['expression']['publication']['producer_kind'],'draft')

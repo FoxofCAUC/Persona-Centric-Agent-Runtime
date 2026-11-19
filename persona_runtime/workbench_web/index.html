@@ -226,10 +226,12 @@
           </header>
           <div class="timeline first" id="timeline"></div>
           <div class="composer-wrap">
+            <div id="chat-status" class="history-reference" role="status" hidden><span></span><button type="button" class="button ghost" hidden>更新模型连接</button></div>
             <div id="history-reference" class="history-reference" hidden><span></span><button type="button" class="button ghost">取消引用</button></div>
             <form class="composer off" id="composer" autocomplete="off">
               <textarea id="message" rows="1" aria-label="输入消息" placeholder="准备完成后即可输入消息" maxlength="1500" disabled></textarea>
               <button class="button primary" id="send" disabled>发送</button>
+              <button class="button" type="button" id="public-search-send" title="发送消息并查找选中的公开问题；未选中时使用整条输入" hidden disabled>公开查找</button>
             </form>
           </div>
         </main>
@@ -243,6 +245,17 @@
       <div class="dialog-body" id="dialog-body"></div>
       <div class="dialog-foot" id="dialog-actions"></div>
     </form>
+  </dialog>
+  <dialog id="quota-dialog" aria-labelledby="quota-title" aria-describedby="quota-description">
+    <div class="dialog-head"><h2 id="quota-title">已达到模型调用限额</h2></div>
+    <div class="dialog-body"><p id="quota-description"></p><p id="quota-result" role="status"></p></div>
+    <div class="dialog-foot"><button type="button" class="button" id="quota-wait">保留限额，继续等待</button>
+      <button type="button" class="button primary" id="quota-allow">临时放行并继续</button></div>
+  </dialog>
+  <dialog id="repair-dialog" aria-labelledby="repair-title" aria-describedby="repair-description">
+    <div class="dialog-head"><h2 id="repair-title">修复中</h2></div>
+    <div class="dialog-body"><p id="repair-description" role="status" aria-live="polite"></p></div>
+    <div class="dialog-foot"><button type="button" class="button" id="repair-exit">安全退出工作台</button></div>
   </dialog>
   <script>
     "use strict";
@@ -394,6 +407,7 @@
       if (!found.length) emptyList(container, "没有匹配的会话");
       for (const session of found) {
         container.append(listButton(session.label, session.id === person.activeSession, () => {
+          if(window.pcarLive?.active)return window.pcarLive.select(person,false,true,session.id);
           person.activeSession = session.id;
           closeDrawer();
           render({ scrollToEnd: true });
@@ -454,11 +468,16 @@
     }
 
     function updateSendButton() {
-      byId("send").disabled = !ready() || currentSession()?.readOnly || !state.connected || !message.value.trim();
+      byId("send").disabled = !ready() || currentSession()?.readOnly || !state.connected || window.pcarLive?.offline ||
+        window.pcarLive?.selecting || window.pcarLive?.pendingDraft || !message.value.trim();
+      const lookup=byId("public-search-send");
+      lookup.hidden=!(window.pcarLive?.active && currentSession()?.publicSearchAvailable);
+      lookup.disabled=lookup.hidden||byId("send").disabled;
     }
 
     function render({ scrollToEnd = false } = {}) {
       const previousScroll = timeline.scrollTop;
+      const reading=window.pcarLive?.capture();
       const person = currentPerson();
       const session = currentSession();
       renderPeople();
@@ -468,9 +487,10 @@
       if (ready()) renderMessages(session);
       else renderOnboarding();
       timeline.scrollTop = scrollToEnd ? timeline.scrollHeight : previousScroll;
+      if(!scrollToEnd && reading)window.pcarLive.restore(reading);
       byId("composer").classList.toggle("off", !ready());
-      message.disabled = !ready() || Boolean(session?.readOnly);
-      message.value = session?.draft ?? "";
+      message.disabled = !ready() || Boolean(session?.readOnly) || Boolean(window.pcarLive?.selecting);
+      if(message.value!==(session?.draft ?? "") && !window.pcarLive?.composing)message.value=session?.draft ?? "";
       message.placeholder = session?.readOnly ? "已封存的会话可供查阅" : ready() ? "输入消息" : "准备完成后即可输入消息";
       updateSendButton();
     }
@@ -687,6 +707,7 @@
     }
 
     function openAdvanced() {
+      if(window.pcarLive?.active)return window.pcarLive.diagnostics();
       present("高级设置",
         '<p class="hint">以下为暂定分组，明细将在无人值守和 G-AUTO 验收后确认。</p>' +
         '<details><summary>运行与诊断</summary><p class="hint">服务状态、日志、备份恢复。</p></details>' +
@@ -741,7 +762,7 @@
     });
     byId("import-history").addEventListener("click",()=>window.pcarLive?.importHistory());
     byId("history-reference").querySelector("button").addEventListener("click",()=>{
-      const s=currentSession(); if(s){s.reference=null; render(); message.focus();}
+      const s=currentSession(); if(s){s.reference=null; if(window.pcarLive?.active)window.pcarLive.reviseDraft(s); render(); message.focus();}
     });
     byId("new-person").addEventListener("click", () => openRoleForm());
     byId("new-session").addEventListener("click", () => {
@@ -762,6 +783,7 @@
       if (event.target.closest("[data-dialog-cancel]")) dialog.close();
     });
     dialog.addEventListener("close", () => {
+      if (dialog.open) return;
       dialogBody.replaceChildren();
       byId("dialog-actions").replaceChildren();
       if (returnFocus instanceof HTMLElement && returnFocus.isConnected && !returnFocus.closest("[inert]") && returnFocus.getClientRects().length) {

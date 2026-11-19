@@ -446,7 +446,7 @@ desktop.Workbench=Hidden;desktop.run(p)
             controller=SimpleNamespace(paths=RuntimePaths(Path(folder)),ensure_binding=lambda:None,closing=threading.Event(),
                 config=SimpleNamespace(load=lambda:{'runtime':{'components':{'service':True}}}),health=lambda _:dict(state))
             runtime=AppRuntime(controller,clock=lambda:now[0])
-            with patch.object(runtime,'launch_operation',return_value=True) as launch:
+            with patch.object(runtime,'launch_operation',side_effect=lambda role,start,*,fault=False:not fault or runtime.reserve_restart(role)) as launch:
                 runtime.tick();self.assertEqual(runtime.restarts['service'],[]);self.assertEqual(launch.call_count,1)
                 state['state']='运行';now[0]+=5;runtime.tick()
                 state['state']='已停止'

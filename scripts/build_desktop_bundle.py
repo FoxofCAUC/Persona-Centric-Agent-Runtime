@@ -10,7 +10,7 @@ import zipfile
 
 SOURCE=Path(__file__).resolve().parents[1]
 SCRIPTS=('Start-Workbench.ps1','Prepare-Desktop.ps1','pcar-location.ps1','Manage-Migration.ps1',
-         'verify_m8d_migration.py','verify_m761_migration.py','dev.ps1','test.ps1','force_stop_services.py','force_stop_qq.py','build_desktop_bundle.py','pcar_acceptance_check.py','pcar_upgrade_check.py','pcar_recall_rollback.py','pcar_recall_preflight.py','pcar_scene_voice.py')
+         'verify_m8d_migration.py','verify_m761_migration.py','dev.ps1','test.ps1','force_stop_services.py','force_stop_qq.py','build_desktop_bundle.py','pcar_acceptance_check.py','pcar_desktop_turn_evidence.py','pcar_upgrade_check.py','pcar_recall_rollback.py','pcar_recall_preflight.py','pcar_scene_voice.py')
 ROOT_FILES=('启动PCAR.bat','README.md','AGENTS.md','AGENT_INSTALL.md','LICENSE','pyproject.toml','uv.lock','model-assets.json','source-delivery.json')
 WEBVIEW_FILES = (
     '启动PCAR-新版.bat', 'persona_runtime/workbench_web/index.html',
@@ -48,18 +48,20 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
     files.update({n:SOURCE/n for n in ROOT_FILES})
     files.update({n: SOURCE / n for n in WEBVIEW_FILES})
     files.update({'scripts/'+n:SOURCE/'scripts'/n for n in SCRIPTS})
+    if profile=='standard':
+        files['scripts/private_copy_workbench.py']=SOURCE/'scripts/private_copy_workbench.py'
     for name in ('__init__.py','import_card_request_review.py','import_card_result_review.py','import_card_readmit.py','import_profile_request_review.py','import_profile_quality.py','import_profile_evidence.py','import_style_supplement.py','m9r_comparison.py','m9r_comparison_materials.py','m9r_native_probe.py','m9r_fatigue_materials.py','recall_preparation.py','recall_continuity.py'):
         path=SOURCE/'experiments'/name
         if path.is_file():files['experiments/'+name]=path
     if profile=='scene-desktop':
         files.update({name:SOURCE/name for name in SCENE_DOCS if (SOURCE/name).is_file()})
         files.update({'tests/'+name:SOURCE/'tests'/name for name in SCENE_TESTS})
-        documentation=SOURCE/'docs' if source_revision else SOURCE/'docs/licenses'
+        documentation=SOURCE/'docs' if source_revision or candidate_base_revision else SOURCE/'docs/licenses'
     else:
         documentation=SOURCE/'docs'
     files.update({p.relative_to(SOURCE).as_posix():p for p in documentation.rglob('*')
                   if p.is_file() and p.suffix.lower() in ('.md','.docx','.txt')})
-    if source_revision:
+    if source_revision or candidate_base_revision:
         files.update({n:SOURCE/n for n in ('CHANGELOG.md','CONTRIBUTING.md')})
         files.update({'assets/readme/'+n:SOURCE/'assets/readme'/n for n in README_ASSETS})
     if artificial_fixture:

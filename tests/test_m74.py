@@ -119,6 +119,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.fake=Fake();self.engine=ChatEngine(self.store,self.config,self.fake);self.ingress=IngressService(self.engine)
         for channel in ('desktop','qq'):
             policy=self.ingress.current_policy(self.pid,channel)
+            if policy.get("companion"):
+                policy=self.ingress.update_policy(self.pid,channel,policy["mode"],policy["id"],identifier(),companion_mode="disabled")
             self.ingress.update_policy(self.pid,channel,'legacy_per_message',policy['id'],identifier(),reply_mode='legacy_full',character_retrieval_mode='lexical')
         # Explicitly retain the M7.4 expression contract; v2 presentation has its own suite.
         with self.store.connection(write=True) as conn:

@@ -381,6 +381,9 @@ def guard_cloud_dispatch(store,persona_id,kind,model,*,db=None,decision_use=None
     if policy is not None and policy.get('_migration_binding'):
         raise RuntimeErrorBase('private_cloud_provider_not_authorized')
     with (store.connection() if db is None else nullcontext(db)) as db:
+        if kind=='organization' and policy is None:
+            from .copy_session_memory import has_decision
+            if has_decision(db,persona_id):raise RuntimeErrorBase('private_cloud_provider_not_authorized')
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_imports'").fetchone():
             for row in db.execute('SELECT data_json FROM memory_imports WHERE persona_id=?',(persona_id,)):
                 if json.loads(row[0]).get('private_review_required'):

@@ -1,4 +1,5 @@
 """One explicitly requested author compilation; no retries or automatic publishing."""
+from .call_limits import resume_on_limit, gate, workflow
 import asyncio
 import json
 import time
@@ -85,6 +86,8 @@ class DispositionCompiler:
                               (persona_id,attempt_id,attempt_id)).fetchall()
             return [{k:v for k,v in dict(r).items() if k not in ('model_snapshot',)} for r in rows]
 
+    @workflow
+    @resume_on_limit
     async def compile(self,persona_id,source_ids,expected_revision,operation_id):
         if type(source_ids) is not list or not source_ids or len(source_ids)>64 or any(type(x) is not str for x in source_ids) or len(set(source_ids))!=len(source_ids):fail('invalid_disposition_sources')
         if type(operation_id) is not str or not 1<=len(operation_id)<=200:fail('invalid_operation_id')
@@ -111,6 +114,7 @@ class DispositionCompiler:
             if sum(len(m['content']) for m in payload)>model['max_input_chars']:fail('source_selection_required')
             now=time.time()
             # This entry is an explicit human compilation, not an auto trigger.
+            gate(conn,self.store,'compilation','compile/'+operation_id)
             refs=[{k:v for k,v in r.items() if k!='text'} for r in sources]
             conn.execute('INSERT INTO disposition_compile_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (aid,persona_id,LOCAL_USER_ID,operation_id,fp,'running',now,None,encoded(model),encoded(refs),fingerprint(payload),None,None,None,None,timestamp()))

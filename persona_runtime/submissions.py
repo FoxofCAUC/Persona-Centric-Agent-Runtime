@@ -12,7 +12,7 @@ from .security import protect, unprotect
 
 class SubmissionJournal:
     def __init__(self, paths, channel):
-        if channel not in ("desktop", "qq"):
+        if channel not in ("desktop", "qq", "webview", "presentation"):
             raise ValueError("Unsupported journal channel")
         self.path = paths.home / "runtime" / (channel + "-submissions.dpapi.json")
         self.channel = channel
@@ -66,7 +66,7 @@ class SubmissionJournal:
         with self._locked():
             return self._read()
 
-    def remember(self, payload, *, match_draft=False):
+    def remember(self, payload, *, match_draft=False, metadata=None):
         with self._locked():
             rows = self._read()
             for row in rows:
@@ -75,7 +75,7 @@ class SubmissionJournal:
                     return row["payload"]
                 if match_draft and all(row["payload"].get(key) == payload.get(key) for key in ("text", "persona_id", "session_id", "channel", "reference", "public_task")):
                     return row["payload"]
-            rows.append({"payload": payload, "state": "unconfirmed"})
+            rows.append({"payload": payload, "state": "unconfirmed", **(metadata or {})})
             self._write(rows)
             return payload
 
@@ -93,3 +93,12 @@ class SubmissionJournal:
             remaining = [row for row in rows if row["payload"]["request_id"] != request_id]
             if len(remaining) != len(rows):
                 self._write(remaining)
+
+    def update(self, request_id, **values):
+        with self._locked():
+            rows = self._read()
+            for row in rows:
+                if row["payload"]["request_id"] == request_id:
+                    row.update(values)
+                    self._write(rows)
+                    return

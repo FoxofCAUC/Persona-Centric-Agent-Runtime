@@ -105,7 +105,7 @@ def select(conn, persona_id, channel, session_id=None, origin=None, continued_fr
 
 def blockers(conn, session_id):
     result = [{'kind':'input_batch','id':r['id'],'state':r['state']} for r in conn.execute(
-        "SELECT id,state FROM input_batches WHERE session_id=? AND state IN ('collecting','sealed_waiting_capacity','interrupted_buffer')", (session_id,))]
+        "SELECT id,state FROM input_batches WHERE session_id=? AND state IN ('collecting','sealed_waiting_capacity','interrupted_buffer') AND coalesce(seal_reason,'')!='recovery_unverified'", (session_id,))]
     result += [{'kind':'turn','id':r['id'],'state':r['status']} for r in conn.execute("SELECT id,status FROM turns WHERE session_id=? AND status IN ('queued','running')", (session_id,))]
     result += [{'kind':'part','id':r['id'],'state':r['state']} for r in conn.execute('''SELECT p.id,p.state FROM reply_delivery_parts p JOIN turns t ON t.id=p.turn_id
         WHERE t.session_id=? AND p.state NOT IN ('sent','skipped','resolved')''', (session_id,))]

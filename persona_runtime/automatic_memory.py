@@ -14,13 +14,16 @@ def available(db):
     return bool(db.execute("SELECT 1 FROM sqlite_master WHERE name='memory_batches'").fetchone())
 
 
-def facts(db,pid,selected,model=None):
+def facts(db,pid,selected,model=None,*,native_session=None):
     """Only same-Scope, currently supported memories may enter either model."""
     from .context_builders import memory_usable
     rows=[]
     representative={'persona_id':pid,'channel':selected['channel'],'origin_json':encoded({'bot':selected['bot'],'sender':selected['peer']}),'input_batch_id':None}
     for r in db.execute("SELECT * FROM memories WHERE persona_id=? AND status='active' ORDER BY rowid",(pid,)):
         m=dict(r)
+        if native_session:
+            from .copy_session_memory import local_fact
+            if not local_fact(db,m['id'],pid,native_session):continue
         if not memory_usable(db,representative,m,for_review=True, purpose='memory' if model is not None else 'evidence', providers=model):continue
         f=db.execute('SELECT * FROM memory_facts WHERE memory_id=?',(m['id'],)).fetchone()
         if f and json.loads(f['data_json']).get('import_review_required'):continue
@@ -63,8 +66,12 @@ def validate_sources(db,payload,check_memories=True,*,model=None):
         turn=dict(row)
         r=history_scope.source_group(db,payload['scope'],turn,model=model,purpose='memory' if model is not None else 'evidence')
         if r['status']!='found' or binding(r)!=item['binding'] or r['recorded_at']!=payload['recorded_times'][item['turn_id']]:raise RuntimeErrorBase('source_expired')
-    if check_memories and dependency_hash(facts(db,payload['persona_id'],payload['scope'],model),payload)!=payload['memory_dependency_hash']:
+    if check_memories and dependency_hash(facts(db,payload['persona_id'],payload['scope'],model,native_session=consented_session(payload)),payload)!=payload['memory_dependency_hash']:
         raise RuntimeErrorBase('automatic_memory_version_changed')
+
+
+def consented_session(payload):
+    if payload['automatic_memory'].get('copy_session_revision'):return payload['session_id']
 
 
 def invalidate(db,pid,event_ids):
@@ -144,7 +151,6 @@ class AutomaticMemory:
     def __init__(self,engine):
         self.engine=engine
         self.store=engine.store
-        self._fragment_cursor=0
 
     def is_enabled(self,db,pid):
         p=self.engine.managed.policy(db,pid)['data']
@@ -152,17 +158,22 @@ class AutomaticMemory:
 
     def payload(self,db,pid,sid,selected,turns,purpose='extract',previous=None):
         model=self.engine.model()
+        from .copy_session_memory import grant,local_fact
+        revision=grant(self.store,db,pid,sid,model)
         p={'persona_id':pid,'user_id':LOCAL_USER_ID,'session_id':sid,'channel':selected['channel'],'scope':selected,
            'mode':'both','source_format':3,'rows':[],'events':[],'bindings':[],'previous':None,
-           'existing_memories':facts(db,pid,selected,model),'outdated_claims':[],'recorded_times':{},
+           'existing_memories':facts(db,pid,selected,model,native_session=sid if revision else None),'outdated_claims':[],'recorded_times':{},
            'automatic_memory':{'version':VERSION,'stage':'extract','purpose':purpose,'previous_fragment':previous}}
+        if revision:p['automatic_memory']['copy_session_revision']=revision
         all_memories=p['existing_memories'];p['memory_state_hash']=digest(all_memories)
         for m in all_memories:
             if m.get('valid_until') and datetime.fromisoformat(m['valid_until'])<=datetime.now(timezone.utc):p['outdated_claims'].append({k:m[k] for k in ('id','text','subject','attribute')}|{'reason':'expired','valid_until':m['valid_until']})
         for r in db.execute("SELECT m.id,m.text,m.previous_id,f.subject,f.attribute FROM memories m JOIN memory_facts f ON f.memory_id=m.id WHERE m.persona_id=? AND m.status='superseded' AND f.scope_json=?",(pid,encoded(selected))):
+            if revision and not local_fact(db,r['id'],pid,sid):continue
             if not history_scope.allowed_memory(db,r['id'],model):continue
             if not any(normalized(m['text'])==normalized(r['text']) and m.get('subject')==r['subject'] and m.get('attribute')==r['attribute'] for m in p['existing_memories']):p['outdated_claims'].append(dict(r))
         for turn in turns[:10]:
+            if revision and (turn['session_id']!=sid or history_scope.imported(turn)):continue
             exact=history_scope.source_group(db,selected,turn,model=model)
             if exact['status']!='found':continue
             candidate=json.loads(encoded(p));candidate['rows'].append(turn['ordinal']);candidate['bindings'].append({'turn_id':turn['id'],'binding':binding(exact)})
@@ -220,15 +231,18 @@ class AutomaticMemory:
         data=json.loads(batch['data_json']);p=data['payload'];validate_sources(db,p,check_memories=False)
         history_scope.check_payload(db,p,self.engine.model(),self.is_enabled(db,p['persona_id']))
         p=json.loads(encoded(p));p['automatic_memory']['stage']='verify';p['proposals']=data['proposals']
-        all_memories=facts(db,p['persona_id'],p['scope'],self.engine.model());p['memory_state_hash']=digest(all_memories);p['existing_memories']=select_facts(all_memories,p['events'],p['proposals'])
+        all_memories=facts(db,p['persona_id'],p['scope'],self.engine.model(),native_session=consented_session(p));p['memory_state_hash']=digest(all_memories);p['existing_memories']=select_facts(all_memories,p['events'],p['proposals'])
         while p['existing_memories'] and sum(len(m['content']) for m in messages(p))>self.engine.model()['max_input_chars']:p['existing_memories'].pop()
         if sum(len(m['content']) for m in messages(p))>self.engine.model()['max_input_chars']:raise RuntimeErrorBase('automatic_memory_verification_input_too_long')
         p['memory_dependency_hash']=dependency_hash(all_memories,p)
         p['fingerprint']=digest(p);key=digest([batch['id'],p['proposals'],p['memory_dependency_hash']])
         original=db.execute('SELECT automatic FROM organization_tasks WHERE id=?',(batch['extract_task_id'],)).fetchone()[0]
         task=self.engine.managed.register(db,p,'memory-verify-'+key,automatic=original,trigger=data['trigger'])
-        data.setdefault('verification_tasks',[]).append(task['id'])
+        history=data.setdefault('verification_tasks',[])
+        if task['id'] not in history:history.append(task['id'])
         db.execute("UPDATE memory_batches SET verify_task_id=?,data_json=?,state='verifying',updated_at=? WHERE id=?",(task['id'],encoded(data),timestamp(),batch['id']))
+        db.execute("""UPDATE memory_coverage SET disposition='pending',summary_state='pending',updated_at=?
+            WHERE batch_id=? AND disposition IN ('blocked_input','history_paused','blocked_authorization')""",(timestamp(),batch['id']))
 
     def published(self,db,task,payload,output):
         """Called only inside the existing owner's publication transaction."""
@@ -242,7 +256,7 @@ class AutomaticMemory:
     def commit(self,db,batch,payload,proposals,decisions):
         bid=batch['id'];pid=payload['persona_id'];selected=payload['scope'];now=timestamp();kept=[];quarantine=False
         items={i['id']:(kind,i) for kind in ('summary','candidates') for i in proposals[kind]}
-        live={m['id']:m for m in facts(db,pid,selected)};published_targets=set()
+        live={m['id']:m for m in facts(db,pid,selected,native_session=consented_session(payload))};published_targets=set()
         collisions={}
         for d in decisions:
             if d['action'] in ('publish','revise','temporal'):
@@ -307,14 +321,17 @@ class AutomaticMemory:
                     live[mid]={'id':mid,'text':item['text'],'category':item['category'],'revision':revision,'subject':normalized(d['subject']),'attribute':normalized(d['attribute']),'valid_from':d['effective_at'],'valid_until':d['valid_until']}
                 for s in sources:db.execute('INSERT OR IGNORE INTO memory_sources VALUES(?,?,?)',(mid,s['source_id'],s['quote']))
                 # New evidence can resolve older quarantined versions of this slot.
-                for prior in db.execute("SELECT * FROM memory_decisions WHERE persona_id=? AND state='quarantined'",(pid,)).fetchall():
+                session_limit=consented_session(payload)
+                for prior in db.execute("""SELECT d.* FROM memory_decisions d JOIN memory_batches b ON b.id=d.batch_id
+                    WHERE d.persona_id=? AND d.state='quarantined' AND (? IS NULL OR b.session_id=?)""",
+                    (pid,session_limit,session_limit)).fetchall():
                     pd=json.loads(prior['data_json'])['decision']
                     if normalized(pd['subject'])==normalized(d['subject']) and normalized(pd['attribute'])==normalized(d['attribute']):db.execute("UPDATE memory_decisions SET state='resolved',reason='new_supported_evidence' WHERE id=?",(prior['id'],))
             elif action=='quarantine':state='quarantined';quarantine=True
             detail={'proposal':item,'decision':d,'memory_id':mid,'blocked_memory_ids':[m['id'] for m in matches] if state=='quarantined' and reason!='historical_source_not_newer' else []}
             db.execute('INSERT INTO memory_decisions VALUES(?,?,?,?,?,?,?,?,?,?)',(identifier(),pid,LOCAL_USER_ID,bid,item['id'],kind,state,reason,encoded(detail),now))
         previous=payload['automatic_memory']['previous_fragment']
-        expired=[m for m in facts(db,pid,selected) if m.get('valid_until') and datetime.fromisoformat(m['valid_until'])<=datetime.now(timezone.utc)]
+        expired=[m for m in facts(db,pid,selected,native_session=consented_session(payload)) if m.get('valid_until') and datetime.fromisoformat(m['valid_until'])<=datetime.now(timezone.utc)]
         kept=[i for i in kept if not old_evidence.intersection(s['source_id'] for s in i['sources']) and not any(normalized(i['text'])==normalized(m['text']) for m in expired)]
         if previous:db.execute("UPDATE memory_fragments SET state='superseded' WHERE id=?",(previous,))
         if kept:
@@ -324,7 +341,9 @@ class AutomaticMemory:
         quarantine=bool(db.execute("SELECT 1 FROM memory_decisions WHERE batch_id=? AND state='quarantined'",(bid,)).fetchone())
         disposition='processed_with_quarantine' if quarantine else ('processed' if decisions else 'no_memory')
         for b in payload['bindings']:
-            db.execute("UPDATE memory_coverage SET disposition=CASE WHEN disposition='revoked' THEN disposition ELSE ? END,summary_state=?,updated_at=? WHERE turn_id=?",(disposition,'available' if kept else 'no_summary',now,b['turn_id']))
+            db.execute("""UPDATE memory_coverage SET disposition=?,summary_state=?,updated_at=? WHERE turn_id=?
+                AND disposition!='revoked' AND source_hash=? AND (batch_id=? OR ?='repair')""",
+                (disposition,'available' if kept else 'no_summary',now,b['turn_id'],b['binding']['hash'],bid,payload['automatic_memory']['purpose']))
         self.compose_summary(db,payload['session_id'],selected,task_id=payload.get('_task_id') or (batch['verify_task_id'] or batch['extract_task_id']))
 
     def compose_summary(self,db,sid,selected,task_id):
@@ -366,19 +385,27 @@ class AutomaticMemory:
     def tick(self,force=False):
         """Pure local coordination. All paid effects go through managed.register."""
         if self.engine.draining or self.engine.chat.draining:return
+        from .automatic_memory_schedule import schedule,scan_sessions,page,position,advance
+        import time
+        deadline=time.monotonic()+.12
         with self.store.connection(write=True) as db:
-            if (db.execute("SELECT 1 FROM turns WHERE status IN ('queued','running') LIMIT 1").fetchone()
-                    or db.execute("SELECT 1 FROM input_batches WHERE state IN ('collecting','sealed_waiting_capacity') LIMIT 1").fetchone()):
-                return
             self.reconcile(db)
-            policies=db.execute('SELECT p.* FROM organization_policies p WHERE revision=(SELECT max(revision) FROM organization_policies WHERE persona_id=p.persona_id)').fetchall()
-            for policy in policies:
-                pid=policy['persona_id'];settings=json.loads(policy['data_json'])
-                if not settings['enabled'] or not settings.get('memory_automation',False):continue
+            policies=page(db,'personas',"""SELECT p.rowid AS ordinal,p.* FROM organization_policies p
+                WHERE p.revision=(SELECT max(revision) FROM organization_policies WHERE persona_id=p.persona_id)
+                AND json_extract(p.data_json,'$.enabled') AND json_extract(p.data_json,'$.memory_automation')
+                AND p.rowid>? ORDER BY p.rowid LIMIT ?""",(),2)
+        for policy in policies:
+            pid=policy['persona_id'];settings=json.loads(policy['data_json'])
+            with self.store.connection() as db:
+                pages=scan_sessions(db,pid,settings,self.engine.model())
+            with self.store.connection(write=True) as db:
+                advance(db,'personas',policy['ordinal'])
                 from .persona_management import active
                 try:active(db,pid)
                 except RuntimeErrorBase:continue
-                for b in db.execute("SELECT * FROM memory_batches WHERE persona_id=? AND state IN ('extracting','verifying','waiting','blocked_input','history_paused') ORDER BY rowid",(pid,)).fetchall():
+                if self.engine.managed.policy(db,pid)['id']!=policy['id']:continue
+                for b in page(db,'batches/'+pid,"SELECT rowid AS ordinal,* FROM memory_batches WHERE persona_id=? AND state IN ('extracting','verifying','waiting','blocked_input','history_paused') AND rowid>? ORDER BY rowid LIMIT ?",(pid,),16):
+                    advance(db,'batches/'+pid,b['ordinal'])
                     batch=dict(b)
                     if batch['state'] in ('waiting','blocked_input','history_paused'):
                         try:self.enqueue_verification(db,batch)
@@ -387,24 +414,37 @@ class AutomaticMemory:
                             if str(error)=='history_memory_authorization_required':
                                 if batch['state']!='history_paused':
                                     db.execute("UPDATE memory_batches SET state='history_paused',updated_at=? WHERE id=?",(timestamp(),batch['id']))
+                                    self.settle_coverage(db,batch['id'],'history_paused')
                                 continue
                             state='blocked_input' if str(error)=='automatic_memory_verification_input_too_long' else 'stale'
                             db.execute('UPDATE memory_batches SET state=?,updated_at=? WHERE id=?',(state,timestamp(),batch['id']))
-                            if state=='stale':db.execute("UPDATE memory_coverage SET disposition='stale' WHERE batch_id=? AND disposition='pending'",(batch['id'],))
+                            self.settle_coverage(db,batch['id'],state)
                         continue
                     tid=batch['verify_task_id'] or batch['extract_task_id'];task=db.execute('SELECT * FROM organization_tasks WHERE id=?',(tid,)).fetchone()
                     if task['status'] not in ('queued','running','waiting_quota','completed'):
                         c=self.engine.managed.contract(db,tid);unknown=c['data']['phase']=='unknown' or task['status']=='blocked_unknown'
                         if task['error_code']=='automatic_memory_version_changed' and batch['verify_task_id']:
-                            self.enqueue_verification(db,batch)
+                            try:self.enqueue_verification(db,batch)
+                            except RuntimeErrorBase as error:
+                                if str(error)!='organization_queue_full':raise
                             continue
                         state='cancelled_unknown' if unknown and task['status']=='cancelled' else 'blocked_unknown' if unknown else task['status']
                         db.execute('UPDATE memory_batches SET state=?,updated_at=? WHERE id=?',(state,timestamp(),batch['id']))
-                        if state=='stale':db.execute("UPDATE memory_coverage SET disposition='stale' WHERE batch_id=? AND disposition='pending'",(batch['id'],))
-                from .automatic_memory_schedule import schedule
-                schedule(self,db,pid,settings,policy['created_at'],force=force)
+                        self.settle_coverage(db,batch['id'],state)
+            for scan in pages:
+                with self.store.connection(write=True) as db:
+                    if self.engine.managed.policy(db,pid)['id']!=policy['id']:break
+                    schedule(self,db,pid,settings,policy['created_at'],[scan],force=force)
+                if time.monotonic()>=deadline:return
+
+    @staticmethod
+    def settle_coverage(db,bid,state):
+        db.execute("""UPDATE memory_coverage SET disposition=?,summary_state='unavailable',updated_at=?
+            WHERE batch_id=? AND disposition NOT IN ('revoked','processed','processed_with_quarantine','no_memory')""",
+                   (state,timestamp(),bid))
 
     def reconcile(self,db):
+        from .automatic_memory_schedule import advance,position
         for row in db.execute("""SELECT m.*,f.valid_until,f.data_json FROM memory_facts f JOIN memories m ON m.id=f.memory_id
                 WHERE m.status='active' AND julianday(f.valid_until)<=julianday(?)
                 AND coalesce(json_extract(f.data_json,'$.expiry_applied'),0)=0 ORDER BY m.rowid LIMIT 16""",
@@ -415,15 +455,20 @@ class AutomaticMemory:
         # Withdrawals invalidate dependencies in the same transaction. This background
         # integrity pass catches other changes without rereading every historical batch.
         page=db.execute("""SELECT rowid AS ordinal,* FROM memory_fragments WHERE state='active' AND rowid>?
-                         ORDER BY rowid LIMIT 16""",(self._fragment_cursor,)).fetchall()
-        self._fragment_cursor=page[-1]['ordinal'] if len(page)==16 else 0
+                         ORDER BY rowid LIMIT 16""",(position(db,'fragments'),)).fetchall()
+        advance(db,'fragments',page[-1]['ordinal'] if len(page)==16 else 0)
         for f in page:
             p=json.loads(f['data_json'])['payload']
             try:validate_sources(db,p,check_memories=False)
             except RuntimeErrorBase:invalidate_fragment(db,f)
         # An explicitly resumed policy may rebind only proved-undispatched work
         # or saved receipts. Cancelled, malformed and unknown effects stay put.
-        for row in db.execute("SELECT * FROM organization_tasks WHERE status='blocked_authorization' AND error_code IN ('organization_policy_changed','organization_model_changed','history_memory_authorization_required')").fetchall():
+        from .automatic_memory_schedule import page as scan
+        blocked=scan(db,'blocked',"""SELECT rowid AS ordinal,* FROM organization_tasks WHERE status='blocked_authorization'
+            AND error_code IN ('organization_policy_changed','organization_model_changed','organization_account_changed','history_memory_authorization_required')
+            AND rowid>? ORDER BY rowid LIMIT ?""",(),8)
+        if blocked:advance(db,'blocked',blocked[-1]['ordinal'])
+        for row in blocked:
             p=json.loads(row['payload_json'])
             if not p.get('automatic_memory') or not self.is_enabled(db,row['persona_id']):continue
             c=self.engine.managed.contract(db,row['id']);count=db.execute('SELECT count(*) FROM organization_attempts WHERE task_id=?',(row['id'],)).fetchone()[0]
@@ -432,6 +477,9 @@ class AutomaticMemory:
             task=dict(row)
             new_model=self.engine.model()
             if count==0 and history_scope.has_history(db,p):
+                from .config import same_credential
+                old_model=json.loads(task['model_snapshot'])
+                if not same_credential(old_model.get('encrypted_key'),new_model.get('encrypted_key')):continue
                 task['model_snapshot']=encoded(new_model)
             try:self.engine.managed.check(db,task,c,p)
             except RuntimeErrorBase:continue
@@ -439,6 +487,8 @@ class AutomaticMemory:
                 db.execute('UPDATE organization_tasks SET model_snapshot=? WHERE id=?',(task['model_snapshot'],row['id']))
             self.engine.managed.save(db,c);db.execute("UPDATE organization_tasks SET status='queued',error_code=NULL WHERE id=?",(row['id'],))
             db.execute("UPDATE memory_batches SET state=? WHERE id=?",('verifying' if p['automatic_memory']['stage']=='verify' else 'extracting',p['automatic_memory']['batch_id']))
+            db.execute("""UPDATE memory_coverage SET disposition='pending',summary_state='pending' WHERE batch_id=?
+                AND disposition IN ('blocked_authorization','history_paused')""",(p['automatic_memory']['batch_id'],))
 
     def coverage(self,persona_id=None):
         with self.store.connection() as db:

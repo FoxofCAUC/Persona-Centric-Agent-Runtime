@@ -35,11 +35,40 @@ class IngressService:
     def __init__(self,engine,monotonic=time.monotonic,epoch=time.time):
         self.engine=engine;self.store=engine.store;self.config=engine.config
         self.monotonic=monotonic;self.epoch=epoch;self.clocks={}
+        self.restored_clocks=set()
+        self.next_settlement_check = 0
 
     def recover(self):
+        from .desktop_recovery import model_binding
+        cfg = self.config.load()
+        now, mono = self.epoch(), self.monotonic()
+        clocks = {}
         with self.store.connection(write=True) as conn:
-            conn.execute("UPDATE input_batches SET state='interrupted_buffer',revision=revision+1,updated_at=? WHERE state IN ('collecting','sealed_waiting_capacity')",(timestamp(),))
-        self.clocks.clear()
+            rows = conn.execute("""SELECT * FROM input_batches WHERE state IN
+                                   ('collecting','sealed_waiting_capacity','interrupted_buffer') ORDER BY first_seq""").fetchall()
+            for row in rows:
+                policy = json.loads(row["policy_json"])
+                if row["channel"] != "desktop":
+                    if row["state"] != "interrupted_buffer":
+                        conn.execute("UPDATE input_batches SET state='interrupted_buffer',revision=revision+1,updated_at=? WHERE id=?", (timestamp(), row["id"]))
+                    continue
+                if (row["sealed_at"] and row["model_snapshot"] and (row["state"] == "sealed_waiting_capacity"
+                        or row["seal_reason"] in ("deadline","capacity","legacy","scope_changed","policy_changed","explicit_seal","explicit_resume"))):
+                    if row["state"] == "interrupted_buffer":
+                        conn.execute("UPDATE input_batches SET state='sealed_waiting_capacity',revision=revision+1 WHERE id=?", (row["id"],))
+                    continue
+                if row["state"] != "collecting" or policy.get("desktop_binding") != model_binding(cfg):
+                    conn.execute("""UPDATE input_batches SET state='interrupted_buffer',seal_reason='recovery_unverified',
+                                    revision=revision+1 WHERE id=? AND coalesce(seal_reason,'')!='recovery_unverified'""", (row["id"],))
+                    continue
+                quiet = policy["quiet_ms"] / 1000
+                deadline = row["deadline_epoch"]
+                if policy["max_wait_ms"] is not None:
+                    deadline = min(deadline, row["max_deadline_epoch"])
+                remaining = max(0, min(quiet, deadline - now))
+                clocks[row["id"]] = (mono - max(0, now-row["first_epoch"]), mono - quiet + remaining, mono + remaining)
+        self.clocks = clocks
+        self.restored_clocks = set(clocks)
 
     def policy(self,conn,persona_id,channel):
         if channel not in ('desktop','qq'):raise RuntimeErrorBase('unsupported_channel')
@@ -300,7 +329,7 @@ class IngressService:
             row=conn.execute('SELECT * FROM ingress_receipts WHERE channel=? AND request_id=?',(channel,request_id)).fetchone()
             return self._receipt(conn,row) if row else None
 
-    def accept(self,value):
+    def accept(self,value,*,desktop_ticket=None):
         started=time.perf_counter()
         allowed={'channel','text','request_id','persona_id','session_id','bot','sender','platform_message_id','platform_time','reference','public_task','desktop_presentation'}
         if not isinstance(value,dict) or set(value)-allowed:raise RuntimeErrorBase('unknown_ingress_field')
@@ -337,13 +366,23 @@ class IngressService:
             if old:
                 if old['source_key']!=source or old['fingerprint']!=fp or (value.get('persona_id') and old['persona_id']!=value['persona_id']) or (value.get('session_id') and old['session_id']!=value['session_id']):raise RuntimeErrorBase('submission_conflict')
                 return self._receipt(conn,old)
+            from .local_repair import require_open
+            require_open(self.store.paths,cfg['instance_id'])
             # A v1 intent cannot be silently replayed through v2 after upgrade.
             if conn.execute('SELECT 1 FROM turns WHERE source_key=?',(channel+':'+rid,)).fetchone():raise RuntimeErrorBase('legacy_submission_exists')
+            if desktop_ticket is not None:
+                from .desktop_recovery import verify_intent
+                if channel != 'desktop':
+                    raise RuntimeErrorBase("invalid_ingress_input")
+                marker = verify_intent(conn, self.store, self.config, value, desktop_ticket)
             pid=self.engine.service._persona(conn,value.get('persona_id'))['id']
             from .private_personas import guard_acceptance_write
             guard_acceptance_write(self.store,pid)
             sid=self.engine._session(conn,pid,channel,value.get('session_id'),origin={'bot':bot,'sender':peer})
             pol=self.policy(conn,pid,channel);policy={**buffer_policy(pol),'id':pol['id'],'mode':pol['mode'],'reply_mode':pol['reply_mode'],'revision':pol['revision'],'context':context_snapshot(pol,conn,self.store),'expression':json.loads(pol['data_json']).get('expression') or expression_snapshot(pol['reply_mode'],pol['id'],version=1)}
+            if channel == "desktop":
+                from .desktop_recovery import model_binding
+                policy["desktop_binding"] = model_binding(cfg)
             from .en5_replay_scope import replay_request
             replay_request(self.store.paths,conn,value,pid,sid)
             if 'desktop_presentation' in value:policy['desktop_presentation']=value['desktop_presentation']
@@ -364,7 +403,7 @@ class IngressService:
                 deadline=self.clocks.get(batch['id'])
                 if (deadline and mono>=deadline[2]) or count>=20 or chars+len(text)>12000:
                     self._seal(conn,batch,'deadline' if deadline and mono>=deadline[2] else 'capacity');batch=None
-            active=conn.execute("SELECT b.id FROM input_batches b LEFT JOIN turns t ON t.input_batch_id=b.id WHERE b.persona_id=? AND b.channel=? AND b.bot=? AND b.peer=? AND b.state!='cancelled' AND (t.id IS NULL OR t.status IN ('queued','running'))",(pid,channel,bot,peer)).fetchall()
+            active=conn.execute("SELECT b.id FROM input_batches b LEFT JOIN turns t ON t.input_batch_id=b.id WHERE b.persona_id=? AND b.channel=? AND b.bot=? AND b.peer=? AND b.state!='cancelled' AND coalesce(b.seal_reason,'')!='recovery_unverified' AND (t.id IS NULL OR t.status IN ('queued','running'))",(pid,channel,bot,peer)).fetchall()
             active_ids=[r[0] for r in active]
             chars=0
             for bid in active_ids:chars+=conn.execute('SELECT coalesce(sum(length(e.text)),0) FROM input_batch_members m JOIN events e ON e.id=m.event_id WHERE m.batch_id=?',(bid,)).fetchone()[0]
@@ -401,18 +440,30 @@ class IngressService:
             if pol['mode']=='legacy_per_message' or order>=20 or chars>=12000:self._seal(conn,self._batch(conn,bid),'legacy' if pol['mode']=='legacy_per_message' else 'capacity')
             conn.execute('UPDATE ingress_receipts SET ingress_ms=? WHERE id=?',((time.perf_counter()-started)*1000,receipt))
             result=self._receipt(conn,conn.execute('SELECT * FROM ingress_receipts WHERE id=?',(receipt,)).fetchone())
-        self.clocks.update(clock_updates);self.schedule_committed();return result
+            if desktop_ticket is not None:
+                from .desktop_recovery import record_acceptance
+                record_acceptance(conn, self.store.paths, marker)
+        self.clocks.update(clock_updates);self.schedule_committed()
+        self.engine.presentation_wakeup.notify()
+        return result
 
     def _seal(self,conn,batch,reason):
         if batch['state'] not in ('collecting','interrupted_buffer','sealed_waiting_capacity'):return
         if batch['state']!='sealed_waiting_capacity':
+            config = self.config.load()
+            if batch["id"] in self.restored_clocks:
+                from .desktop_recovery import model_binding
+                if json.loads(batch["policy_json"]).get("desktop_binding") != model_binding(config):
+                    conn.execute("""UPDATE input_batches SET state='interrupted_buffer',seal_reason='recovery_unverified',
+                                    revision=revision+1 WHERE id=?""", (batch["id"],))
+                    return
             clock=self.clocks.get(batch['id'])
             elapsed=max(0,(self.monotonic()-clock[0])*1000) if clock else max(0,(self.epoch()-batch['first_epoch'])*1000)
             conn.execute('UPDATE input_batches SET buffer_ms=? WHERE id=?',(elapsed,batch['id']))
             from .companion import freeze_model,freeze_auxiliary
             accepted_context=json.loads(batch['policy_json']).get('context',{})
-            conn.execute('UPDATE input_batches SET selector_model_snapshot=? WHERE id=?',(encoded(freeze_auxiliary(self.config.load()['character_selector'],accepted_context)),batch['id']))
-            model=freeze_model(self.config.load()['model'],accepted_context)
+            conn.execute('UPDATE input_batches SET selector_model_snapshot=? WHERE id=?',(encoded(freeze_auxiliary(config['character_selector'],accepted_context)),batch['id']))
+            model=freeze_model(config['model'],accepted_context)
             conn.execute("UPDATE input_batches SET state='sealed_waiting_capacity',sealed_at=?,seal_reason=?,model_snapshot=?,revision=revision+1,updated_at=? WHERE id=?",(timestamp(),reason,encoded(model),timestamp(),batch['id']))
         self._enqueue(conn,batch['persona_id'])
 
@@ -422,7 +473,7 @@ class IngressService:
         for row in waiting:
             b=dict(row)
             # Earlier collecting/interrupted accepted input must be explicitly resolved first.
-            if conn.execute("SELECT 1 FROM input_batches WHERE persona_id=? AND first_seq<? AND state IN ('collecting','interrupted_buffer')",(persona_id,b['first_seq'])).fetchone():break
+            if conn.execute("SELECT 1 FROM input_batches WHERE persona_id=? AND first_seq<? AND state IN ('collecting','interrupted_buffer') AND coalesce(seal_reason,'')!='recovery_unverified'",(persona_id,b['first_seq'])).fetchone():break
             tid=identifier();first=conn.execute('SELECT event_id FROM input_batch_members WHERE batch_id=? ORDER BY member_order LIMIT 1',(b['id'],)).fetchone()[0]
             origin=encoded({'bot':b['bot'],'sender':b['peer']}) if b['channel']=='qq' else 'null'
             policy=json.loads(b['policy_json'])
@@ -434,14 +485,34 @@ class IngressService:
                 conn.execute('UPDATE turns SET observation_model_snapshot=? WHERE id=?',(b.get('observation_model_snapshot'),tid))
             if b['channel']=='qq':conn.execute("INSERT INTO deliveries VALUES (?,'pending',?)",(tid,timestamp()))
             record(conn,tid,'accepted');record(conn,tid,'queued')
+            if b['channel']=='desktop':
+                from .desktop_recovery import register
+                register(conn,tid,self.config.load())
             conn.execute("UPDATE input_batches SET state='linked',revision=revision+1,updated_at=? WHERE id=?",(timestamp(),b['id']))
 
     def schedule_committed(self):
         # Called only after the write transaction succeeds.
         with self.store.connection() as conn:
-            ids=[r[0] for r in conn.execute("SELECT id FROM turns WHERE input_batch_id IS NOT NULL AND status='queued' ORDER BY rowid")]
+            ids=[r[0] for r in conn.execute("""SELECT t.id FROM turns t WHERE (input_batch_id IS NOT NULL OR channel='desktop')
+                AND status='queued' AND NOT EXISTS(SELECT 1 FROM turns prior WHERE prior.persona_id=t.persona_id
+                AND prior.session_id=t.session_id AND prior.channel='desktop' AND prior.rowid<t.rowid
+                AND prior.error_code IN ('desktop_network_wait','desktop_storage_wait') AND prior.status IN ('queued','running') AND prior.cancelled_at IS NULL)
+                AND NOT EXISTS(SELECT 1 FROM knowledge_control w WHERE w.key='desktop.network.'||t.id
+                AND json_extract(w.value,'$.revision')=t.execution_revision AND json_extract(w.value,'$.due')>?) ORDER BY t.rowid""",(time.time(),))]
         for tid in ids:
             if tid not in self.engine.tasks:self.engine._schedule(tid)
+
+    def network_wake(self):
+        now=time.monotonic()
+        if self.engine.draining or now<getattr(self,'_next_network_wake',0):return
+        self._next_network_wake=now+2
+        with self.store.connection(write=True) as db:
+            db.execute("""UPDATE knowledge_control SET value=json_set(value,'$.due',0) WHERE key IN (
+                SELECT 'desktop.network.'||id FROM turns WHERE channel='desktop' AND error_code IN ('desktop_network_wait','desktop_storage_wait')
+                AND status='queued' AND cancelled_at IS NULL)""")
+            db.execute("""UPDATE organization_contracts SET data_json=json_set(data_json,'$.next_epoch',0)
+                WHERE task_id IN (SELECT id FROM organization_tasks WHERE status='queued' AND error_code='organization_network_wait')
+                AND json_extract(data_json,'$.network_probe')""")
 
     def action(self,batch_id,action,expected_revision,operation_id,persona_id):
         with self.store.connection(write=True) as conn:
@@ -462,10 +533,16 @@ class IngressService:
         self.schedule_committed();return result
 
     def unresolved_count(self):
-        with self.store.connection() as conn:return conn.execute("SELECT count(*) FROM input_batches WHERE state IN ('collecting','sealed_waiting_capacity','interrupted_buffer')").fetchone()[0]
+        with self.store.connection() as conn:return conn.execute("SELECT count(*) FROM input_batches WHERE state IN ('collecting','sealed_waiting_capacity','interrupted_buffer') AND coalesce(seal_reason,'')!='recovery_unverified'").fetchone()[0]
 
     def tick(self):
         if self.engine.draining:return
+        from .local_repair import require_open,RepairInProgress
+        try:require_open(self.store.paths)
+        except RepairInProgress:return
+        if self.monotonic() >= self.next_settlement_check:
+            self.next_settlement_check = self.monotonic() + 5
+            self.engine._recover_saved_replies(pending_only=True)
         with self.store.connection(write=True) as conn:
             for row in conn.execute("SELECT * FROM input_batches WHERE state='collecting' ORDER BY first_seq").fetchall():
                 clock=self.clocks.get(row['id'])
@@ -474,6 +551,7 @@ class IngressService:
         self.schedule_committed()
         with self.store.connection() as conn:live={r[0] for r in conn.execute("SELECT id FROM input_batches WHERE state='collecting'")}
         self.clocks={k:v for k,v in self.clocks.items() if k in live}
+        self.restored_clocks.intersection_update(live)
 
     async def worker(self):
         while True:

@@ -1,4 +1,5 @@
 """Approved private-corpus learning: durable single attempts and pending proposals."""
+from .call_limits import resume_on_limit, external_gate, workflow
 import asyncio
 from contextlib import contextmanager
 import json
@@ -20,10 +21,11 @@ from .schema_corpus_learning import APPLICATION_ID,SCHEMA_VERSION,SCHEMA,TABLES
 
 
 class CorpusLearning:
-    def __init__(self,root,corpus,client=None):
+    def __init__(self,root,corpus,client=None,*,paths=None):
         self.root=outside_repository(root)
         self.path=self.root/'learning.sqlite3'
         self.corpus=corpus
+        self.paths=paths
         self.client=client or CorpusLearningHTTPClient()
 
     def initialize(self):
@@ -170,6 +172,8 @@ class CorpusLearning:
             elif row['state']=='dispatched':db.execute('UPDATE learning_jobs SET cancelled_at=? WHERE id=?',(now(),job_id))
             return self._status(db,job_id)
 
+    @workflow
+    @resume_on_limit
     async def run(self,job_id,credentials):
         with self.connection() as db:row=self._row(db,job_id)
         if row['raw_response'] is not None:return self.finalize(job_id)
@@ -199,6 +203,7 @@ class CorpusLearning:
                 if approved['state']!='active':raise CorpusError('corpus_learning_approval_unavailable')
                 used=db.execute('SELECT count(*) FROM learning_jobs WHERE approval_id=? AND attempt_id IS NOT NULL',(row['approval_id'],)).fetchone()[0]
                 if used>=approved['max_dispatches']:raise CorpusError('corpus_learning_budget_reached')
+                external_gate(self,'corpus','corpus/'+job_id)
                 attempt=str(uuid4())
                 db.execute("UPDATE learning_jobs SET state='dispatched',attempt_id=?,started_epoch=? WHERE id=?",(attempt,time.time(),job_id))
         def save_raw(raw,*,http_status,diagnostics):

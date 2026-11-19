@@ -40,7 +40,8 @@ def main(argv=None):
         else:
             from persona_runtime.config import ConfigStore
             from persona_runtime.paths import RuntimePaths
-            credentials=ConfigStore(RuntimePaths(args.credential_home.resolve())).load()['model']
+            learning.paths=RuntimePaths(args.credential_home.resolve())
+            credentials=ConfigStore(learning.paths).load()['model']
             result=asyncio.run(learning.run(args.job_id,credentials))
     except CorpusError as error:
         print(json.dumps({'status':'failed','error':str(error)},ensure_ascii=False));return 2

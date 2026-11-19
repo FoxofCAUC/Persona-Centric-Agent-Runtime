@@ -232,7 +232,7 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_full_queue_rolls_back_partial_memory_batch_admission(self):
         await self.seed();self.install_model();self.enable()
-        for i in range(10):self.org.test_model('full-'+str(i))
+        for i in range(8):self.org.test_model('full-'+str(i))
         self.org.automatic.tick(force=True)
         with self.store.connection() as db:self.assertEqual(db.execute('SELECT count(*) FROM memory_batches').fetchone()[0],0)
         self.org.cancel(self.org.list()[0]['id']);await self.finish()

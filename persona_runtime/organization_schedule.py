@@ -59,21 +59,30 @@ class OrganizationSchedule:
 
     def pause_changed_models(self):
         fingerprint = self.engine.model_fingerprint()
+        from .organization import digest
+        old_format=digest({"reuse":self.engine.config.load()['organization']['reuse_chat'],"model":self.engine.model()})
         with self.store.connection(write=True) as conn:
+            conn.execute("UPDATE automation SET model_fingerprint=? WHERE model_fingerprint=?",(fingerprint,old_format))
             changed = [r[0] for r in conn.execute("SELECT persona_id FROM automation WHERE enabled=1 AND model_fingerprint!=?", (fingerprint,))]
             for persona_id in changed:
                 conn.execute("UPDATE automation SET enabled=0 WHERE persona_id=?", (persona_id,))
-                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='model_changed' WHERE persona_id=? AND automatic=1 AND status IN ('queued','waiting_quota') AND coalesce(json_extract(payload_json,'$.knowledge_processing.policy.data.model_source'),json_extract(payload_json,'$.external_knowledge.model_source'),'organization')!='main'", (persona_id,))
+                conn.execute("""UPDATE organization_tasks SET status='cancelled',error_code='model_changed'
+                    WHERE persona_id=? AND automatic=1 AND status IN ('queued','waiting_quota')
+                    AND json_type(payload_json,'$.automatic_memory') IS NULL AND json_type(payload_json,'$.knowledge_processing') IS NULL
+                    AND json_type(payload_json,'$.external_knowledge') IS NULL AND json_type(payload_json,'$.proactive') IS NULL""",(persona_id,))
             # Daily work freezes the configured model. Changing it pauses the
             # cycle until an explicit resume; the next due time remains visible.
             row = conn.execute("SELECT * FROM daily_updates WHERE id='daily'").fetchone()
             payload = json.loads(row["payload_json"])
+            if payload.get('model_fingerprint')==old_format:
+                payload['model_fingerprint']=fingerprint
+                conn.execute("UPDATE daily_updates SET payload_json=? WHERE id='daily'",(encoded(payload),))
             if not self.engine.config.load()['organization']['daily_enabled'] and row['status'] in ('running','waiting_quota'):
                 conn.execute("UPDATE daily_updates SET status='paused',updated_at=? WHERE id='daily'", (timestamp(),))
-                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='daily_disabled' WHERE automatic=2 AND status IN ('queued','waiting_quota')")
+                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='daily_disabled' WHERE id=? AND automatic=2 AND persona_id=? AND status IN ('queued','waiting_quota')",(payload.get('last_task'),row['persona_id']))
             if payload.get("model_fingerprint") and payload["model_fingerprint"] != fingerprint and row["status"] in ('running','waiting_quota'):
                 conn.execute("UPDATE daily_updates SET status='paused_model',updated_at=? WHERE id='daily'", (timestamp(),))
-                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='model_changed' WHERE automatic=2 AND status IN ('queued','waiting_quota')")
+                conn.execute("UPDATE organization_tasks SET status='cancelled',error_code='model_changed' WHERE id=? AND automatic=2 AND persona_id=? AND status IN ('queued','waiting_quota')",(payload.get('last_task'),row['persona_id']))
 
     def resume_daily(self):
         if not self.engine.config.load()['organization']['daily_enabled']:
@@ -118,6 +127,21 @@ class OrganizationSchedule:
 
     def daily_tick(self, now=None):
         now = time.time() if now is None else now
+        # A retained approval decision belongs to the persona that opened the cycle.
+        with self.store.connection(write=True) as db:
+            row=db.execute("SELECT * FROM daily_updates WHERE id='daily'").fetchone()
+            selected=self.store.current(db,required=False)
+            if selected and selected!=row['persona_id'] and row['status'] in ('blocked','paused_model','awaiting_review','scheduled'):
+                if row['status']!='scheduled' and row['persona_id']:
+                    db.execute("INSERT OR REPLACE INTO knowledge_control VALUES(?,?)",('daily.parked.'+row['persona_id'],encoded(dict(row))))
+                saved=db.execute("SELECT value FROM knowledge_control WHERE key=?",('daily.parked.'+selected,)).fetchone()
+                if saved:
+                    old=json.loads(saved[0])
+                    db.execute("UPDATE daily_updates SET persona_id=?,status=?,payload_json=?,next_epoch=?,updated_at=? WHERE id='daily'",
+                               (selected,old['status'],old['payload_json'],old['next_epoch'],timestamp()))
+                    db.execute("DELETE FROM knowledge_control WHERE key=?",('daily.parked.'+selected,))
+                elif row['status']!='scheduled':
+                    db.execute("UPDATE daily_updates SET persona_id=?,status='scheduled',payload_json='{}',updated_at=? WHERE id='daily'",(selected,timestamp()))
         if self.engine.automatic:
             with self.store.connection() as conn:
                 cycle=conn.execute("SELECT persona_id,status FROM daily_updates WHERE id='daily'").fetchone()

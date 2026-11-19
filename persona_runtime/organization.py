@@ -192,6 +192,9 @@ class OrganizationEngine:
         self.summaries, self.candidates = SummaryService(store), CandidateService(store)
         self.draining = False
         self.running = False
+        self.maintenance_stop=asyncio.Event()
+        self.maintenance_workers=set()
+        self.maintenance_status={}
         self.last_scan = 0
         self.last_activity = time.time()
         from .organization_schedule import OrganizationSchedule
@@ -221,7 +224,15 @@ class OrganizationEngine:
         return model
 
     def model_fingerprint(self):
-        return digest({"reuse": self.config.load()["organization"]["reuse_chat"], "model": self.model()})
+        model=self.model()
+        from .security import unprotect
+        import hmac
+        secret=model.get('encrypted_key','')
+        if secret:
+            try:secret=unprotect(secret)
+            except (OSError,ValueError):pass
+        account=hmac.digest(self.config.token().encode(),secret.encode(),'sha256').hex()
+        return digest([model['base_url'],model['name'],account])
 
     @staticmethod
     def guard(conn, persona_id, session_id):
@@ -517,45 +528,69 @@ class OrganizationEngine:
         return {"skipped": task_id}
 
     async def worker(self):
-        while not self.draining:
-            try:
-                from .migration import migration_pending,background_allowed
-                if migration_pending(self.store.paths):
-                    await asyncio.sleep(.5)
-                    continue
-                self.schedule.pause_changed_models()
-                background = not self.foreground_only and background_allowed(self.store.paths)
-                if background:
-                    if self.automatic:
-                        await local_maintenance(self.automatic.tick)
-                    self.proactive.tick()
-                    await self.knowledge.tick()
-                if background and time.time()-self.last_scan >= 30 and not self.chat.draining:
-                    self.last_scan = time.time()
-                    await local_maintenance(self.schedule.daily_tick)
-                    await local_maintenance(self.schedule.incremental_tick)
-                worked = await self.run_next()
-                if not worked:
-                    if background and time.time()-getattr(self,'_recall_maintenance_at',0)>=2:
-                        self._recall_maintenance_at=time.time()
-                        from .recall_runtime import RecallRuntime
-                        await local_maintenance(RecallRuntime(self.store).maintain,pages=1)
-                    await asyncio.sleep(.5)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                # Diagnostic event has no source text or exception body.
-                import logging
-                logging.getLogger('organization').warning('organization_scheduler_failed')
-                await asyncio.sleep(1)
+        from .migration import migration_pending,background_allowed
+        from .recall_runtime import RecallRuntime
+        import logging
+        if self.maintenance_stop.is_set() and not self.draining:self.maintenance_stop=asyncio.Event()
+        stop=self.maintenance_stop
+        async def supervise(name,operation,interval,background=False):
+            failures=0
+            while not self.draining and not stop.is_set():
+                delay=interval
+                try:
+                    if not self.chat.draining and not migration_pending(self.store.paths) and (not background or (
+                            not self.foreground_only and background_allowed(self.store.paths))):
+                        result=await operation()
+                        if result is True and name in ('foreground','background'):
+                            delay=0
+                        failures=0
+                        self.maintenance_status[name]={'state':'ready','checked_at':time.time()}
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    failures+=1
+                    delay=min(60,max(interval,2**min(failures,6)))
+                    self.maintenance_status[name]={'state':'retrying','failures':failures,'next_epoch':time.time()+delay}
+                    try:logging.getLogger('organization').warning('maintenance_retry %s',name)
+                    except Exception:pass
+                if delay:
+                    try:await asyncio.wait_for(stop.wait(),delay)
+                    except TimeoutError:pass
+                else:await asyncio.sleep(0)
+        tasks=[('model_changes',lambda:local_maintenance(self.schedule.pause_changed_models),2,False),
+               ('foreground',lambda:self.managed.run_next('foreground'),.25,False),
+               ('network_routes',self.managed.check_network,1,False)]
+        if not self.foreground_only:
+            tasks.extend([('background',lambda:self.managed.run_next('background'),.5,True),
+                          ('proactive',lambda:local_maintenance(self.proactive.tick),1,True),
+                          ('knowledge',self.knowledge.tick,.5,True),
+                          ('daily',lambda:local_maintenance(self.schedule.daily_tick),30,True),
+                          ('incremental',lambda:local_maintenance(self.schedule.incremental_tick),30,True),
+                          ('index',lambda:local_maintenance(RecallRuntime(self.store).maintain,pages=1),2,True)])
+            tasks.append(('character_index',lambda:local_maintenance(self.chat.cognitive.characters.maintain),10,True))
+            if self.automatic:
+                tasks.append(('memory',lambda:local_maintenance(self.automatic.tick),1,True))
+        workers=[asyncio.create_task(supervise(*spec)) for spec in tasks]
+        self.maintenance_workers.update(workers)
+        try:
+            await asyncio.shield(asyncio.gather(*workers,return_exceptions=True))
+        finally:
+            stop.set()
+            for task in workers:
+                if not task.done() and not task.cancelling():task.cancel()
+            await asyncio.gather(*workers,return_exceptions=True)
+            self.maintenance_workers.difference_update(workers)
 
     async def drain(self):
         self.draining = True
+        self.maintenance_stop.set()
         self.managed.cancel_native_dependents(exiting=True)
         self.knowledge.close()
         await self.knowledge.drain()
         while self.running:
             await asyncio.sleep(.05)
+        if self.maintenance_workers:
+            await asyncio.gather(*tuple(self.maintenance_workers),return_exceptions=True)
         self.recover()
 
     def explain(self, turn_id, attempt_id=None):

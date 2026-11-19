@@ -28,6 +28,13 @@ class BrowserWorkbenchTests(unittest.TestCase):
         self.assertEqual(cli.parse_args(["gui", "--frontend", "webview"]).frontend, "webview")
         self.assertEqual(cli.parse_args(["prepare", "--frontend", "webview"]).frontend, "webview")
 
+    def test_unconfirmed_release_schedules_a_recheck_without_a_second_click(self):
+        host=self.make_host();host.closing=True
+        host.finish_close(False)
+        self.assertTrue(host.closing)
+        self.assertFalse(host.closed)
+        self.assertEqual(host.queue.get_nowait(),("retry_exit",(5,"component_ownership_or_release_unconfirmed")))
+
     def test_renderer_fallback_does_not_start_services(self):
         host = self.make_host()
         self.assertFalse(host.check_renderer("mshtml"))

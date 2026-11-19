@@ -80,6 +80,9 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         peer = request.remote
         if peer not in ("127.0.0.1", "::1") or request.headers.get("Origin"):
             return web.json_response({"error": "local_clients_only"}, status=403)
+        expected_instance=request.headers.get("X-PCAR-Instance")
+        if expected_instance is not None and expected_instance!=app["instance_id"]:
+            return web.json_response({"error":"desktop_instance_changed"},status=409)
         supplied = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if hmac.compare_digest(supplied.encode("utf-8"), admin.encode("utf-8")):
             request["role"] = "admin"
@@ -95,13 +98,19 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             or request.path=="/v2/ingress"):
             return web.json_response({"error": "forbidden"}, status=403)
         try:
+            from .local_repair import protected_request,require_open,RepairInProgress
+            action=None
+            if request.method=='POST' and request.path=='/v1/manage':
+                action=(await body(request)).get('action')
+            if protected_request(request.method,request.path,action):
+                try:require_open(paths,app['instance_id'])
+                except RepairInProgress:
+                    return web.json_response({'error':'local_repair_active'},status=423)
+                from .lifecycle import closing_console
+                if app.get('console_closing',False) or closing_console(paths,app['instance_id']):
+                    return web.json_response({'error':'service_draining'},status=409)
             if request.method=='POST' and request.path not in ('/v1/config','/v1/manage') and not request.path.startswith('/v1/control/') and migration_pending(paths):
                 raise RuntimeErrorBase('migration_configuration_required')
-            if request.method=='POST' and request.path in ('/v1/chat','/v2/ingress','/v1/model-test'):
-                from .lifecycle import read_console
-                console=read_console(paths);marker=paths.home/'runtime/application-closing.json'
-                if console and marker.exists() and json.loads(marker.read_text(encoding='utf-8')).get('token')==console['token']:
-                    raise RuntimeErrorBase('service_draining')
             return await handler(request)
         except web.HTTPException:
             raise
@@ -112,6 +121,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
 
     app = web.Application(middlewares=[guard], client_max_size=256*1024)
     app["engine"], app["config"], app["store"] = engine, config, store
+    app["desktop_service_generation"] = identifier()
+    app["instance_id"] = config.load()["instance_id"]
     app["disposition_compiler"] = compiler
     app["dispositions"] = dispositions
     app["organization"] = organization
@@ -120,11 +131,13 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     app["stop"] = asyncio.Event()
 
     async def body(request):
+        if 'pcar_body' in request:return request['pcar_body']
         if request.content_type != "application/json":
             raise RuntimeErrorBase("JSON request required")
         value = await request.json()
         if not isinstance(value, dict):
             raise RuntimeErrorBase("JSON object required")
+        request['pcar_body']=value
         return value
 
     def bridge_turn(request, turn):
@@ -134,8 +147,16 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 raise web.HTTPForbidden()
 
     async def health(request):
+        if request.query.get("view")=="desktop" and request["role"]=="admin":
+            from .call_limits import pending
+            with store.connection() as db:waits=pending(db)
+            retrying={name:info for name,info in organization.maintenance_status.items() if info['state']=='retrying'}
+            return web.json_response({"service":"persona-runtime","instance_id":app["instance_id"],
+                                      "service_generation":app["desktop_service_generation"],"draining":engine.draining,
+                                      "quota_waits":waits,"maintenance":retrying})
         status=health_status(config,engine,organization,ingress)
-        status['capabilities'].extend(('native_web_v1','tk_notice_presented_v1'))
+        status['service_generation']=app["desktop_service_generation"]
+        status['capabilities'].extend(('native_web_v1','tk_notice_presented_v1','desktop_submission_recovery_v1'))
         return web.json_response(status)
 
     async def chat(request):
@@ -163,7 +184,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             cfg=config.load()
             if value.get('channel')!='qq' or not cfg['owner_qq'] or value.get('sender')!=cfg['owner_qq'] or value.get('bot')!=cfg['bot_qq']:raise web.HTTPForbidden()
         elif value.get('channel','desktop')!='desktop':raise web.HTTPForbidden()
-        return web.json_response(ingress.accept(value))
+        return web.json_response(ingress.accept(value,desktop_ticket=value.pop("desktop_ticket",None)))
 
     async def ingress_lookup(request):
         if request['role']=='bridge' and request.match_info['channel']!='qq':raise web.HTTPForbidden()
@@ -207,8 +228,12 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
                 row=conn.execute('SELECT * FROM turns WHERE id=?', (request.match_info['id'],)).fetchone()
                 if row is None:raise RuntimeErrorBase('Request not found')
                 accepted=dict(row)
+                from .scene_policy import read
+                wait=read(conn,'desktop.network.'+row['id'])
+                offline=bool(wait and row['status']=='queued' and row['channel']=='desktop'
+                             and wait['revision']==row['execution_revision'] and row['error_code'] in ('desktop_network_wait','desktop_storage_wait'))
             from .knowledge_wait import is_waiting
-            if companion_read(accepted) is None and not is_waiting(store, accepted):
+            if not offline and companion_read(accepted) is None and not is_waiting(store, accepted):
                 raise RuntimeErrorBase("queue_cancellation_disabled")
         return web.json_response(await engine.cancel(request.match_info["id"]))
 
@@ -319,6 +344,42 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
+        if action == "desktop.submission.status":
+            from .desktop_recovery import lookup_intent
+            if args.get("channel") != "desktop":
+                raise RuntimeErrorBase("invalid_ingress_input")
+            with store.connection() as db:
+                return web.json_response(lookup_intent(db, args))
+        if action == "desktop.submission.accept":
+            from .desktop_recovery import lookup_intent
+            intent=args["payload"]
+            if intent.get("channel")!="desktop" or not args.get("ticket"):
+                raise RuntimeErrorBase("invalid_ingress_input")
+            with store.connection() as db:
+                known=lookup_intent(db,intent)
+            if known:return web.json_response(known)
+            from .lifecycle import read_console
+            marker=paths.home/"runtime/application-closing.json"
+            if marker.is_file():
+                console=read_console(paths)
+                if console and json.loads(marker.read_text(encoding="utf-8")).get("token")==console["token"]:
+                    raise RuntimeErrorBase("service_draining")
+            return web.json_response(ingress.accept(intent,desktop_ticket=args["ticket"]))
+        if action == "desktop.timeline.snapshot":
+            from .workbench_timeline import page
+            return web.json_response(await asyncio.to_thread(page,store,**args))
+        if action == "desktop.retrieval.notes":
+            from .workbench_timeline import retrieved_notes
+            return web.json_response(await asyncio.to_thread(retrieved_notes,store,**args))
+        if action == "desktop.browser.show":
+            from .workbench_timeline import selection
+            return web.json_response(selection(store,**args))
+        if action=="quota.workflow.decide":
+            from .call_limits import decide
+            return web.json_response(decide(store,**args))
+        if action=='desktop.network.wake':
+            ingress.network_wake()
+            return web.json_response(True)
         if action.startswith('persona.import.'):
             name=action.removeprefix('persona.import.')
             if name == "prompt_status":
@@ -350,8 +411,14 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             return web.json_response(await asyncio.to_thread(local[name],**args))
         if action in ('chat.notice.preview','chat.notice.presented'):
             from .tk_notice import display
-            return web.json_response(display(organization.processing.search_notice,
-                **args,acknowledge=action=='chat.notice.presented'))
+            result=display(organization.processing.search_notice,**args,acknowledge=action=='chat.notice.presented')
+            if action=='chat.notice.presented':engine.presentation_wakeup.notify()
+            return web.json_response(result)
+        if action in ('chat.notice.unknown','chat.notice.release'):
+            from .tk_notice import isolate
+            result=isolate(store, release=action=='chat.notice.release', **args)
+            engine.presentation_wakeup.notify()
+            return web.json_response(result)
         if action.startswith('knowledge.'):
             knowledge=engine.knowledge
             handlers={'knowledge.status':knowledge.status,'knowledge.search':knowledge.search,
@@ -485,7 +552,11 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             'expression.v2.pending_receipts':speech_publication.pending_receipts,
             'expression.v2.cancel':speech_publication.cancel,
         }
-        if action in expression_handlers:return web.json_response(expression_handlers[action](**args))
+        if action in expression_handlers:
+            result=expression_handlers[action](**args)
+            if action in ("expression.v2.ack","expression.presentation.ack","expression.v2.cancel","expression.cancel"):
+                engine.presentation_wakeup.notify()
+            return web.json_response(result)
         if action=='dialogue.generation.resume':return web.json_response(await engine.resume_direct(**args))
         if action=='dialogue.generation.cancel':return web.json_response(await engine.cancel(**args))
         if action=='expression.resume':return web.json_response(await engine.resume_expression(**args))
@@ -541,6 +612,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         handlers = {
             **{"archive."+name:getattr(archive,name) for name in ("list","get","resolve","preview")},
             'quota.current': lambda: QuotaService(store, config).current(),
+            'quota.settings.current':lambda:QuotaService(store,config).desktop_settings(),
+            'quota.configure':lambda **settings:QuotaService(store,config).configure(**settings),
             'quota.update': lambda limits: QuotaService(store, config).update(limits),
             'quota.acceptance.begin': lambda: QuotaService(store, config).begin_acceptance(),
             'quota.acceptance.end': lambda: QuotaService(store, config).end_acceptance(),
@@ -596,13 +669,28 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
 
     async def control(request):
         operation = request.match_info["operation"]
-        if operation not in ("drain", "stop", "resume"):
+        if operation not in ("drain", "stop", "resume","checkpoint"):
             raise web.HTTPNotFound()
         body=await request.json() if request.can_read_body else {}
         app_closing=body.get('closing') is True and body.get('instance_id')==config.load()['instance_id']
+        if app_closing and body.get('exit_id'):
+            from .lifecycle import read_console
+            lease=read_console(paths) or {}
+            marker=paths.home/'runtime/application-closing.json'
+            if marker.exists():
+                active=json.loads(marker.read_text(encoding='utf8'))
+                if active.get('token')!=lease.get('token') or active.get('exit_id')!=body['exit_id']:
+                    raise RuntimeErrorBase('close_request_changed')
+        if operation=="checkpoint":
+            if not engine.draining or not app_closing:raise RuntimeErrorBase("service_not_draining")
+            await asyncio.to_thread(engine._recover_saved_replies,pending_only=True)
+            return web.json_response({"checked":True})
         if operation in ("drain","stop") and ingress.unresolved_count() and not app_closing:
             raise RuntimeErrorBase("unresolved_input_batches")
         engine.draining = operation != "resume"
+        app['console_closing']=app_closing and operation!='resume'
+        from .call_limits import draining as quota_draining
+        quota_draining(store,app_closing or operation=='stop')
         compiler.draining = operation != "resume"
         if app_closing:organization.draining=True
         if operation == "resume":
@@ -650,6 +738,11 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
             await asyncio.sleep(5)
 
     async def startup(_):
+        from .call_limits import draining as quota_draining
+        quota_draining(store,False)
+        from .call_limits import recover as recover_quota_waits
+        recover_quota_waits(store)
+        ingress.network_wake()
         if not migration_pending(paths):await asyncio.to_thread(engine.cognitive.characters.notify,None)
         if not foreground_only:
             app["session_worker"] = asyncio.create_task(sessions.worker())
@@ -659,6 +752,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     app.on_startup.append(startup)
 
     async def cleanup(_):
+        from .call_limits import draining as quota_draining
+        quota_draining(store,True)
         await imports.drain()
         engine.draining = True
         housekeeping=app.get('delivery_housekeeping')

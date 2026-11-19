@@ -14,31 +14,55 @@ SELECTOR_TIMEOUT_MAX = 240
 
 SELECTOR_DEFAULTS = {"enabled": False, "base_url": "", "name": "", "encrypted_key": "",
                      "timeout": 60, "max_tokens": 512, "max_input_chars": 48000,
-                     "hourly_limit": 300, "daily_limit": 2000}
+                     "hourly_limit": 0, "daily_limit": 0}
 
 DEFAULTS = {
+    "call_limits": {"enabled":False,"hourly":0,"daily":0},
+    "organization_parallel_tasks":2,
     "qq_backend": "napcat", "snowluma_port": 5099,
     "version": 3, "character_selector": SELECTOR_DEFAULTS, "service_port": 8765, "napcat_port": 6399,
     "runtime": {"revision":1,"components":{"service":True,"astrbot":False,"napcat":False},"qq_persona_id":""},
     "astrbot_port": 6285, "onebot_port": 6299, "bot_qq": "", "owner_qq": "",
     "model": {"base_url": "", "name": SPEECH_BASELINE_MODEL, "encrypted_key": "", "timeout": 60,
-              "max_tokens": 1024, "hourly_limit": 300, "max_input_chars": 24000},
+              "max_tokens": 1024, "hourly_limit": 0, "max_input_chars": 24000},
     "interaction": {"cancel_queued": False, "qq_wait_notice": False, "qq_wait_seconds": 15},
-    "organization": {"reuse_chat": False, "hourly_limit": 60, "daily_limit": 240,
+    "organization": {"reuse_chat": False, "hourly_limit": 0, "daily_limit": 0,
                      "daily_enabled": True,
                      "model": {"base_url": "", "name": "", "encrypted_key": "", "timeout": 60,
-                               "max_tokens": 2048, "hourly_limit": 60, "max_input_chars": 24000}},
+                               "max_tokens": 2048, "hourly_limit": 0, "max_input_chars": 24000}},
 }
 
 
-def atomic_json(path: Path, value) -> None:
+def replace_closed(source,destination):
+    """Windows readers may hold a non-share-delete handle briefly."""
+    import time
+    for delay in (0,.025,.05,.1,.2,.4):
+        if delay:time.sleep(delay)
+        try:os.replace(source,destination);return
+        except PermissionError as error:
+            if getattr(error,'winerror',None) not in (5,32,33) or delay==.4:raise
+
+
+def atomic_json(path: Path, value, *, durable=False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + secrets.token_hex(8) + ".tmp")
     try:
-        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, path)
+        with temporary.open("w",encoding="utf-8") as stream:
+            stream.write(json.dumps(value,ensure_ascii=False,indent=2)+"\n")
+            if durable:
+                stream.flush()
+                os.fsync(stream.fileno())
+        replace_closed(temporary,path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def same_credential(original,current):
+    if original==current:return True
+    if not original or not current:return False
+    import hmac
+    try:return hmac.compare_digest(unprotect(original).encode(),unprotect(current).encode())
+    except (OSError,ValueError):return False
 
 
 class ConfigStore:
@@ -67,22 +91,42 @@ class ConfigStore:
         value.setdefault("snowluma_port", 5099)
         value.setdefault("interaction", copy.deepcopy(DEFAULTS["interaction"]))
         value.setdefault("organization", copy.deepcopy(DEFAULTS["organization"]))
+        value.setdefault("organization_parallel_tasks",2)
         if value.get("version") in (1,2):
             value["version"] = 3
             value.setdefault('runtime',copy.deepcopy(DEFAULTS['runtime']))
         value.setdefault("character_selector", copy.deepcopy(SELECTOR_DEFAULTS))
+        if "call_limits" not in value:
+            value["call_limits"]=copy.deepcopy(DEFAULTS["call_limits"])
+            for section,old in ((value["model"],{"hourly_limit":300}),
+                    (value["organization"],{"hourly_limit":60,"daily_limit":240}),
+                    (value["organization"]["model"],{"hourly_limit":60}),
+                    (value["character_selector"],{"hourly_limit":300,"daily_limit":2000})):
+                if all(section.get(k)==v for k,v in old.items()):
+                    section.update(dict.fromkeys(old,0))
         self.validate(value)
-        journal=self.paths.home/'runtime/acceptance-quotas.json'
-        if journal.exists():
-            record=json.loads(journal.read_text(encoding='utf-8'))
-            if record.get('status')=='active' and record.get('purpose')=='development' and record.get('instance_id',value['instance_id'])==value['instance_id']:
-                value['model']['hourly_limit']=0
-                value['organization']['hourly_limit']=value['organization']['daily_limit']=0
-                value['character_selector']['hourly_limit']=value['character_selector']['daily_limit']=0
+        record=self.quota_override()
+        if record.get('status')=='active' and record.get('purpose')=='development' and record.get('instance_id',value['instance_id'])==value['instance_id']:
+            value['model']['hourly_limit']=0
+            value['organization']['hourly_limit']=value['organization']['daily_limit']=0
+            value['character_selector']['hourly_limit']=value['character_selector']['daily_limit']=0
         return value
+
+    def quota_override(self):
+        journal=self.paths.home/'runtime/acceptance-quotas.json'
+        return json.loads(journal.read_text(encoding='utf-8')) if journal.exists() else {}
 
     @staticmethod
     def validate(value):
+        limits=value.get("call_limits",DEFAULTS["call_limits"])
+        if (not isinstance(limits,dict) or set(limits)-{'enabled','hourly','daily','saved_automatic'} or not {'enabled','hourly','daily'}<=limits.keys()
+                or type(limits['enabled']) is not bool or any(type(limits[k]) is not int or not 0<=limits[k]<=1000000 for k in ('hourly','daily'))
+                or limits['enabled'] and not (limits['hourly'] or limits['daily'])):
+            raise RuntimeErrorBase("invalid_call_limits")
+        saved=limits.get('saved_automatic',{})
+        if (not isinstance(saved,dict) or set(saved)-{'project_hourly','background_hourly','background_daily','selector_hourly','selector_daily'}
+                or any(type(v) is not int or not 0<=v<=10000 for v in saved.values())):
+            raise RuntimeErrorBase("invalid_call_limits")
         if value.get("version") != 3:
             raise RuntimeErrorBase("Unsupported workbench configuration version")
         if value.get('qq_backend', 'napcat') not in ('napcat', 'snowluma'):
@@ -140,6 +184,8 @@ class ConfigStore:
         if type(interaction["qq_wait_seconds"]) is not int or not 5 <= interaction["qq_wait_seconds"] <= 120:
             raise RuntimeErrorBase("QQ wait notice interval must be 5 to 120 seconds")
         org = value["organization"]
+        if type(value.get('organization_parallel_tasks',2)) is not int or value.get('organization_parallel_tasks',2) not in (1,2):
+            raise RuntimeErrorBase('invalid_organization_parallelism')
         if not isinstance(org, dict) or set(org) != set(DEFAULTS["organization"]) or any(type(org[k]) is not bool for k in ("reuse_chat", "daily_enabled")):
             raise RuntimeErrorBase("Invalid organization configuration")
         for field in ("hourly_limit", "daily_limit"):
@@ -176,7 +222,7 @@ class ConfigStore:
 
     def _update(self, changes):
         value = self.load()
-        allowed = {"service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization", "character_selector", "qq_backend", "snowluma_port"}
+        allowed = {"call_limits","organization_parallel_tasks","service_port", "napcat_port", "astrbot_port", "onebot_port", "bot_qq", "owner_qq", "model", "interaction", "organization", "character_selector", "qq_backend", "snowluma_port"}
         if not isinstance(changes, dict) or not set(changes) <= allowed:
             raise RuntimeErrorBase("Unknown configuration field")
         for key, change in changes.items():

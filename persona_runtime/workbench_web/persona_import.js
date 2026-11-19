@@ -2,13 +2,82 @@
 window.pcarLive = (() => {
   "use strict";
   const api = () => window.pywebview.api;
-  const run = fn => (...args) => Promise.resolve().then(() => fn(...args)).catch(e => notify(String(e.message || e)));
+  class FormError extends Error {}
+  const hostMessages=new Set([
+    "请选择 Markdown 文件。","人物已切换。","记忆政策版本已变化。","接收记忆资料的模型已变化。",
+    "角色包格式无效。","模型选项无效。","提示词文件中有重复的字段。","提示词文件超过容量。",
+    "提示词文件需为有效的 UTF-8 JSON。","提示词与审定发布版不符，请选择完整的发布版提示词文件。",
+    "此实例使用独立的模板和授权。请在新实例导入发布版，或管理原实例的用途授权。",
+    "请选择本地发布版提示词 JSON 文件。","请选择有效的发布版提示词文件。","无法读取提示词文件。",
+    "发布版提示词文件无法读取。","发布版提取或成卡模板的指纹不符。"
+  ]);
+  const run = fn => (...args) => Promise.resolve().then(() => fn(...args)).catch(e => {
+    const detail=String(e.message||e);
+    const known={session_sealed:"这段对话已封存，可新建对话继续。",session_not_current:"这段对话已归档，可返回当前会话继续。",
+      reference_unavailable:"引用的消息已失效，请重新选择。",version_conflict:"内容已更新，请重新打开核对。",
+      service_draining:"本机服务正在退出，已发送的消息会按原记录核对。",local_repair_active:"本机正在修复，稍后会自动返回聊天。",
+      backup_target_must_be_new_and_independent:"请选择当前实例数据目录以外的位置。",
+      backup_not_available:"没有可通过校验的备份。",backup_invalid:"所选备份未通过校验，请选择另一份。",
+      backup_index_unverified:"备份登记无法核验，请保留原文件。",
+      retrieved_notes_unavailable:"本轮资料或来源权限已变化，暂时无法打开。"};
+    notify(known[detail]||(e instanceof FormError||hostMessages.has(detail)?detail:"操作暂未完成，请稍后重试。"));
+  });
   const action = (name, args={}) => api().import_action(name,args);
   const titles = {introduction:"人物介绍", core_traits:"核心特征", expression_style:"表达习惯",
     values_and_boundaries:"价值与边界", initial_background:"初始背景"};
   const jobs = {preview:"待确认归属", prepared:"已准备脱敏片段", ready:"已提炼", partial_ready:"已按部分分段预填", running:"正在提炼",
     unknown:"发送结果待核对", failed:"提炼失败", cancelled:"已取消", interrupted:"已中断", revoked:"已撤回"};
-  let active = false, epoch = 0, polling = false, pendingReceipt = null;
+  let active = false, epoch = 0, polling = false, paintDecision = null, selectionToken = null;
+  let generation=null, linkState="starting", nextCheck=null, timer=null, stopped=false, delay=750, composing=false;
+  let drawnSession=null, readingTimer=null, locationWrites=Promise.resolve(), renderedTurns=new Map(), disconnectedReading=null;
+  const statusLine=byId("chat-status");
+  message.addEventListener("compositionstart",()=>{composing=true;});
+  message.addEventListener("compositionend",()=>{composing=false;});
+  function capture(){
+    if(!active || !drawnSession || drawnSession!==currentSession())return null;
+    if(!drawnSession.newer && !drawnSession.pastNewer && timeline.scrollHeight-timeline.clientHeight-timeline.scrollTop<=8)return {kind:"tail"};
+    const top=timeline.getBoundingClientRect().top;
+    const element=Array.from(timeline.querySelectorAll("[data-anchor]")).find(node=>node.getBoundingClientRect().bottom>top);
+    return element?{kind:element.dataset.kind,id:element.dataset.anchor,position:Number(element.dataset.position),
+      offset:element.getBoundingClientRect().top-top}:null;
+  }
+  function restoreReading(mark){
+    if(!mark)return;
+    if(mark.kind==="tail"){timeline.scrollTop=timeline.scrollHeight;return;}
+    const candidates=Array.from(timeline.querySelectorAll("[data-anchor]")).filter(node=>node.dataset.kind===mark.kind);
+    const exact=candidates.find(node=>node.dataset.anchor===mark.id);
+    const node=exact||candidates.reduce((best,node)=>!best||Math.abs(Number(node.dataset.position)-mark.position)<
+      Math.abs(Number(best.dataset.position)-mark.position)?node:best,null);
+    if(node)timeline.scrollTop+=node.getBoundingClientRect().top-timeline.getBoundingClientRect().top-mark.offset;
+  }
+  function saveReading(){
+    clearTimeout(readingTimer);
+    const mark=capture(),p=currentPerson(),s=currentSession();
+    if(!mark || !p || !s?.id || s.loading||linkState!=="online")return;
+    locationWrites=locationWrites.then(()=>api().live_location(p.id,s.id,mark)).catch(()=>{});
+  }
+  timeline.addEventListener("scroll",()=>{
+    clearTimeout(readingTimer);readingTimer=setTimeout(saveReading,160);
+  },{passive:true});
+  function stamp(node,kind,id,position){
+    node.dataset.kind=kind;node.dataset.anchor=id;node.dataset.position=position;
+    return node;
+  }
+  function setStatus(text="",action=false){
+    statusLine.hidden=!text; statusLine.querySelector("span").textContent=text;
+    const control=statusLine.querySelector("button");
+    control.hidden=!action;
+    control.textContent=action==="quota"?"查看等待任务":"更新模型连接";
+    control.onclick=action==="quota"?()=>quotaPrompt(lastHealth?.quotaWaits||[],true):()=>connection();
+    updateSendButton();
+  }
+  function pendingDraft(s){
+    return s?.draftRevision && s.outbox?.some(item=>item.draft_revision===s.draftRevision &&
+      (item.state==="unconfirmed" || item.state==="blocked"));
+  }
+  function acceptedSubmission(item){
+    return ["accepted","waiting_capacity","stopped"].includes(item.state);
+  }
   function newId() {
     const bytes=crypto.getRandomValues(new Uint8Array(16));
     bytes[6]=(bytes[6]&15)|64;
@@ -17,6 +86,25 @@ window.pcarLive = (() => {
     return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join("-");
   }
   const presenter = newId();
+  let draftWrites=Promise.resolve();
+  function saveDraft(session, pid, previous){
+    const update={previous,text:session.draft,revision:session.draftRevision,reference:session.reference||null};
+    const write=draftWrites.then(()=>api().live_draft(pid,session.id,update));
+    draftWrites=write.catch(()=>notify("草稿暂时无法保存，输入仍在当前窗口。"));
+    return write;
+  }
+  function reviseDraft(session){
+    const previous=session.draftRevision||null;
+    session.draftRevision=newId();
+    updateSendButton();
+    return saveDraft(session,currentPerson().id,previous);
+  }
+  message.addEventListener("input", () => {
+    const session = currentSession();
+    if(active && session){
+      reviseDraft(session);
+    }
+  });
 
   function el(tag, value, parent) {
     const item=document.createElement(tag);
@@ -146,11 +234,11 @@ window.pcarLive = (() => {
     const previewButton=button(box,"预览接续范围",async()=>{
       remember();
       try {
-        if(!draft.self) throw Error("请选择原记录中的本人。");
+        if(!draft.self) throw new FormError("请选择原记录中的本人。");
         if(options.creation && !options.creation.roles.includes(draft.self==="A"?"B":"A"))
-          throw Error("历史要接到对方角色，请返回角色卡选择对方或同时创建两人。");
+          throw new FormError("历史要接到对方角色，请返回角色卡选择对方或同时创建两人。");
         const omit=draft.excluded.trim()?draft.excluded.trim().split(/[,，、\s]+/):[];
-        if(omit.some(v=>!(/^[1-9]\d*$/.test(v)))) throw Error("排除项请填写有效的消息编号。");
+        if(omit.some(v=>!(/^[1-9]\d*$/.test(v)))) throw new FormError("排除项请填写有效的消息编号。");
         const preview=await action("history_preview",{ident:data.id,revision:data.revision,self_role:draft.self,
           mapping:draft.mapping,overrides:draft.overrides,first:draft.first?Number(draft.first):null,
           last:draft.last?Number(draft.last):null,excluded:omit.map(Number),timezone_offset:Number(draft.timezone),
@@ -239,7 +327,7 @@ window.pcarLive = (() => {
       number.type = "number"; number.min = "1"; number.max = String(p.total); number.value = String(start+1);
       button(box,"定位消息",()=>{
         const id = number.valueAsNumber;
-        if (!Number.isInteger(id) || id < 1 || id > p.total) throw Error("请输入文件中的消息编号。");
+        if (!Number.isInteger(id) || id < 1 || id > p.total) throw new FormError("请输入文件中的消息编号。");
         return evidence(data,id-1,prepared,back,overrides,showSections);
       });
     }
@@ -307,7 +395,7 @@ window.pcarLive = (() => {
     if(data.status!=="ready"){
       button(box,"用已收到的回执预填",async()=>openImport(await action("replay",{ident:data.id,revision:data.revision})));
       const consent=check(box,"允许官方 DeepSeek 分析此文件中预览的双方脱敏发言，调用可能产生费用");
-      button(box,"分析两位人物",async()=>{if(!consent.checked)throw Error("请选择本次分析用途。");
+      button(box,"分析两位人物",async()=>{if(!consent.checked)throw new FormError("请选择本次分析用途。");
         await openImport(await action("analyze",{ident:data.id,revision:data.revision,confirmed:true}));});
     }
     const draft=data.draft[role];
@@ -474,10 +562,10 @@ window.pcarLive = (() => {
 
   async function claimSource(data, role, ref, back, backLabel="返回人设建议") {
     const pos = Number(ref.id);
-    if (!Number.isSafeInteger(pos) || pos < 1) throw Error("原文位置无效。");
+    if (!Number.isSafeInteger(pos) || pos < 1) throw new FormError("原文位置无效。");
     const result = await action("evidence",{ident:data.id,start:pos-1,prepared:false,sections:true});
     const raw = result.rows.find(row=>String(row.id) === String(ref.id));
-    if (!raw) throw Error("此项证据无法定位到原文件。");
+    if (!raw) throw new FormError("此项证据无法定位到原文件。");
     const box = panel("核对原话");
     button(box,backLabel,back);
     el("strong",(ref.speaker || role) + " · #" + ref.id + (raw.date ? " · " + raw.date : ""),box);
@@ -578,7 +666,7 @@ window.pcarLive = (() => {
   function numberOrNull(value,integer=false) {
     if (!value) return null;
     const number=Number(value);
-    if (!Number.isFinite(number) || (integer && !Number.isInteger(number))) throw Error("请填写有效数值。");
+    if (!Number.isFinite(number) || (integer && !Number.isInteger(number))) throw new FormError("请填写有效数值。");
     return number;
   }
   function characterForm(box, character) {
@@ -635,7 +723,7 @@ window.pcarLive = (() => {
     return ()=>{
       const result=structuredClone(character);
       for(const reader of readers) reader(result);
-      if (result.age.fixed_age!==null && result.age.birth_date) throw Error("固定年龄和出生日期请选择一种年龄依据。");
+      if (result.age.fixed_age!==null && result.age.birth_date) throw new FormError("固定年龄和出生日期请选择一种年龄依据。");
       if(result.age.fixed_age!==character.age.fixed_age || result.age.birth_date!==character.age.birth_date)
         result.age.policy=result.age.fixed_age!==null?"fixed":result.age.birth_date?"calendar":"unspecified";
       result.examples=Array.from(examples.values(),read=>read());
@@ -714,7 +802,7 @@ window.pcarLive = (() => {
   }
   function fillProposal(card,issue) {
     const updated=structuredClone(card), slot=cardPath(updated,issue.field);
-    if(!slot) throw Error("该字段需要在表单内填写。");
+    if(!slot) throw new FormError("该字段需要在表单内填写。");
     const before=slot.parent[slot.key];
     const occupied=before!==null && before!=="" && (!Array.isArray(before) || before.length>0);
     if(occupied && JSON.stringify(before)!==JSON.stringify(issue.proposal) &&
@@ -722,7 +810,7 @@ window.pcarLive = (() => {
     slot.parent[slot.key]=structuredClone(issue.proposal);
     if(issue.field==="character.age.fixed_age" || issue.field==="character.age.birth_date"){
       const age=updated.character.age;
-      if(age.fixed_age!==null && age.birth_date) throw Error("请先在人物资料中选择固定年龄或出生日期。");
+      if(age.fixed_age!==null && age.birth_date) throw new FormError("请先在人物资料中选择固定年龄或出生日期。");
       age.policy=age.fixed_age!==null?"fixed":age.birth_date?"calendar":"unspecified";
     }
     return updated;
@@ -947,7 +1035,7 @@ window.pcarLive = (() => {
           const title=titles[missing]||"名称";
           const target=[...dialogBody.querySelectorAll("label.field")].find(n=>n.firstChild?.textContent.startsWith(title));
           target?.querySelector("textarea")?.focus();
-          throw Error(r+" 的「"+title+"」需要填写。");
+          throw new FormError(r+" 的「"+title+"」需要填写。");
         }
       }
       if(mode.value==="history"){
@@ -1012,7 +1100,7 @@ window.pcarLive = (() => {
     if(job.cards?.[role]) button(box,job.revision>0 ? "打开角色卡" : "手工编辑角色卡",async()=>{
       const current=await save();
       const latest=await action("card_status",{ident:current.id});
-      if(!latest.cards?.[role]) throw Error("最新画像尚未就绪。");
+      if(!latest.cards?.[role]) throw new FormError("最新画像尚未就绪。");
       openCard(current,role,latest,creation);
     });
     if(hasBoth && job.state==="received"){
@@ -1024,7 +1112,7 @@ window.pcarLive = (() => {
     } else if(hasBoth && ["available","unsent"].includes(job.state) && !job.stale) {
       const ready=check(box,"允许官方 DeepSeek 用这两份画像生成角色卡，最多一次额外请求");
       const make=button(box,"整合两张角色卡",async()=>{
-        if(!ready.checked) throw Error("请先确认本次合成用途。");
+        if(!ready.checked) throw new FormError("请先确认本次合成用途。");
         const current=await save();
         const result=await action("card_compose",{ident:current.id,revision:current.revision,plan_id:plan.id,confirmed:true});
         if(result.state==="awaiting_approval") notify(cardStates.awaiting_approval);
@@ -1057,7 +1145,7 @@ window.pcarLive = (() => {
       });
       const consent = check(box,"允许官方 DeepSeek 按上述范围提取、按需汇总并生成两张角色卡");
       const analyze = button(box,"分析并自动填写两张角色卡",async()=>{
-        if (!consent.checked) throw Error("请先确认本次分析用途。");
+        if (!consent.checked) throw new FormError("请先确认本次分析用途。");
         const current = await save();
         await refreshed(await action("analyze",{ident:data.id,revision:current.revision,plan_id:plan.id,confirmed:true,compose_card:true}));
       });
@@ -1121,84 +1209,236 @@ window.pcarLive = (() => {
     });
   }
 
-  async function reload(prefer=null,closeDialog=true,viewSession=null) {
+  async function reload(prefer=null,closeDialog=true,viewSession=null,reconnect=false) {
+    const token=++epoch;
     const result=await api().live_people();
+    if(token!==epoch||stopped)return;
     state.connected=result.connected;state.model=result.model;
+    if(!reconnect)saveReading();
     state.people=result.people.filter(p=>!p.deleted).map(p=>({id:p.id,profile:{name:p.name},sessions:[]}));
     const chosen=state.people.find(p=>p.id===prefer) || state.people.find(p=>result.people.find(q=>q.id===p.id)?.selected) || state.people[0];
-    if(chosen)await select(chosen,false,closeDialog,viewSession);
+    if(chosen)await select(chosen,false,closeDialog,viewSession,reconnect);
     else {state.current=null;state.guide=true;render();}
   }
-  async function select(person,fresh=false,closeDialog=true,viewSession=null){
+  async function select(person,fresh=false,closeDialog=true,viewSession=null,reconnect=false){
+    if(!reconnect)saveReading();
     const id=++epoch;
+    selectionToken=id;
+    message.disabled=true;updateSendButton();
+    try{
+      await loadSelection(person,fresh,closeDialog,viewSession,reconnect,id);
+    }finally{
+      if(selectionToken===id){
+        selectionToken=null;message.disabled=!ready()||Boolean(currentSession()?.readOnly);updateSendButton();
+      }
+    }
+  }
+  async function loadSelection(person,fresh,closeDialog,viewSession,reconnect,id){
     const result=viewSession ? await api().live_select(person.id,false,viewSession) : await api().live_select(person.id,fresh);
-    if(id!==epoch)return;
+    if(id!==epoch||stopped)return;
     person.sessions=result.sessions.map(s=>({id:s.id,label:s.created_at.slice(0,16).replace("T"," "),
       draft:"",messages:[],past:[],version:null,historyReady:false,turns:[],readOnly:s.id!==result.active}));
-    person.profile=result.person.spec; person.activeSession=viewSession || result.active;state.current=person.id;
+    if(!person.sessions.length)person.sessions.push({id:"",label:"新对话",draft:"",turns:[],past:[],version:null});
+    const chosen=person.sessions.find(s=>s.id===viewSession)||person.sessions.find(s=>s.id===result.active)||person.sessions[0];
+    person.profile=result.person.spec; person.writableSession=result.active;
+    person.activeSession=chosen.id;state.current=person.id;
+    const target=currentSession();
+    if(target){
+      target.loading=true;
+      await Promise.all([draftWrites,locationWrites]);
+      if(id!==epoch||stopped)return;
+      const [saved,location]=await Promise.all([api().live_draft(person.id,target.id),
+        api().live_location(person.id,target.id)]);
+      if(id!==epoch||stopped)return;
+      target.draft=saved.text;target.draftRevision=saved.revision;target.reference=saved.reference;
+      const parked=disconnectedReading;
+      target.restore=(reconnect && parked?.pid===person.id && parked?.sid===target.id && parked.mark)||location||{kind:"tail"};
+    }
     state.guide=false;closeDrawer();if(closeDialog && dialog.open)dialog.close();render();
     await refresh();
+  }
+  function appendTurns(s,cards){
+    const rows=new Map(s.turns.map(t=>[t.id,t]));
+    for(const card of cards){
+      if(s.older && card.position<s.turns[0]?.position)continue;
+      if(s.newer && card.position>s.turns.at(-1)?.position)continue;
+      rows.set(card.id,card);
+    }
+    s.turns=Array.from(rows.values()).sort((a,b)=>a.position-b.position);
+    if(s.turns.length>120){
+      s.turns=s.turns.slice(-120);s.older=s.turns[0].position;
+    }
+  }
+  async function nativePage(s,back){
+    const p=currentPerson();
+    if(!p||s!==currentSession()||s.paging)return;
+    const token=++epoch;
+    s.paging=true;
+    try{
+      const result=await api().live_page(p.id,s.id,null,back?s.older:null,back?null:s.newer);
+      if(token!==epoch||s!==currentSession())return;
+      s.turns=result.turns;s.older=result.older;s.newer=result.newer;s.version=result.version;s.latest=result.latest;
+      render();
+      const natives=timeline.querySelectorAll('[data-kind="native"]');
+      const edge=back?natives[natives.length-1]:natives[0];
+      if(edge)edge.scrollIntoView({block:back?"end":"start"});
+      saveReading();
+    }finally{s.paging=false;}
   }
   async function refresh(){
     if(polling||!active)return;
     const p=currentPerson(),s=currentSession(),id=epoch;
-    if(!p||!s)return;
+    if(!p||!s||!s.id){if(s){s.loading=false;s.restore=null;}return;}
+    if(s.paging)return;
     polling=true;
     try{
+      if(paintDecision){
+        await api().presentation_decide(presenter,paintDecision.id,paintDecision.state);
+        paintDecision=null;
+      }
+      if(await api().presentation_reconcile())s.version=null;
+      let result=await api().live_page(p.id,s.id,s.version,null,null,s.version===null&&s.restore?.kind==="native"?s.restore.position:null);
+      if(id!==epoch||s!==currentSession()||stopped)return;
+      const sourceVersion=JSON.stringify(result.source_version);
+      const rightsChanged=s.sourceVersion!==undefined && s.sourceVersion!==sourceVersion;
+      if(rightsChanged || (result.reset && s.version!==null && s.version!==undefined)){
+        const reading=capture();
+        s.restore=reading||s.restore;
+        if(rightsChanged || reading?.kind==="native"){
+          result=await api().live_page(p.id,s.id,null,null,null,reading?.kind==="native"?reading.position:null);
+          if(id!==epoch||s!==currentSession())return;
+        }
+      }
+      if(rightsChanged){
+        s.historyReady=false;s.past=[];s.before=null;
+        const saved=await api().live_draft(p.id,s.id);
+        if(id!==epoch||s!==currentSession())return;
+        if(saved.revision===s.draftRevision)s.reference=saved.reference;
+      }
+      s.sourceVersion=sourceVersion;
+      s.latest=result.latest;
       if(!s.historyReady){
         const revision=s.historyRevision;
-        const h=await action("history",{persona_id:p.id,session_id:s.id});
+        const mark=s.restore;
+        let h=await action("history",{persona_id:p.id,session_id:s.id,
+          ...(mark?.kind==="import"?{before:mark.position+40}:{}),limit:80});
+        if(mark?.kind==="import" && !h.rows.length)h=await action("history",{persona_id:p.id,session_id:s.id,after:Math.max(1,mark.position-1),limit:80});
         if(id!==epoch||s!==currentSession()||revision!==s.historyRevision)return;
-        s.past=h.rows;s.before=h.before;s.historyReady=true;
+        s.past=h.rows;s.before=h.before;s.pastNewer=mark?.kind==="import" && h.rows.length?h.rows.at(-1).seq:null;s.historyReady=true;
       }
-      const result=await api().live_snapshot(s.id,s.version);
+      const submissions=await api().live_submissions(p.id,s.id);
+      if(id!==epoch||s!==currentSession())return;
+      const scopeChanged=s.readOnly!==Boolean(result.sealed||s.id!==p.writableSession);
+      s.readOnly=Boolean(result.sealed||s.id!==p.writableSession);
+      if(result.reset){s.turns=result.turns;s.older=result.older;s.newer=result.newer;}
+      else if(result.turns)appendTurns(s,result.turns);
+      const known=new Set(s.turns.map(t=>t.id));
+      const outbox=submissions.filter(item=>!known.has(item.turn_id));
+      const changed=JSON.stringify(outbox)!==JSON.stringify(s.outbox||[]);
+      s.outbox=outbox;
+      const settled=submissions.filter(item=>(known.has(item.turn_id)||item.state==="stopped")&&!item.legacy).map(item=>item.id);
+      const accepted=submissions.find(item=>acceptedSubmission(item) && item.draft_revision && item.draft_revision===s.draftRevision);
+      if(accepted){
+        s.draft="";s.reference=null;s.draftRevision=newId();
+        await saveDraft(s,p.id,accepted.draft_revision);
+      }
+      if(settled.length)await api().live_ack_submissions(p.id,s.id,settled);
       if(id!==epoch||s!==currentSession())return;
       if(result.turns!==null){
-        const atEnd=timeline.scrollHeight-timeline.scrollTop-timeline.clientHeight<110 || s.version===null;
-        s.turns=result.turns;s.version=result.version;render({scrollToEnd:atEnd});
-      }
-      if(document.hidden||dialog.open)return;
-      if(pendingReceipt){
-        await api().live_present("expression.v2.ack",pendingReceipt);
-        pendingReceipt=null;s.version=null;return;
-      }
+        const atEnd=!s.restore && !s.newer && timeline.scrollHeight-timeline.scrollTop-timeline.clientHeight<24;
+        const position=capture();
+        if(!result.reset && !rightsChanged && !scopeChanged && !changed && !accepted && updateTurnNodes(s,result.turns)){
+          if(atEnd)timeline.scrollTop=timeline.scrollHeight;else restoreReading(position);
+        }else render({scrollToEnd:atEnd});
+      }else if(changed || accepted || rightsChanged || scopeChanged) render();
+      s.version=result.version;
+      s.publicSearchAvailable=result.public_search_available;
+      updateSendButton();
+      if(s.restore){restoreReading(s.restore);s.restore=null;disconnectedReading=null;}
+      s.loading=false;
+      if(!result.presentable||document.hidden||dialog.open||quotaDialog.open||repairDialog.open||!await api().presentation_visible()||s!==currentSession()||id!==epoch)return;
       const pending=result.pending_notices?.[0];
       if(pending){
         const args={...pending,persona_id:p.id,session_id:s.id};
-        const note=await api().live_present("chat.notice.preview",args);
-        if(!note.published && await paint(s,id,note.text))await api().live_present("chat.notice.presented",args);
+        await presentMessage(s,id,"notice",args);
         s.version=null;return;
       }
-      const speech=s.turns.map(t=>t.scene_speech).find(x=>x && ["pending","partial"].includes(x.state));
-      const item=speech?.items.find(i=>i.state!=="presented");
-      if(!item || item.state!=="pending")return;
+      const next=plan=>plan.items.find(item=>!["presented","not_presented","cancelled"].includes(item.state));
+      const speech=s.turns.flatMap(t=>t.desktop_publications||[]).find(x=>["pending","partial"].includes(x.state)&&next(x)?.state==="pending");
+      if(!speech)return;
+      const item=next(speech);
       const last=speech.visible.at(-1);
       if(last && Date.now()-Date.parse(last.presented_at)<item.delay_ms)return;
-      const owner={persona_id:p.id,session_id:s.id,utterance_id:speech.utterance_id,presenter_id:presenter};
-      const offer=await api().live_present("expression.v2.offer",{...owner,publication_id:speech.publication_id,
+      const owner=speech.kind==="legacy"?{turn_id:speech.turn_id}:{utterance_id:speech.utterance_id};
+      await presentMessage(s,id,speech.kind,{...owner,persona_id:p.id,session_id:s.id,publication_id:speech.publication_id,
         revision:speech.revision,ordinal:item.ordinal});
-      if(offer.state==="offered" && offer.lease_id){
-        const visible=await paint(s,id,offer.body);
-        pendingReceipt={...owner,fragment_id:offer.id,lease_id:offer.lease_id,
-          receipt_id:newId(),body_hash:offer.body_hash,state:visible?"presented":"not_presented"};
-        await api().live_present("expression.v2.ack",pendingReceipt);pendingReceipt=null;
-      }
       s.version=null;
     }finally{polling=false;}
   }
-  async function paint(s,id,text){
-    const visible=()=>s===currentSession() && id===epoch && !document.hidden && !dialog.open;
-    if(!visible())return false;
-    const bubble=el("p",text,timeline.querySelector(".conversation-inner")||timeline);
-    bubble.className="bubble reply";bubble.scrollIntoView({block:"nearest"});
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  async function presentMessage(s,id,kind,args){
+    if(!await checkPaintSlot(s,id))return;
+    const claim=newId();
+    paintDecision={id:claim,state:"not_presented"};
+    const offer=await api().presentation_begin(presenter,claim,kind,args);
+    paintDecision=null;
+    if(!offer)return;
+    let state="unknown";
+    try{state=await paint(s,id,offer.text);}
+    finally{
+      paintDecision={id:offer.id,state};
+      await api().presentation_decide(presenter,offer.id,state);
+      paintDecision=null;
+      await api().presentation_reconcile();
+    }
+  }
+  function paintPoint(s,id,bubble){
+    if(s!==currentSession()||id!==epoch||document.hidden||dialog.open||quotaDialog.open||repairDialog.open||!bubble.isConnected)return null;
     const rect=bubble.getBoundingClientRect(),area=timeline.getBoundingClientRect();
-    const shown=visible() && bubble.isConnected && rect.height>0 && rect.top<area.bottom && rect.bottom>area.top;
-    if(!shown)bubble.remove();return shown;
+    const left=Math.max(0,rect.left,area.left),right=Math.min(innerWidth,rect.right,area.right);
+    const top=Math.max(0,rect.top,area.top),bottom=Math.min(innerHeight,rect.bottom,area.bottom);
+    const x=(left+right)/2,y=(top+bottom)/2;
+    return right>left && bottom>top && bubble.contains(document.elementFromPoint(x,y)) ? {x,y} : null;
+  }
+  function paintSlot(){
+    const bubble=el("p","",timeline.querySelector(".conversation-inner")||timeline);
+    bubble.className="bubble reply";bubble.style.minHeight="1em";bubble.style.minWidth="2em";
+    bubble.style.opacity="0";
+    bubble.scrollIntoView({block:"center"});
+    return bubble;
+  }
+  async function checkPaintSlot(s,id){
+    const previous=timeline.scrollTop,bubble=paintSlot();
+    try{
+      const hit=paintPoint(s,id,bubble);
+      return hit && await api().presentation_visible(hit.x*devicePixelRatio,hit.y*devicePixelRatio) && paintPoint(s,id,bubble);
+    }finally{bubble.remove();if(s===currentSession()&&id===epoch)timeline.scrollTop=previous;}
+  }
+  async function paint(s,id,text){
+    const bubble=paintSlot(),slot=paintPoint(s,id,bubble);
+    if(!slot||!await api().presentation_visible(slot.x*devicePixelRatio,slot.y*devicePixelRatio)||!paintPoint(s,id,bubble)){
+      bubble.remove();return "not_presented";
+    }
+    bubble.textContent=text;bubble.style.opacity="";bubble.scrollIntoView({block:"nearest"});
+    const framed=await new Promise(resolve=>{
+      const expire=()=>finish(false);
+      let first,second,timer;
+      function finish(value){
+        clearTimeout(timer);cancelAnimationFrame(first);cancelAnimationFrame(second);
+        document.removeEventListener("visibilitychange",expire);resolve(value);
+      }
+      document.addEventListener("visibilitychange",expire,{once:true});
+      timer=setTimeout(expire,1500);
+      first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>finish(true));});
+    });
+    const point=paintPoint(s,id,bubble);
+    const shown=framed && point && await api().presentation_visible(point.x*devicePixelRatio,point.y*devicePixelRatio) && paintPoint(s,id,bubble);
+    if(!shown)bubble.remove();
+    return shown?"presented":"unknown";
   }
   const memoryStateNames={off:"未开启",waiting_configuration:"等待角色记忆或模型配置",pending:"待整理",
     processing:"正在整理",waiting_quota:"等待后台额度",processed:"已处理",quarantined:"冲突待核",
-    unknown:"结果待核对",blocked_input:"个别原话超过整理容量",withdrawn:"已撤回"};
+    unknown:"结果待核对",failed:"部分整理任务失败，可查看详情",cancelled:"整理已取消",stale:"来源已变更，等待重新核对",
+    no_memory:"已核对，未形成长期记忆",partly_withdrawn:"部分来源已撤回，其余已处理",blocked_input:"个别原话超过整理容量",withdrawn:"已撤回"};
   async function historySettings(s){
     const pid=currentPerson()?.id;
     const info=await action("history_status",{persona_id:pid,session_id:s.id});
@@ -1213,7 +1453,7 @@ window.pcarLive = (() => {
       button(box,"选择原件并核对本人",async()=>{
         const file=await api().pick_transcript();
         if(!file)return;
-        if(file.id!==info.document) throw Error("请选这段历史原先使用的聊天文件。");
+        if(file.id!==info.document) throw new FormError("请选这段历史原先使用的聊天文件。");
         setupHistory(file,{personaId:pid,sessionId:s.id,targetName:currentPerson().profile.name});
       });
       return;
@@ -1225,6 +1465,7 @@ window.pcarLive = (() => {
       if(actionName==="withdraw") {
         for(const row of s.past) row.referenceable=false;
         s.reference=null;
+        await reviseDraft(s);
       }
       s.historyRevision=(s.historyRevision||0)+1;
       s.historyReady=false;s.version=null;render();
@@ -1261,8 +1502,8 @@ window.pcarLive = (() => {
       }
     }
     if(!s.readOnly && event.role!=="note" && event.referenceable)button(box,"引用这条消息",()=>{
-      if(s!==currentSession())throw Error("请回到该消息所在的会话。");
-      s.reference={id:event.id,text:event.text};dialog.close();render();message.focus();
+      if(s!==currentSession())throw new FormError("请回到该消息所在的会话。");
+      s.reference={id:event.id,text:event.text};reviseDraft(s);dialog.close();render();message.focus();
     });
     if(back)button(box,"返回查找结果",back);
   }
@@ -1270,7 +1511,7 @@ window.pcarLive = (() => {
     const box=panel("查找历史消息");
     const input=inputField(box,"消息正文","search",query);
     async function lookup(next=false) {
-      const value=input.value.trim();if(!value)throw Error("请输入要查找的文字。");
+      const value=input.value.trim();if(!value)throw new FormError("请输入要查找的文字。");
       const cursor=next && value===query?before:null;
       const result=await action("history",{persona_id:currentPerson().id,session_id:s.id,query:value,before:cursor,limit:80});
       if(s===currentSession() && box.isConnected) historySearch(s,value,result.rows,result.before,true);
@@ -1287,7 +1528,68 @@ window.pcarLive = (() => {
     }
     input.focus();
   }
+  function turnNode(t){
+    const group=document.createElement("div");group.style.display="contents";
+    const show=(role,text,id)=>stamp(makeBubble(group,role,text),"native",id,t.position);
+    for(const m of t.input_members||[])if(m.text)show("user",m.text,m.id);
+    if(t.search_notice)show("persona",t.search_notice.text,t.search_notice.event_id);
+    const plans=t.desktop_publications||[];
+    if(!t.search_notice)for(const plan of plans.filter(v=>v.phase==="search_notice"))for(const m of plan.visible)show("persona",m.text,m.id);
+    const main=plans.find(v=>v.phase==="main");
+    if(main){for(const m of main.visible)show("persona",m.text,m.id);}
+    else if(t.status==="completed" && t.reply)show("persona",t.display_reply||t.reply,t.reply_event_id);
+    if(t.feedback_available)button(group,"这条不像",()=>feedback(currentPerson().id,t.id));
+    if(t.has_retrieved_notes)button(group,"查看本轮检索资料",async()=>{
+      const pid=currentPerson().id,sid=currentSession().id;
+      const material=await api().live_retrieved_notes(pid,sid,t.id);
+      if(currentPerson()?.id!==pid||currentSession()?.id!==sid)return;
+      const box=panel("本轮检索资料");
+      const notes=el("p",material.notes,box);notes.style.whiteSpace="pre-wrap";
+      const sources=el("details",null,box);el("summary","资料来源（"+material.sources.length+"）",sources);
+      for(const source of material.sources)el("p",[source.title,source.url].filter(Boolean).join(" · "),sources);
+    });
+    if(["queued","running"].includes(t.status))button(group,"停止本轮",()=>api().live_cancel(t.id));
+    if(t.error_code){
+      const labels={desktop_network_wait:"网络暂时不可用，消息已保存，连接恢复后会自动继续。",service_restarted:"本轮已中断，原结果待核对，可以继续聊天。",
+        desktop_storage_wait:"消息已保存，正在等待本机恢复写入。",
+        desktop_connection_changed:"等待期间模型连接已更换，本轮已停止，原消息仍可查看。",
+        desktop_reply_superseded:"已接收新消息，上一轮发言已结束。",
+        knowledge_repeated_notice:"资料已查回，本轮回复重复了查前提示。可以打开检索资料。",
+        scene_superseded:"已接收新消息，上一轮发言已结束。",
+        search_notice_superseded:"已接收新消息，上一轮查找已停止。",
+        desktop_presentation_unknown:"这段发言的显示结果待核对，可以继续聊天。",
+        scene_presentation_unknown:"这段发言的显示结果待核对，可以继续聊天。",
+        desktop_presentation_unavailable:"暂时无法确认这段发言，可以继续聊天。",
+        desktop_settlement_pending:"回复已收到，正在等待本机保存。",
+        desktop_receipt_requires_review:"回复已收到，来源待核对。",
+        desktop_source_withdrawn:"相关资料已撤回，本轮已停止。",
+        desktop_instance_changed:"原消息属于其他实例，本轮已停止。"};
+      const auth=["provider_http_401","provider_http_403","model_not_configured"].includes(t.error_code);
+      const limited=t.error_code==="provider_http_429";
+      el("small",auth?"本轮的模型连接未通过验证。":limited?"模型服务暂时限流，本轮已停止。":
+        labels[t.error_code]||(/unknown|unconfirmed/.test(t.error_code)?"本轮结果待核对，可以继续聊天。":"本轮未完成，原消息已保留。"),group);
+    }else if(["queued","running"].includes(t.status)){
+      el("small",t.phase==="knowledge_waiting_quota"?"正在等待可用额度":t.phase==="knowledge_search_notice"?"正在等待查前发言显示":
+        t.status==="queued"?"已受理，正在等待回复":"正在回复",group);
+    }
+    return group;
+  }
+  function makeBubble(parent,role,text){
+    const p=el("p",text,parent);p.className="bubble "+(role==="user"?"own":"reply");return p;
+  }
+  function updateTurnNodes(s,cards){
+    const thread=timeline.querySelector(".conversation-inner");
+    if(!thread || drawnSession!==s || !s.turns.length)return false;
+    if(renderedTurns.size!==s.turns.length || cards.some(t=>!renderedTurns.has(t.id)))return false;
+    for(const t of cards){
+      const next=turnNode(t);
+      renderedTurns.get(t.id).replaceWith(next);renderedTurns.set(t.id,next);
+    }
+    return true;
+  }
   function draw(s){
+    drawnSession=s;
+    renderedTurns.clear();
     timeline.classList.remove("first");timeline.replaceChildren();
     const thread=el("div",null,timeline);thread.className="conversation-inner";
     const reference=byId("history-reference");
@@ -1299,48 +1601,70 @@ window.pcarLive = (() => {
       button(actions,"历史来源与用途",()=>historySettings(s));
     }
     if(s.before)button(thread,"查看更早的消息",async()=>{
-      const result=await action("history",{persona_id:currentPerson().id,session_id:s.id,before:s.before});
-      if(s!==currentSession())return;
-      const height=timeline.scrollHeight,top=timeline.scrollTop;
-      s.past.unshift(...result.rows);s.before=result.before;render();
-      timeline.scrollTop=top+timeline.scrollHeight-height;
+      const before=s.before,revision=s.historyRevision;
+      const result=await action("history",{persona_id:currentPerson().id,session_id:s.id,before,limit:80});
+      if(s!==currentSession()||s.before!==before||s.historyRevision!==revision)return;
+      const mark=capture(),merged=[...result.rows,...s.past];
+      s.past=merged.slice(0,160);s.before=result.before;
+      if(merged.length>160)s.pastNewer=s.past.at(-1).seq;
+      render();if(mark)restoreReading(mark);
     });
-    function bubble(role,text){
-      const p=el("p",text,thread);p.className="bubble "+(role==="user"?"own":"reply");return p;
-    }
+    if(s.pastNewer)button(thread,"查看较新的导入消息",async()=>{
+      const after=s.pastNewer,revision=s.historyRevision;
+      const result=await action("history",{persona_id:currentPerson().id,session_id:s.id,after,limit:80});
+      if(s!==currentSession()||s.pastNewer!==after||s.historyRevision!==revision)return;
+      const merged=[...s.past,...result.rows];s.past=merged.slice(-160);s.pastNewer=result.after;
+      if(merged.length>160)s.before=s.past[0].seq;
+      render();
+    });
     let day=null;
     for(const event of s.past){
       const nextDay=event.created_at?.slice(0,10)||"日期待核";
       if(nextDay!==day){el("div",nextDay+" · 导入历史",thread).className="date-divider";day=nextDay;}
       const node=button(thread,event.text,()=>historyDetails(s,event));
+      stamp(node,"import",event.id,event.seq);
       node.className=event.role==="note"?"button ghost history-actions":"bubble "+(event.role==="user"?"own":"reply");
       node.title="查看来源与引用 · "+(event.created_at||"时间待核");
     }
+    if(s.older)button(thread,"查看更早的对话",()=>nativePage(s,true));
     for(const t of s.turns){
-      for(const m of t.input_members||[{text:t.text}])if(m.text)bubble("user",m.text);
-      if(t.search_notice)bubble("persona",t.search_notice.text);
-      if(t.scene_speech){for(const m of t.scene_speech.visible)bubble("persona",m.text);}
-      else if(t.status==="completed" && t.reply)bubble("persona",t.display_reply||t.reply);
-      if(t.reply_event_id && t.context?.import_style)button(thread,"这条不像",()=>feedback(currentPerson().id,t.id));
-      if(["queued","running"].includes(t.status))button(thread,"停止本轮",()=>api().live_cancel(t.id));
-      if(t.error_code)el("small",t.error_code,thread);
+      const node=turnNode(t);renderedTurns.set(t.id,node);thread.append(node);
+    }
+    if(s.newer)button(thread,"查看较新的对话",()=>nativePage(s,false));
+    for(const item of s.outbox||[]){
+      const own=makeBubble(thread,"user",item.text);
+      own.dataset.submissionState=item.state;
+      const labels={accepted:"已受理，正在等待回复",waiting_capacity:"已受理，正在等待空闲位置。",blocked:"本条消息待核对，可以继续聊天。",
+        stopped:"已保留原消息，本轮已停止。",unconfirmed:"正在核对发送结果"};
+      el("small",labels[item.state],thread);
     }
     if(!thread.childElementCount)el("p","可以发送第一条消息。",thread);
   }
-  async function send(){
+  byId("public-search-send").addEventListener("click",()=>run(()=>send(true))());
+  async function send(publicSearch=false){
     const p=currentPerson(),s=currentSession(),value=message.value;
-    if(!p||!s||s.readOnly||!value.trim()||s.sending)return;
+    if(stopped||!p||!s||s.readOnly||!value.trim()||s.sending||selectionToken!==null||pendingDraft(s)||linkState!=="online")return;
     if(!state.connected){connection();return;}
     s.sending=true;
     const ref=s.reference?.id || null;
-    const request=s.pending?.value===value && s.pending.ref===ref?s.pending.request:newId();
-    s.pending={value,ref,request};
+    const request=newId(), revision=s.draftRevision ||= newId();
     try{
-      if(ref) await api().live_submit(p.id,s.id,value,request,{kind:"event",id:ref});
-      else await api().live_submit(p.id,s.id,value,request);
-      s.pending=null;if(s.draft===value)s.draft="";
-      if(s.reference?.id===ref)s.reference=null;s.version=null;
-      if(s===currentSession())render();
+      const args=[p.id,s.id,value,request,ref?{kind:"event",id:ref}:null,revision];
+      if(publicSearch)args.push(message.value.slice(message.selectionStart,message.selectionEnd).trim()||value);
+      const accepted=await api().live_submit(...args);
+      if(!s.outbox?.some(item=>item.id===accepted.id))s.outbox=[...(s.outbox||[]),accepted];
+      let clearing=null;
+      if(acceptedSubmission(accepted) && s.draftRevision===revision && (s.reference?.id||null)===ref){
+        s.draft="";s.draftRevision=newId();s.reference=null;
+        clearing=saveDraft(s,p.id,revision);
+      }
+      s.version=null;
+      if(s===currentSession())render({scrollToEnd:true});
+      if(clearing)await clearing;
+      if(!s.id && accepted.session_id && s===currentSession()){
+        await reload(p.id,false,accepted.session_id);
+        return;
+      }
     }finally{s.sending=false;}
   }
   async function feedback(pid,tid){
@@ -1358,7 +1682,7 @@ window.pcarLive = (() => {
     const job=await action("card_status",{ident:data.id});
     if(data.status==="revoked" || !job.cards?.[scene.role] || job.plan_id!==scene.plan_id ||
        job.source_revision!==scene.source_revision || data.revision!==scene.source_revision)
-      throw Error("当前来源已变化，请重新核对角色资料。");
+      throw new FormError("当前来源已变化，请重新核对角色资料。");
     const card=job.cards[scene.role],box=panel("编辑来源场景 · "+card.spec.name);
     const read=sceneMaterial(box,card);
     async function write(material){
@@ -1439,20 +1763,238 @@ window.pcarLive = (() => {
       await api().live_model(model.value,key.value);key.value="";
       if(typeof afterSave==="function") {
         const latest=await api().live_people(); state.connected=latest.connected; state.model=latest.model; await afterSave();
-      } else {dialog.close();await reload(state.current);}
+      } else {dialog.close();
+        setStatus();await reload(state.current,false,currentSession()?.id);}
     });
   }
-  async function connect(){
+  let checking=false,attached=false,lastHealth=null;
+  const repairDialog=byId("repair-dialog");
+  let repairVersion=0;
+  repairDialog.addEventListener("cancel",event=>event.preventDefault());
+  byId("repair-exit").onclick=()=>api().exit_workbench();
+  function updateRepair(health){
+    if(health.state!=="repairing"){
+      if(repairDialog.open)repairDialog.close();
+      return false;
+    }
+    const record=health.repair;
+    if(linkState==="online"){
+      const mark=capture();
+      if(mark && !currentSession()?.loading)disconnectedReading={pid:state.current,sid:currentSession()?.id,mark};
+      saveReading();epoch++;
+    }
+    linkState="repairing";delay=500;updateSendButton();
+    byId("repair-title").textContent=record.phase==="read_only"?"工作台暂时只读":"修复中";
+    byId("repair-description").textContent=record.phase==="read_only"?
+      record.reason==="verify_unavailable"?"本机操作结果仍在核对。PCAR 会自动复查，也可以安全退出。":
+      "本机存储或修复记录暂时无法核验。PCAR 会自动复查，也可以安全退出。":
+      record.phase==="verifying"?"正在核对修复结果，完成后自动返回原会话。":
+      record.action==="restart_service"?"正在恢复本机聊天服务。原消息和草稿会保留。":"正在检查本机数据目录能否恢复写入。";
+    if(!repairDialog.open)repairDialog.showModal();
+    return true;
+  }
+  function repairStatus(record){
+    if(stopped)return;
+    repairVersion++;
+    if(record && ["executing","verifying","read_only"].includes(record.phase))updateRepair({state:"repairing",repair:record});
+    else {updateRepair({state:"online"});arm(0);}
+  }
+  function arm(ms){
+    if(stopped)return;
+    clearTimeout(timer);nextCheck=Date.now()+ms;timer=setTimeout(checkService,ms);
+  }
+  async function checkService(){
+    if(stopped||checking)return;
+    checking=true;
+    try{
+      if(!attached){await api().presentation_attach(presenter);attached=true;}
+      const observedRepair=repairVersion;
+      const health=await api().live_health();
+      if(stopped)return;
+      if(observedRepair!==repairVersion){delay=100;return;}
+      if(updateRepair(health))return;
+      if(health.state!=="online")throw Error(health.state==="wrong_instance"?
+        (health.repair?.reason==="external_owner"?"desktop_port_occupied":"desktop_instance_changed"):"service_disconnected");
+      if(health.draining)throw Error("service_draining");
+      const recovering=linkState!=="online"||generation!==health.generation;
+      const configChanged=state.connected!==health.configured||state.model!==health.model||lastHealth?.configVersion!==health.configVersion;
+      lastHealth=health;generation=health.generation;linkState="online";
+      state.connected=health.configured;state.model=health.model;
+      if(recovering||configChanged){
+        const saved=currentPerson()?{persona_id:state.current,session_id:currentSession()?.id}:await api().live_location();
+        if(stopped)return;
+        await reload(saved?.persona_id,false,saved?.session_id,recovering);
+      }else await refresh();
+      if(stopped)return;
+      if(observedRepair!==repairVersion){delay=100;return;}
+      delay=currentSession()?.outbox?.length?180:750;
+      quotaPrompt(health.quotaWaits||[]);
+      const session=currentSession();
+      if(health.quotaWaits?.length){
+        setStatus("有任务正在等待本机调用额度恢复。","quota");
+      }else if(session?.latest?.needs_connection){
+        setStatus("这条消息的模型连接未通过验证，可在这里更新。",true);
+      }else if(!health.configured && session){setStatus("首次聊天前，请连接模型。",true);}
+      else setStatus();
+    }catch(error){
+      if(stopped)return;
+      if(linkState==="online"){
+        const mark=capture();
+        if(mark && !currentSession()?.loading)disconnectedReading={pid:state.current,sid:currentSession()?.id,mark};
+        saveReading();epoch++;
+      }
+      const reason=String(error.message||error);
+      if(reason.includes("local_repair_active")){
+        if(!repairDialog.open)updateRepair({state:"repairing",repair:{phase:"verifying"}});
+        delay=300;return;
+      }
+      linkState=reason.includes("desktop_instance_changed")||reason.includes("desktop_port_occupied")?"wrong_instance":reason.includes("service_draining")?"draining":"disconnected";
+      delay=Math.min(8000,Math.max(1000,delay*2));
+      setStatus(reason.includes("desktop_port_occupied")?"本机服务端口由其他程序使用，PCAR 正在等待端口释放。":
+                linkState==="wrong_instance"?"正在等待原工作台实例。":linkState==="draining"?"本机服务正在结束本次运行。":
+                "正在连接本机服务，已发送的消息会自动核对。");
+    }finally{checking=false;arm(delay);}
+  }
+  function diagnostics(){
+    const box=panel("运行与诊断");
+    button(box,"模型调用限额",quotaSettings);
+    button(box,"本机备份与恢复",backupPanel);
+    if(lastHealth?.quotaWaits?.length)button(box,"查看等待额度的任务",()=>quotaPrompt(lastHealth.quotaWaits,true));
+    const labels={starting:"正在启动",online:"已连接",disconnected:"等待本机服务恢复",wrong_instance:"等待原实例",draining:"正在退出"};
+    el("p","本机服务 · "+(labels[linkState]||"正在连接"),box);
+    el("p","模型连接 · "+(lastHealth?.configured?"已配置":"待配置"),box);
+    if(lastHealth?.repair){
+      const repair=lastHealth.repair;
+      el("p","本机修复 · "+(repair.action==="check_storage"?"存储检查":"聊天服务恢复")+" · "+
+         (repair.phase==="resolved"?"已通过复验":"等待下一次核对"),box);
+    }
+    const names={foreground:"对话查找",background:"后台队列",knowledge:"知识维护",memory:"记忆整理",index:"索引",character_index:"人物索引",network_routes:"模型连接检查",
+      daily:"每日扫描",incremental:"增量扫描",proactive:"主动消息",model_changes:"模型配置检查"};
+    for(const [name,item] of Object.entries(lastHealth?.maintenance||{})){
+      el("p",(names[name]||"后台任务")+"将在 "+new Date(item.next_epoch*1000).toLocaleTimeString()+" 自动重试。",box);
+    }
+    const latest=currentSession()?.latest;
+    if(latest){
+      el("p","当前会话最近一轮 · "+latest.id,box);
+      if(latest.error_code)el("p","诊断代码 · "+latest.error_code,box);
+    }
+    if(linkState!=="online" && nextCheck)el("p","下次自动检查 · "+new Date(nextCheck).toLocaleTimeString(),box);
+  }
+  async function backupPanel(){
+    const data=await api().live_backups(),box=panel("本机备份与恢复");
+    const format=at=>new Date(at*1000).toLocaleString();
+    if(!data.entries.length){el("p","尚无已登记的自动备份。",box);return;}
+    const hours=Math.max(0,Math.floor((Date.now()/1000-data.entries[0].at)/3600));
+    el("p","最近登记的备份 · "+format(data.entries[0].at)+"（"+(hours?hours+" 小时前":"最近一小时内")+"）",box);
+    if(data.index_fallback)el("p","当前索引未通过核验，已使用上一份经核验的登记记录。",box);
+    if(data.deferred_retirement)el("p","有 "+data.deferred_retirement+" 份旧备份仍在使用或需要核对，原文件已保留。",box);
+    if(data.unverified_legacy_count)el("p","旧清单中有 "+data.unverified_legacy_count+" 项无法识别，已保留原始清单。",box);
+    el("p","恢复时会核验数据库和依赖清单，在所选位置新建独立的核对目录。当前聊天可继续使用。",box);
+    const choice=el("select",null,box);choice.setAttribute("aria-label","备份版本");
+    choice.add(new Option("最近一份校验通过的备份",""));
+    for(const entry of data.entries)choice.add(new Option(format(entry.at),entry.file));
+    button(box,"选择恢复位置",async()=>{
+      const copy=await api().restore_backup_copy(choice.value||null);
+      if(copy){
+        el("p","已恢复 "+format(copy.at)+" 的数据库，共 "+copy.counts.personas+" 个角色、"+copy.counts.sessions+" 个会话和 "+copy.counts.events+" 条事件。保存位置为 "+copy.directory,box);
+        if(copy.live_counts)el("p","当前实例有 "+copy.live_counts.events+" 条事件和 "+copy.live_counts.memories+" 条记忆。恢复副本有 "+copy.counts.memories+" 条记忆。",box);
+      }
+    });
+  }
+  const quotaDialog=byId("quota-dialog");
+  let presentedWaits=[],quotaSaving=false;
+  function quotaPrompt(waits,manual=false){
+    if(quotaSaving)return;
+    if(!waits.length){
+      if(quotaDialog.open)quotaDialog.close();
+      presentedWaits=[];return;
+    }
+    if(!quotaDialog.open && !manual && !waits.some(row=>row.state==="waiting"))return;
+    presentedWaits=waits.map(row=>row.id);
+    const reasons={hourly:"每小时总额",daily:"24 小时总额",selector_project:"自动调用总额",selector:"选择与理解额度",
+      background:"后台处理额度",learning:"表达学习额度"};
+    const reached=[...new Set(waits.map(row=>reasons[row.reason]||"本机限额"))].join("、");
+    byId("quota-description").textContent="已达到"+reached+"，当前有 "+waits.length+" 项工作暂停。临时放行后，PCAR 会继续本轮消息和这些任务的后续步骤，无需重发。新任务仍按原限额执行。";
+    if(!quotaDialog.open){byId("quota-result").textContent="";quotaDialog.showModal();byId("quota-wait").focus();}
+  }
+  async function decideQuota(allow){
+    if(quotaSaving)return;
+    quotaSaving=true;byId("quota-allow").disabled=byId("quota-wait").disabled=true;
+    try{
+      await api().live_quota_decide(presentedWaits.slice(),allow);
+      quotaDialog.close();arm(0);
+    }catch{
+      byId("quota-result").textContent="本机服务暂时未确认，请稍后再试。";
+    }finally{quotaSaving=false;byId("quota-allow").disabled=byId("quota-wait").disabled=false;}
+  }
+  byId("quota-allow").onclick=()=>decideQuota(true);
+  byId("quota-wait").onclick=()=>decideQuota(false);
+  quotaDialog.addEventListener("cancel",event=>{event.preventDefault();decideQuota(false);});
+  async function quotaSettings(){
+    const settings=await api().live_quota_settings(),box=panel("模型调用限额");
+    const enabled=check(box,"启用调用限额",settings.enabled);
+    if(settings.temporary_unlimited)el("p","当前开发或验收期间临时不限额，结束后使用保存的额度。",box);
+    const inputs={};
+    function number(parent,key,label,value,max){
+      const wrap=el("label",label,parent);wrap.className="field";
+      const input=el("input",null,wrap);input.type="number";input.min="0";input.max=String(max);
+      input.step="1";input.value=String(value);inputs[key]=input;
+    }
+    el("p","按过去 1 小时或 24 小时统计。0 表示该项不限额。",box);
+    number(box,"hourly","全部模型调用 · 每小时",settings.hourly,1000000);
+    number(box,"daily","全部模型调用 · 每 24 小时",settings.daily,1000000);
+    const more=el("details",null,box);el("summary","单独设置自动调用额度",more);
+    const labels={project_hourly:"自动调用总额 · 每小时",background_hourly:"后台整理 · 每小时",
+      background_daily:"后台整理 · 每 24 小时",selector_hourly:"选择与理解 · 每小时",selector_daily:"选择与理解 · 每 24 小时"};
+    for(const [key,label] of Object.entries(labels))number(more,key,label,settings.automatic[key],10000);
+    const sync=()=>{for(const input of Object.values(inputs))input.disabled=!enabled.checked;};
+    enabled.onchange=sync;sync();
+    button(box,"保存限额",async()=>{
+      const saved={...settings.automatic,hourly:settings.hourly,daily:settings.daily};
+      const values=Object.fromEntries(Object.entries(inputs).map(([k,input])=>[k,input.value===""?0:input.valueAsNumber]));
+      const valid=k=>Number.isSafeInteger(values[k]) && values[k]>=0 && values[k]<=Number(inputs[k].max);
+      for(const key of Object.keys(inputs)){
+        if(!valid(key)){
+          if(enabled.checked)throw new FormError("请填写有效的调用次数。");
+          values[key]=saved[key];
+        }
+      }
+      if(enabled.checked && !Object.values(values).some(v=>v>0))throw new FormError("启用时至少设置一项正数。");
+      const {hourly,daily,...automatic}=values;
+      await api().live_quota_settings({enabled:enabled.checked,hourly,daily,automatic});
+      dialog.close();notify(enabled.checked?"已保存模型调用限额。":"已关闭模型调用限额。");arm(0);
+    });
+  }
+  function stop(){if(!stopped)saveReading();stopped=true;linkState="draining";epoch++;clearTimeout(timer);updateSendButton();}
+  function exitStatus(phase){
+    stop();
+    const steps={stop_admission:"正在保存本机状态。",draining:"正在等待已受理的工作完成。",logout:"正在关闭所属连接。",
+      checkpoint:"正在核对已收到的结果和在途请求。",settled:"正在结束本机服务。",releasing:"正在释放所属组件。",
+      component_ownership_or_release_unconfirmed:"有组件的归属或退出状态尚未确认，PCAR 将自动复查。"};
+    byId("repair-title").textContent="正在退出";
+    byId("repair-description").textContent=steps[phase]||"正在核对退出结果。";
+    byId("repair-exit").disabled=true;
+    if(!repairDialog.open)repairDialog.showModal();
+  }
+  function resume(){if(stopped){stopped=false;linkState="starting";arm(0);}}
+  function wake(){
+    if(!active||stopped)return;
+    if(linkState==="online")api().live_network_wake().catch(()=>{});
+    arm(0);
+  }
+  window.addEventListener("online",wake);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)wake();});
+  function connect(){
     if(active)return;
     active=true;byId("sample-mode").hidden=true;
     document.querySelector('[data-menu="reset"]')?.remove();
-    let retries=0;
-    while(true){
-      try{await reload(null,false);break;}catch(e){if(++retries>=30){notify(String(e.message||e));break;}await new Promise(r=>setTimeout(r,1000));}
-    }
-    setInterval(()=>refresh().catch(e=>{if(pendingReceipt)notify(String(e.message||e));}),750);
+    setStatus("正在连接本机服务。");arm(0);
   }
+  window.addEventListener("pagehide",stop);
   window.addEventListener("pywebviewready",run(connect),{once:true});
   if(window.pywebview?.api)run(connect)();
-  return {get active(){return active;},home:run(home),select:run(select),draw,send:run(send),profile:run(profile),importHistory:run(importHistory),connection};
+  return {get active(){return active;},get offline(){return linkState!=="online";},get composing(){return composing;},
+    get selecting(){return selectionToken!==null;},get pendingDraft(){return Boolean(pendingDraft(currentSession()));},
+    home:run(home),select:run(select),draw,capture,restore:restoreReading,reviseDraft,send:run(send),profile:run(profile),importHistory:run(importHistory),
+    diagnostics,connection,stop,resume,wake,repairStatus,exitStatus};
 })();

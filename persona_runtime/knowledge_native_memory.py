@@ -33,9 +33,11 @@ def apply_states(db, pid, sources, organized):
     return selected, {} if changed else deepcopy(organized)
 
 
-def eligible(db, turn_id):
+def eligible(db, turn_id, *, for_source_edit=False):
     turn = db.execute('SELECT * FROM turns WHERE id=?', (turn_id,)).fetchone()
-    if not turn or turn['status'] != 'completed': return False
+    if not turn:return False
+    if turn['status']!='completed' and not (for_source_edit and turn['status']=='failed'
+                                           and turn['error_code']=='knowledge_repeated_notice'):return False
     ids = [turn['user_event_id'], turn['reply_event_id']]
     if 'input_batch_id' in turn.keys() and turn['input_batch_id']:
         ids += [row[0] for row in db.execute('SELECT event_id FROM input_batch_members WHERE batch_id=?', (turn['input_batch_id'],))]
@@ -43,7 +45,7 @@ def eligible(db, turn_id):
         for event_id in ids if event_id)
 
 
-def candidates(db, pid, channel, *, acquired_only=False):
+def candidates(db, pid, channel, *, acquired_only=False,for_source_edit=False):
     rows = []
     for (raw,) in db.execute("""SELECT value FROM knowledge_control WHERE key LIKE 'knowledge.conversation.record.%'
             AND json_extract(value,'$.data.persona_id')=? AND json_extract(value,'$.data.channel')=?
@@ -52,7 +54,7 @@ def candidates(db, pid, channel, *, acquired_only=False):
                       OR json_extract(value,'$.data.retrieval.material_acquired')=1)))
             ORDER BY rowid DESC LIMIT 40""", (pid, channel, acquired_only)):
         record = json.loads(raw)['data']
-        if eligible(db, record.get('root_turn_id')): rows.append(record)
+        if eligible(db, record.get('root_turn_id'),for_source_edit=for_source_edit): rows.append(record)
     for (raw,) in db.execute("SELECT value FROM knowledge_control WHERE key LIKE 'knowledge.native.imported.%' AND json_extract(value,'$.data.persona_id')=? AND json_extract(value,'$.data.channel')=? ORDER BY rowid DESC LIMIT 20", (pid, channel)):
         rows.append(json.loads(raw)['data'])
     return rows

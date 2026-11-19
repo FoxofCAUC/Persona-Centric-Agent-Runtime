@@ -1,9 +1,8 @@
 """Durable first-display acknowledgement for an opted-in desktop search preface."""
 import json
-import time
 
 from .archive import fingerprint
-from .models import RuntimeErrorBase, identifier
+from .models import RuntimeErrorBase, identifier, timestamp
 from .progress import record
 
 
@@ -78,22 +77,25 @@ def waiting(db, session_id):
     return [{'turn_id':r[0],'notice_id':r[1]} for r in rows]
 
 
-def _active(db,store,turn):
-    if store.current(db,required=False)!=turn['persona_id'] or turn['status']!='queued' or turn.get('cancelled_at'):
+def check_root(db,turn):
+    if turn['status']!='queued' or turn.get('cancelled_at'):
         raise RuntimeErrorBase('knowledge_request_inactive')
     # Once a newer user input is accepted, an unseen preface can no longer begin this search.
     newer=db.execute("""SELECT 1 FROM ingress_receipts WHERE session_id=? AND accepted_seq >
           (SELECT max(accepted_seq) FROM ingress_receipts WHERE batch_id=?) LIMIT 1""",
           (turn['session_id'],turn['input_batch_id'])).fetchone()
     if newer:raise RuntimeErrorBase('search_notice_superseded')
+    if db.execute("""SELECT 1 FROM turns n JOIN turns t ON t.id=? WHERE n.session_id=t.session_id
+                      AND n.rowid>t.rowid AND n.source_key NOT LIKE 'imported.%' LIMIT 1""",(turn['id'],)).fetchone():
+        raise RuntimeErrorBase('search_notice_superseded')
 
 
-def display(notice, persona_id, session_id, turn_id, notice_id, *, acknowledge=False):
+def display(notice, persona_id, session_id, turn_id, notice_id, *, acknowledge=False,presentation_id=None):
     store=notice.store
-    with store.connection(write=acknowledge) as db:
+    with store.connection(write=acknowledge or presentation_id is not None) as db:
         row=db.execute("SELECT * FROM turns WHERE id=? AND session_id=? AND persona_id=? AND channel='desktop'",
                        (turn_id,session_id,persona_id)).fetchone()
-        if not row or store.current(db,required=False)!=persona_id:raise RuntimeErrorBase('knowledge_scope_changed')
+        if not row:raise RuntimeErrorBase('knowledge_scope_changed')
         turn=dict(row)
         pending=_pending(db,turn_id)
         if not pending or pending['notice_id']!=notice_id:raise RuntimeErrorBase('desktop_notice_not_pending')
@@ -102,7 +104,14 @@ def display(notice, persona_id, session_id, turn_id, notice_id, *, acknowledge=F
             old=json.loads(canonical[0])['data']
             if old.get('notice_id')!=notice_id:raise RuntimeErrorBase('search_notice_receipt_conflict')
             return {'published':True,'event_id':old['event_id']}
-        _active(db,store,turn)
+        owner=pending.get('presenter')
+        if owner and owner!=presentation_id:
+            raise RuntimeErrorBase('desktop_notice_already_offered')
+        if acknowledge and presentation_id and not owner:
+            raise RuntimeErrorBase('desktop_notice_not_pending')
+        if not acknowledge and store.current(db,required=False)!=persona_id:
+            raise RuntimeErrorBase('knowledge_scope_changed')
+        check_root(db,turn)
         task=db.execute('SELECT * FROM organization_tasks WHERE id=?',(pending['task_id'],)).fetchone()
         if not task or task['status']!='completed':raise RuntimeErrorBase('desktop_notice_not_pending')
         payload=json.loads(task['payload_json'])
@@ -117,31 +126,47 @@ def display(notice, persona_id, session_id, turn_id, notice_id, *, acknowledge=F
         if acknowledge:
             return notice.publish(db,dict(task),payload,receipt['response_text'],json.loads(receipt['diagnostic_json']),presented=notice_id)
         notice.validated_recall(db,turn,task['id'])
+        if presentation_id is not None and not owner:
+            pending['presenter']=presentation_id
+            db.execute('UPDATE knowledge_control SET value=? WHERE key=?',(json.dumps(pending),PREFIX+turn_id))
         return {'notice_id':notice_id,'turn_id':turn_id,'text':notice.display_body(db,turn,receipt['response_text'])}
 
 
 def authorize_search(db,store,turn):
     if not required(db,turn):return
-    _active(db,store,turn)
+    check_root(db,turn)
     row=db.execute("SELECT json_extract(value,'$.data.fully_presented') FROM knowledge_control WHERE key=?",
                    ('knowledge.search_notice.turn.'+turn['id'],)).fetchone()
     if not row or not row[0]:raise RuntimeErrorBase('search_notice_not_fully_presented')
 
 
+def isolate(store,persona_id,session_id,turn_id,notice_id,*,presentation_id=None,release=False):
+    with store.connection(write=True) as db:
+        row = db.execute("SELECT * FROM turns WHERE id=? AND persona_id=? AND session_id=? AND channel='desktop'",
+                         (turn_id,persona_id,session_id)).fetchone()
+        pending = _pending(db,turn_id)
+        if not row or not pending or pending['notice_id']!=notice_id:
+            raise RuntimeErrorBase('desktop_notice_not_pending')
+        if pending.get('presenter') not in (None,presentation_id):
+            raise RuntimeErrorBase('desktop_notice_already_offered')
+        if release:
+            if pending.get('presenter')==presentation_id:
+                pending.pop('presenter',None)
+                db.execute('UPDATE knowledge_control SET value=? WHERE key=?',(json.dumps(pending),PREFIX+turn_id))
+            return {"released":True}
+        if not already_presented(db,turn_id) and row['status']=='queued':
+            db.execute("UPDATE turns SET status='interrupted',error_code='desktop_presentation_unknown',updated_at=? WHERE id=?", (timestamp(),turn_id))
+            record(db,turn_id,'interrupted')
+        return {"settled":True}
+
+
 def wait(service,turn):
     from .knowledge_wait import check
-    verify_at=0
-    while True:
-        check(service,turn)
-        with service.store.connection() as db:
-            confirmed=db.execute('SELECT value FROM knowledge_control WHERE key=?',('knowledge.search_notice.turn.'+turn['id'],)).fetchone()
-            _active(db,service.store,turn)
-            if confirmed:
-                if json.loads(confirmed[0])['data'].get('fully_presented'):return
-                raise RuntimeErrorBase('search_notice_not_fully_presented')
-            pending=_pending(db,turn['id'])
-            if not pending:raise RuntimeErrorBase('search_notice_not_fully_presented')
-        if time.monotonic()>=verify_at:
-            display(service.processing.search_notice,turn['persona_id'],turn['session_id'],turn['id'],pending['notice_id'])
-            verify_at=time.monotonic()+2
-        service.closed.wait(.1)
+    from .desktop_presentation import PresentationPending
+    check(service,turn)
+    with service.store.connection() as db:
+        check_root(db,turn)
+        if already_presented(db,turn['id']):return
+        pending=_pending(db,turn['id'])
+        if not pending:raise RuntimeErrorBase('search_notice_not_fully_presented')
+        raise PresentationPending(turn['id'],pending['task_id'])

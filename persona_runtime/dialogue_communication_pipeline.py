@@ -54,7 +54,7 @@ class CommunicationPipeline(DialoguePipeline):
                     self.recheck(engine, db, current(engine, tid, self.attachment, db), c)
             value = await audited_complete(engine.client, model, payload,
                 validate=lambda text: parse_joint_v2(text, shared, pool), save=self.save_audit,
-                before_attempt=before)
+                before_attempt=before,paths=engine.store.paths,meter_first=True)
             result = parse_joint_v2(value[0], shared, pool)
             character = apply_selection(c['character_version'], c['members'], pool, result['selection'], 4)
             character.update(requested_mode='joint', effective_mode='joint', degrade_reason=None)
