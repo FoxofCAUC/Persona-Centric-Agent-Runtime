@@ -15,7 +15,11 @@ SOURCE = 'scene_reply'
 
 
 def native_policy(turn):
-    return scene_policy.frozen(turn) or import_style.frozen(turn)
+    policy = scene_policy.frozen(turn) or import_style.frozen(turn)
+    if policy:
+        return policy
+    origin = json.loads(turn.get("origin_json") or "null") or {}
+    return {"history_presentation":1} if origin.get("history_presentation")==1 else None
 
 
 class ScenePublication:
@@ -41,8 +45,13 @@ class ScenePublication:
 
     def issue(self, db, turn, source):
         context = json.loads(source['context_json'])
+        from .history_context import validate as validate_history
+        validate_history(db,turn,context['details'].get('import_history_sources'))
         imported = import_style.frozen(turn)
-        if imported:
+        history_only = native_policy(turn)=={"history_presentation":1}
+        if history_only:
+            body = source['body']
+        elif imported:
             import_style.validate(self.store,db,turn,context['details'].get(import_style.KEY))
             body = source['body']
         else:
@@ -52,7 +61,7 @@ class ScenePublication:
         require(body and body.strip(),'empty_reply')
         unit = self.outlet._register(db,turn,'main',SOURCE,source['id'],source['raw_hash'],body,
                                     native_policy(turn),{},context)
-        self.publisher.publish(db,unit,SOURCE,body,short_frames(body,True),'import_native_reply' if imported else 'scene_native_reply')
+        self.publisher.publish(db,unit,SOURCE,body,short_frames(body,True),'history_native_reply' if history_only else 'import_native_reply' if imported else 'scene_native_reply')
         db.execute("UPDATE turns SET status='running',usage_json=?,error_code=NULL,updated_at=? WHERE id=?",
                    (source['usage_json'],timestamp(),turn['id']))
         record(db,turn['id'],'generated',source['logical_attempt_id'])
@@ -71,7 +80,7 @@ class ScenePublication:
         require(native_policy(turn)==json.loads(unit['policy_json']),'source_changed')
         if import_style.frozen(turn):
             import_style.validate(self.store,db,turn,context['details'].get(import_style.KEY))
-        else:
+        elif native_policy(turn)!={'history_presentation':1}:
             selected = self.engine.scene.selected(db,turn)
             require(selected is not None and fingerprint(selected[1])==context['details']['scene_voice']['card_sha256'],'source_changed')
         source = db.execute('SELECT raw_hash,raw_text FROM expression_main_receipts WHERE id=? AND turn_id=? AND valid=1',
@@ -118,7 +127,8 @@ class ScenePublication:
             receipts = db.execute("""SELECT r.* FROM expression_main_receipts r JOIN turns t ON t.id=r.turn_id
                 WHERE r.valid=1 AND t.status='interrupted' AND t.error_code='service_restarted' AND t.cancelled_at IS NULL
                 AND (json_extract(t.context_policy_snapshot,'$.scene_voice') IS NOT NULL
-                     OR json_extract(t.context_policy_snapshot,'$.import_style') IS NOT NULL)
+                     OR json_extract(t.context_policy_snapshot,'$.import_style') IS NOT NULL
+                     OR json_extract(t.origin_json,'$.history_presentation')=1)
                 AND NOT EXISTS(SELECT 1 FROM expression_speech_units u WHERE u.turn_id=t.id AND u.phase='main')""").fetchall()
             for source in receipts:
                 root = self.engine.scene.root(db,source['turn_id'])

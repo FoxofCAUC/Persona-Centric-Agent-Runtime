@@ -26,6 +26,7 @@ def capture_connection(conn,spec,budget,*,before_order=None,prefer_session=None,
         t.channel,t.user_event_id,t.reply_event_id,t.status,t.created_at,t.origin_json FROM turns t
         LEFT JOIN input_batches b ON b.id=t.input_batch_id
         WHERE t.persona_id=? AND t.channel=? AND t.status='completed'
+        AND (t.source_key NOT LIKE 'imported.%' OR t.user_event_id IS NOT NULL OR t.reply_event_id IS NOT NULL)
         AND COALESCE(b.bot,json_extract(t.origin_json,'$.bot'),'')=?
         AND COALESCE(b.peer,json_extract(t.origin_json,'$.sender'),'')=?"""
     if spec['session_id']:
@@ -102,6 +103,8 @@ def capture_connection(conn,spec,budget,*,before_order=None,prefer_session=None,
                 sid=source['id']; is_part=source.get('kind')=='part'
                 raw = raw_by_id.get(sid,{})
                 recorded = part_by_id[sid]['created_at'] if is_part else (source.get('created_at') or (semantic or {}).get('created_at'))
+                if group["coverage"] == "imported_transcript":
+                    recorded = source.get("created_at")
                 document = {'document_id':sid,'turn_id':tid,'session_id':turn['session_id'],
                     'target':{'kind':'part' if is_part else 'event','id':sid},
                     'source_kind':'imported_message' if group['coverage']=='imported_transcript' else 'qq_sent_part' if is_part else 'user_event' if source.get('role')=='user' else 'desktop_reply',

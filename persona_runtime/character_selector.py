@@ -120,6 +120,10 @@ class SelectorService:
                         if digest(validate_snapshot(conn,current))!=initial_source:raise RuntimeErrorBase('character_source_changed')
                         from .references import prepare
                         refs,_=prepare(conn,current)
+                        if refs:
+                            from .history_context import references_allowed
+                            if not references_allowed(conn,current,model):
+                                raise SemanticFailure('selector_reference_provider_changed')
                         members=[m['text'] for m in load_turn_input(conn,current)]
                         if messages(pool,members,refs,limit,model['max_input_chars'],prompt_version=prompt_version)!=payload:
                             raise RuntimeErrorBase('selector_retry_sources_changed')

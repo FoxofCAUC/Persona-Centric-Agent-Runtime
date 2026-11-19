@@ -14,6 +14,8 @@ PCAR 于2026-11-11按项目所有者决定采用 [AGPL-3.0-only](../LICENSE)，�
 
 2026-11-19。LT-13 固定核对 Lume、溯洄 suhui、QQ 聊天记录分析工具及两个导出格式来源。Lume 和 suhui 的 MIT 纯逻辑是局部移植候选，GPL v3 系列项目用于机制或文件格式参考。已核对的提交、许可原文和计划复用范围见 [LT-13 上游许可与复用范围](long-term/06-聊天记录导入与人设生成.md#上游许可与复用范围)。移植前按实际文件及依赖登记版权、许可、修改和交付范围。
 
+新版研究固定核对 person-simulator 及 FriendForge，并复核既有三个上游。此次接入以 PCAR 自有代码实现。文件级许可和机制参考范围见[双人聊天提炼人设源码研究](research/LT-13-双人聊天提炼人设源码研究.md#复用和许可决定)。
+
 ## 工作台设计参考
 
 2026-11-19。来源为 Chevey339 的 Kelivo，固定到 [v1.3.6／c2b4895](https://github.com/Chevey339/kelivo/commit/c2b48958de39c3a1715347d33fa8887bdef974ce)。上游根 [LICENSE](https://github.com/Chevey339/kelivo/blob/c2b48958de39c3a1715347d33fa8887bdef974ce/LICENSE) 为 GNU AGPL v3，与 PCAR 的 AGPL-3.0-only 在同一许可证版本上兼容。本次采用其桌面分栏、窄窗导航以及消息和输入区的相对位置，使用独立绘制的 PCAR 草图。[工作台终端交互定义](product/工作台终端交互定义.md#桌面版式--参考-kelivo)

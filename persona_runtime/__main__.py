@@ -99,7 +99,7 @@ def dispatch(args, paths: RuntimePaths):
         return ServiceController(paths).start('service')
     if args.group == 'prepare':
         from .installation import register_existing,prepare_desktop
-        if args.register_existing:return register_existing(paths)
+        if args.register_existing:return register_existing(paths,frontend=args.frontend)
         return prepare_desktop(paths,base_python=args.base_python,local_model_source=args.local_model_source,diagnostics=args.diagnostics,register=not args.no_register,frontend=args.frontend)
     if args.group=='prepare-model':
         from .installation import prepare_model

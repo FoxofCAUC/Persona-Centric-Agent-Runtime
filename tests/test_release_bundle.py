@@ -11,10 +11,53 @@ class ReleaseBundleTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory(prefix='release-',dir=root);self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
 
+    def test_desktop_kit_includes_the_same_frozen_prompt_for_runtime_and_picker(self):
+        import json
+        from zipfile import ZipFile
+        from persona_runtime.import_prompts import BUNDLE_PATH, BUNDLE_SHA256
+        target = self.root / "desktop.zip"
+        build(target, profile="scene-desktop")
+        with ZipFile(target) as kit:
+            manifest = json.loads(kit.read("desktop-kit.json"))
+            asset = manifest["import_prompt_bundle"]
+            self.assertEqual(kit.read(asset["file"]), BUNDLE_PATH.read_bytes())
+            self.assertEqual(kit.read(asset["file"]), kit.read("persona_runtime/import_prompt_assets/" + BUNDLE_PATH.name))
+            self.assertEqual(manifest["files"][asset["file"]]["sha256"], BUNDLE_SHA256)
+            self.assertEqual(asset["sha256"], BUNDLE_SHA256)
+
+    def test_revisioned_workbench_includes_readme_links_and_artwork(self):
+        import json
+        import re
+        from zipfile import ZipFile
+
+        target = self.root / "workbench.zip"
+        revision = "a" * 40
+        build(target, profile="scene-desktop", source_revision=revision)
+        with ZipFile(target) as kit:
+            manifest = json.loads(kit.read("desktop-kit.json"))
+            self.assertEqual(manifest["source_revision"], revision)
+            for verifier in ("scripts/verify_m8d_migration.py", "scripts/verify_m761_migration.py"):
+                self.assertIn(verifier, manifest["files"])
+            readme = kit.read("README.md").decode("utf-8")
+            links = re.findall(r'\]\(([^)]+)\)|(?:src|href)="([^"]+)"', readme)
+            for link, asset in links:
+                path = (link or asset).partition("#")[0]
+                if path and "://" not in path:
+                    self.assertIn(path, manifest["files"])
+
     def test_release_requires_revision_models_and_public_fixture_before_writing(self):
         target=self.root/'release.zip'
         with self.assertRaisesRegex(ValueError,'提交编号'):build(target,release_tag='v0.1')
         self.assertFalse(target.exists())
+
+    def test_build_refuses_a_changed_prompt_bundle_before_creating_the_zip(self):
+        from unittest.mock import patch
+        prompt = self.root / "edited.json"
+        prompt.write_bytes(b"{}")
+        output = self.root / "rejected.zip"
+        with patch("persona_runtime.import_prompts.BUNDLE_PATH", prompt), self.assertRaisesRegex(ValueError, "提示词"):
+            build(output, profile="scene-desktop")
+        self.assertFalse(output.exists())
 
     def test_unapproved_migration_package_cannot_become_a_public_sample(self):
         fixture=self.root/'user-business.zip';fixture.write_bytes(b'artificial secret-bearing package used only for this rejection test')

@@ -65,6 +65,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     compiler=DispositionCompiler(dispositions,config,engine.client)
     if not pending_migration:compiler.recover()
     from .import_personas import PersonaImports
+    from .import_card_fields import ordinary_preview
     imports=PersonaImports(store,config)
     profiles=ProfileService(store)
     characters=CharacterService(store)
@@ -313,24 +314,37 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     async def manage(request):
         value = await body(request)
         action, args = value["action"], value.get("args", {})
-        if migration_pending(paths) and action!='persona.use' and action.rsplit('.',1)[-1] not in ('current','list','show','history','status','preview','explain','snapshot','requests'):
+        if migration_pending(paths) and action not in ('persona.use','persona.import.history_status') and action.rsplit('.',1)[-1] not in ('current','list','show','history','status','preview','explain','snapshot','requests'):
             raise RuntimeErrorBase('migration_configuration_required')
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
         if action.startswith('persona.import.'):
             name=action.removeprefix('persona.import.')
+            if name == "prompt_status":
+                from .import_prompts import prompt_bundle_status
+                return web.json_response(await asyncio.to_thread(prompt_bundle_status, imports.library))
             local={'list':imports.library.list,'status':imports.library.status,'evidence':imports.library.evidence,
                    'prepare':imports.library.prepare,'edit':imports.library.edit,'create':imports.create,
+                   'card_preview':ordinary_preview,'card_status':imports.cards.status,'card_edit':imports.cards.edit,
+                   'card_create':imports.create_cards,'card_scene_status':imports.card_publisher.info,
+                   'history_preview':imports.history.preview, 'history_commit':imports.history.commit,
+                   'history_status':imports.history.status, 'history_update':imports.history.update,
+                   'card_scene_enable':imports.card_publisher.enable,
+                   'plan':imports.profiles.plan,'plan_evidence':imports.profiles.evidence,
+                   'plan_archive':imports.profiles.archive,'review':imports.profiles.review,'review_all':imports.profiles.review_all,
                    'style':imports.info,'update':imports.update,'feedback':imports.feedback}
             if name=='history':
                 from .import_history import page
                 return web.json_response(await asyncio.to_thread(page,store,**args))
-            if name=='replay':return web.json_response(imports.analysis.start(**args,confirmed=True,cached_only=True))
+            if name=='replay':return web.json_response(imports.analyze(**args,confirmed=True,cached_only=True))
+            if name=='card_compose':
+                if engine.draining:raise RuntimeErrorBase('service_draining')
+                return web.json_response(imports.cards.start(**args))
             if name=='analyze':
                 if engine.draining:raise RuntimeErrorBase('service_draining')
-                return web.json_response(imports.analysis.start(**args))
-            if name=='cancel':return web.json_response(await imports.analysis.cancel(**args))
+                return web.json_response(imports.analyze(**args))
+            if name=='cancel':return web.json_response(await imports.cancel(**args))
             if name=='revoke':return web.json_response(await imports.revoke(**args))
             if name not in local:raise RuntimeErrorBase('unknown_import_action')
             return web.json_response(await asyncio.to_thread(local[name],**args))
@@ -594,7 +608,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         if operation == "resume":
             organization.draining = False
         if operation == "stop":
-            await imports.analysis.drain()
+            await imports.drain()
             await compiler.drain()
             await organization.drain()
             await engine.wait()
@@ -645,7 +659,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     app.on_startup.append(startup)
 
     async def cleanup(_):
-        await imports.analysis.drain()
+        await imports.drain()
         engine.draining = True
         housekeeping=app.get('delivery_housekeeping')
         if housekeeping:

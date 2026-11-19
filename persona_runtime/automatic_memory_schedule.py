@@ -2,9 +2,10 @@
 import json
 import re
 from datetime import datetime
-from .archive import read_exact,binding,turn_scope
+from .archive import binding,turn_scope
 from .models import LOCAL_USER_ID,RuntimeErrorBase,timestamp
 from .organization import encoded
+from . import import_memory_scope as history_scope
 
 
 def schedule(coordinator,db,pid,settings,enabled_at,force=False):
@@ -14,9 +15,24 @@ def schedule(coordinator,db,pid,settings,enabled_at,force=False):
     manual=json.loads(request['result_json']) if request else None
     if manual and manual['policy_id']!=coordinator.engine.managed.policy(db,pid)['id']:manual=None
     unknown=blocked_sources(db,pid)
+    model=coordinator.engine.model()
     for (sid,) in db.execute('SELECT id FROM sessions WHERE persona_id=? ORDER BY created_at,id',(pid,)).fetchall():
         groups={}
-        for row in db.execute("SELECT rowid AS ordinal,* FROM turns WHERE session_id=? AND status='completed' ORDER BY rowid",(sid,)):
+        # Imported sessions can hold years of speech. Admit only the next page
+        # of unsettled transcript turns per pass, alongside ordinary new turns.
+        query="""SELECT t.rowid AS ordinal,t.* FROM turns t
+            WHERE session_id=? AND status='completed' AND source_key NOT LIKE 'imported.%'"""
+        native = db.execute(query,(sid,)).fetchall()
+        from .import_history import history_allowed
+        history = []
+        if settings.get('memory_backfill',True) and model.get('encrypted_key') and history_allowed(db,sid,"memory",providers=model):
+            history = db.execute("""SELECT t.rowid AS ordinal,t.* FROM turns t
+                LEFT JOIN memory_coverage c ON c.turn_id=t.id
+                WHERE t.session_id=? AND t.status='completed' AND t.source_key LIKE 'imported.%'
+                AND (t.user_event_id IS NOT NULL OR t.reply_event_id IS NOT NULL)
+                AND (c.turn_id IS NULL OR c.disposition IN ('unprocessed','stale'))
+                ORDER BY t.rowid LIMIT 32""",(sid,)).fetchall()
+        for row in [*native,*history]:
             t=dict(row);selected=turn_scope(db,t)
             if selected['channel'] not in settings['channels'] or selected['channel']=='qq' and (selected['bot'],selected['peer'])!=(settings['qq']['bot'],settings['qq']['peer']):continue
             key=encoded(selected);groups.setdefault(key,[]).append(t);scopes[key]=selected
@@ -26,8 +42,13 @@ def schedule(coordinator,db,pid,settings,enabled_at,force=False):
             s=db.execute('SELECT * FROM memory_scopes WHERE scope_key=?',(key,)).fetchone()
             pending=[]
             for t in turns:
-                r=read_exact(db,selected,{'kind':'turn','id':t['id']})
-                if r['status']!='found':continue
+                r=history_scope.source_group(db,selected,t,model=model)
+                if r['status']!='found':
+                    if history_scope.imported(t):
+                        db.execute("""INSERT INTO memory_coverage VALUES(?,?,?,?,?,NULL,'revoked','invalid',?)
+                                   ON CONFLICT(turn_id) DO UPDATE SET disposition='revoked',summary_state='invalid'""",
+                                   (pid,LOCAL_USER_ID,t['id'],key,binding(r).get('hash',''),timestamp()))
+                    continue
                 c=db.execute('SELECT * FROM memory_coverage WHERE turn_id=?',(t['id'],)).fetchone();sha=binding(r)['hash']
                 if not c:db.execute("INSERT INTO memory_coverage VALUES(?,?,?,?,?,NULL,'unprocessed','pending',?)",(pid,LOCAL_USER_ID,t['id'],key,sha,timestamp()))
                 if c and c['source_hash']==sha and c['disposition'] not in ('unprocessed','stale'):continue
@@ -38,7 +59,7 @@ def schedule(coordinator,db,pid,settings,enabled_at,force=False):
             sealed=lifecycle and lifecycle[0]=='sealed';idle=now-max(datetime.fromisoformat(t['updated_at']).timestamp() for t in turns)>=120
             ready=force or sealed or idle
             if ready:
-                fresh=[t for t in pending if datetime.fromisoformat(t['created_at']).timestamp()>=s['enabled_epoch']]
+                fresh=[t for t in pending if not history_scope.imported(t) and datetime.fromisoformat(t['created_at']).timestamp()>=s['enabled_epoch']]
                 urgent=[t for t in fresh if t['user_event_id'] and re.search(r'更正|纠正|改为|以这次为准|\bcorrection\b',db.execute('SELECT text FROM events WHERE id=?',(t['user_event_id'],)).fetchone()[0],re.I)]
                 historical=[t for t in pending if t not in fresh]
                 trigger='sealed' if sealed else 'incremental'
@@ -52,7 +73,9 @@ def schedule(coordinator,db,pid,settings,enabled_at,force=False):
                     if p['scope']!=selected:continue
                     ids={b['turn_id'] for b in p['bindings']}
                     if ids & unknown:continue
-                    remaining=[t for t in turns if t['id'] in ids and read_exact(db,selected,{'kind':'turn','id':t['id']})['status']=='found']
+                    originals = db.execute("SELECT rowid AS ordinal,* FROM turns WHERE session_id=? AND id IN ("+
+                                           ",".join("?" for _ in ids)+") ORDER BY rowid",(sid,*ids))
+                    remaining = [dict(t) for t in originals if history_scope.source_group(db,selected,dict(t),model=model)['status']=='found']
                     if not remaining:db.execute("UPDATE memory_fragments SET state='superseded' WHERE id=?",(fragment['id'],));continue
                     choices.setdefault(key,[]).append((1,remaining[0]['ordinal'],sid,remaining,fragment['id'],False,'incremental'))
     for key,work in choices.items():

@@ -141,6 +141,13 @@ def _sanitize_database(path):
         # Pending work has no new-machine execution authority. Completed and
         # unknown outcomes and their usage stay untouched.
         if 'knowledge_control' in tables:
+            for entry in db.execute("SELECT key,value FROM knowledge_control WHERE key GLOB 'persona.import_history.*'").fetchall():
+                grant=json.loads(entry['value'])
+                if grant.get('version')!=2:
+                    continue
+                grant.update(organize=False,providers={},migration_requires_review=True,revision=grant['revision']+1)
+                db.execute('UPDATE knowledge_control SET value=? WHERE key=?',(json.dumps(grant,ensure_ascii=False),entry['key']))
+                changes['imported_history_grants_paused']=changes.get('imported_history_grants_paused',0)+1
             from .knowledge_native import POLICY as NATIVE_POLICY
             for (persona_id,) in db.execute('SELECT id FROM personas').fetchall():
                 key='knowledge.native.policy.'+persona_id

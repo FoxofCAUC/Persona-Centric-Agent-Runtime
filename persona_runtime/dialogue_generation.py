@@ -217,6 +217,9 @@ class DialogueGeneration:
             # permission retain the exact endpoint of the frozen stage.
             require_generation_provider({'base_url':credential_model.get('base_url'), 'name':public['name']})
             live = dict(public, encrypted_key=credential_model['encrypted_key'])
+            from .history_context import validate as validate_history
+            proof = json.loads(unit["context_json"]).get("guard", {}).get("import_history_sources")
+            validate_history(db,turn,proof,recipient=live)
             guard_cloud_dispatch(self.store, turn['persona_id'], PERMISSIONS[stage], live)
             preflight = getattr(self.client, 'preflight', None)
             if preflight:

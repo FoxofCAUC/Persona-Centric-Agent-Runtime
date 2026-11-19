@@ -111,15 +111,11 @@ class ImportCases(unittest.IsolatedAsyncioTestCase):
             with self.store.connection() as db:
                 sid=db.execute("SELECT session_id FROM channel_sessions WHERE persona_id=?",(pid,)).fetchone()[0]
                 turns=[dict(t) for t in db.execute("SELECT * FROM turns WHERE session_id=? ORDER BY rowid",(sid,))]
-                canonical=[e for t in turns for group in [read_exact(db,scope(pid,"desktop"),{"kind":"turn","id":t["id"]})]
-                           for e in chronological(group)]
-                from types import SimpleNamespace
-                from persona_runtime.automatic_memory import AutomaticMemory
-                automation=AutomaticMemory(SimpleNamespace(store=self.store,model=lambda:{"max_input_chars":24000}))
-                payload=automation.payload(db,pid,sid,scope(pid,"desktop"),
-                    [dict(t)|{"ordinal":i+1} for i,t in enumerate(turns)])
-                self.assertEqual([e["id"] for e in payload["events"]],[e["id"] for e in canonical])
-                self.assertEqual(len(canonical),7)
+                for turn in turns:
+                    query = {"kind":"turn","id":turn["id"]}
+                    self.assertEqual(read_exact(db,scope(pid,"desktop"),query)["status"], "unavailable")
+                canonical=[e for t in turns for e in chronological(read_exact(db,scope(pid,"desktop"),
+                           {"kind":"turn","id":t["id"]}, audit=True))]
                 self.assertEqual([r["text"] for r in canonical],["100","200","101","102","201","202","103"])
                 self.assertEqual(db.execute("SELECT count(*) FROM attempts").fetchone()[0],0)
             recent=page(self.store,pid,sid,limit=2)
@@ -145,6 +141,8 @@ class ImportCases(unittest.IsolatedAsyncioTestCase):
             engine=ChatEngine(self.store,self.config,client)
             try:
                 sid=engine.session("desktop")["session_id"]
+                preview=self.imp.history.preview(self.ident,d["revision"],"A",d["mapping"],persona_id=pid,session_id=sid)
+                self.imp.history.commit(preview,"302",True)
                 from persona_runtime.ingress import IngressService
                 from persona_runtime.tk_notice import CONTRACT as VISIBLE
                 ingress=IngressService(engine)

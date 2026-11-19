@@ -12,3 +12,8 @@ docs/expression/*.json -text
 experiments/persona_reply_n0/materials.json -text
 experiments/persona_reply_n0/author-decision.json -text
 experiments/persona_reply_n0/prompts/*.prompt -text
+
+persona_runtime/import_prompt_assets/*.json -text
+
+# The offline recovery contract verifies the helper's original LF bytes.
+experiments/companion_reference.py text eol=lf

@@ -63,7 +63,7 @@ def summary_usable(conn,turn,summary):
     return all(read_exact(conn,selected,{'kind':'event','id':i})['status']=='found' for i in ids)
 
 
-def memory_usable(conn,turn,memory,*,for_review=False):
+def memory_usable(conn,turn,memory,*,for_review=False,purpose='dialogue',providers=None):
     """Human corrections remain authoritative; withdrawn evidence does not."""
     from .archive import find_turn
     from .turn_input import load_turn_sources
@@ -79,9 +79,15 @@ def memory_usable(conn,turn,memory,*,for_review=False):
         source=find_turn(conn,'event',ident)
         if source:
             if source['status']!='completed' or turn_scope(conn,source)!=selected:return False
+            if ident.startswith("imported.") and purpose != "evidence":
+                from .import_history import history_allowed
+                if not history_allowed(conn,source["session_id"],purpose,providers):
+                    return False
             if turn['channel']=='qq' and event['role']!='user':return False
             related=load_turn_sources(conn,source)
         else:
+            if ident.startswith("imported."):
+                return False
             # Legacy manual notes have no platform identity. They are only
             # available on the local desktop, never inferred to be QQ data.
             if turn['channel']!='desktop':return False

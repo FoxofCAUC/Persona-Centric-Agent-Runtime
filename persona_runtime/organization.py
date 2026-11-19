@@ -10,6 +10,7 @@ from .service import RuntimeService
 from .turn_input import load_turn_sources
 from .memory_policy import exclude_sources, exclude_memory, project_capacity_used
 from .organization_output import OutputError
+from . import import_memory_scope as history_scope
 
 
 def encoded(value):
@@ -22,6 +23,16 @@ def digest(value):
 
 def normalized(text):
     return "".join(unicodedata.normalize("NFKC", text).lower().split())
+
+
+async def local_maintenance(operation, *args, **kwargs):
+    """Wait for the SQLite owner to release its connection on shutdown."""
+    work=asyncio.create_task(asyncio.to_thread(operation,*args,**kwargs))
+    try:
+        return await asyncio.shield(work)
+    except asyncio.CancelledError:
+        await asyncio.gather(work,return_exceptions=True)
+        raise
 
 
 def eligible_turns(conn, session_id, upper=None):
@@ -227,7 +238,9 @@ class OrganizationEngine:
             if value is not None and (type(value) is not int or value < 0):
                 raise RuntimeErrorBase("invalid_source_range")
         previous = latest_summary(conn, session_id) if mode != "candidates" and not rebuild else None
-        if previous and previous.get('source_refs_json'):
+        model = self.model()
+        memory_enabled = self.automatic and self.automatic.is_enabled(conn,persona_id)
+        if previous and (previous.get('source_refs_json') or not history_scope.allowed_summary(conn,previous,model,memory_enabled)):
             previous = None  # Typed sealed sources are not legacy generated semantics.
         if start_row is None:
             from .organization_output import coverage_gaps
@@ -236,7 +249,7 @@ class OrganizationEngine:
             start_row = previous["end_row"]+1 if previous else 0
         if previous and start_row <= previous["end_row"]:
             raise RuntimeErrorBase("disable_summary_before_rebuild")
-        turns = [r for r in eligible_turns(conn, session_id, end_row) if r["ordinal"] >= start_row]
+        turns = [r for r in history_scope.accepted_turns(conn,eligible_turns(conn,session_id,end_row),model,memory_enabled) if r["ordinal"] >= start_row]
         if not turns:
             raise RuntimeErrorBase("no_eligible_turns")
         channel = turns[0]["channel"]
@@ -246,6 +259,14 @@ class OrganizationEngine:
         while batch:
             events = []
             for turn in batch:
+                if history_scope.imported(turn):
+                    from .import_history import chronological
+                    from .archive import turn_scope
+                    source=history_scope.source_group(conn,turn_scope(conn,turn),turn,model=model)
+                    if source['status']!='found':raise RuntimeErrorBase('source_expired')
+                    events.extend({"id":e["id"],"role":e["role"],"text":e["text"],"turn":turn["ordinal"]}
+                                  for e in chronological(source))
+                    continue
                 for event_id in load_turn_sources(conn,turn):
                     event = RuntimeService._owned(conn, "events", event_id, persona_id)
                     events.append({"id": event["id"], "role": event["role"], "text": event["text"], "turn": turn["ordinal"]})
@@ -261,7 +282,7 @@ class OrganizationEngine:
             from .chat import terms
             query = terms(" ".join(e["text"] for e in events if e["role"] == "user"))
             payload["existing_memories"] = [dict(m) for m in conn.execute("SELECT id,text,category,revision FROM memories WHERE persona_id=? AND status='active' ORDER BY updated_at DESC", (persona_id,))
-                                            if query.intersection(terms(m["text"]))][:30]
+                                            if query.intersection(terms(m["text"])) and history_scope.allowed_memory(conn,m['id'],model,memory_enabled)][:30]
             if sum(len(m["content"]) for m in self.messages(payload)) <= self.model()["max_input_chars"]:
                 break
             batch.pop()
@@ -505,25 +526,20 @@ class OrganizationEngine:
                 self.schedule.pause_changed_models()
                 background = not self.foreground_only and background_allowed(self.store.paths)
                 if background:
-                    if self.automatic:self.automatic.tick()
+                    if self.automatic:
+                        await local_maintenance(self.automatic.tick)
                     self.proactive.tick()
                     await self.knowledge.tick()
                 if background and time.time()-self.last_scan >= 30 and not self.chat.draining:
                     self.last_scan = time.time()
-                    self.schedule.daily_tick()
-                    self.schedule.incremental_tick()
+                    await local_maintenance(self.schedule.daily_tick)
+                    await local_maintenance(self.schedule.incremental_tick)
                 worked = await self.run_next()
                 if not worked:
                     if background and time.time()-getattr(self,'_recall_maintenance_at',0)>=2:
                         self._recall_maintenance_at=time.time()
                         from .recall_runtime import RecallRuntime
-                        local_work=asyncio.create_task(asyncio.to_thread(RecallRuntime(self.store).maintain,pages=1))
-                        try:await asyncio.shield(local_work)
-                        except asyncio.CancelledError:
-                            # Cancelling the asyncio waiter does not stop SQLite's
-                            # worker thread. Own it until its connection is closed.
-                            await asyncio.shield(local_work)
-                            raise
+                        await local_maintenance(RecallRuntime(self.store).maintain,pages=1)
                     await asyncio.sleep(.5)
             except asyncio.CancelledError:
                 raise

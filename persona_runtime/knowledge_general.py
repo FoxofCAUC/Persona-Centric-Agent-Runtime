@@ -102,7 +102,16 @@ def attach(messages,details,result,turn):
     from .knowledge_translation import context
     body,sources,translation=context(result,remaining,scene_voice=bool(details.get('scene_voice')))
     if body:
-        messages=[dict(m) for m in messages];messages[0]['content']+=body
+        messages=[dict(m) for m in messages]
+        system = messages[0]['content']
+        time_meta = next((b for b in (details.get('prompt_assembly') or {}).get('blocks', [])
+                          if b['name']=='history_recorded_at' and b['role']=='system'), None)
+        if time_meta:
+            offset = time_meta['start_character']
+            messages[0]['content'] = system[:offset] + body + system[offset:]
+            time_meta['start_character'] += len(body)
+        else:
+            messages[0]['content'] += body
         if details.get('prompt_assembly'):
             assembly=details['prompt_assembly'];assembly.update(input_characters=sum(len(m['content']) for m in messages),input_snapshot_hash=fingerprint(messages))
             if assembly.get('character_consumption'):assembly['character_consumption']['final_input_hash']=fingerprint(messages)

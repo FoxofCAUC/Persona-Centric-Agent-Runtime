@@ -57,6 +57,45 @@ class InstallationTests(unittest.TestCase):
         self.assertEqual(before,cfg.file.read_bytes())
         self.assertEqual(resolve_home(source_root=self.source,environ={}),self.paths.home)
 
+    def test_webview_registration_adds_only_locked_frontend_packages(self):
+        cfg = ConfigStore(self.paths)
+        cfg.initialize()
+        before = cfg.file.read_bytes()
+        python = self.paths.home / '.venv/Scripts/python.exe'
+        python.parent.mkdir(parents=True)
+        python.touch()
+        shutil.copyfile(Path(__file__).resolve().parents[1] / 'uv.lock', self.source / 'uv.lock')
+        results = [subprocess.CompletedProcess([], code) for code in (1, 0, 0, 0)]
+        with patch('persona_runtime.installation.subprocess.run', side_effect=results) as run, \
+             patch('persona_runtime.installation.provisioning_environment', return_value={}) as env, \
+             patch('persona_runtime.installation.shutil.which', return_value='uv'):
+            register_existing(self.paths, source_root=self.source, frontend='webview')
+            register_existing(self.paths, source_root=self.source, frontend='webview')
+        env.assert_called_once_with(self.paths)
+        sync = run.call_args_list[1].args[0]
+        self.assertEqual(sync[:2], ['uv', 'sync'])
+        self.assertIn('--frozen', sync)
+        self.assertIn('--inexact', sync)
+        self.assertEqual(sync[sync.index('--python') + 1], str(python))
+        skipped = {name for flag, name in zip(sync, sync[1:]) if flag == '--no-install-package'}
+        self.assertTrue({'aiohttp', 'certifi', 'onnxruntime', 'fastembed'} <= skipped)
+        self.assertTrue({'pywebview', 'pythonnet', 'clr-loader', 'cffi'}.isdisjoint(skipped))
+        self.assertEqual(cfg.file.read_bytes(), before)
+
+    def test_webview_registration_respects_external_interpreter(self):
+        cfg = ConfigStore(self.paths)
+        cfg.initialize()
+        python = self.root / 'custom-python.exe'
+        python.touch()
+        shutil.copyfile(Path(__file__).resolve().parents[1] / 'uv.lock', self.source / 'uv.lock')
+        with patch.dict(os.environ, {'PCAR_PYTHON': str(python)}), \
+             patch('persona_runtime.installation.subprocess.run', return_value=subprocess.CompletedProcess([], 1)), \
+             patch('persona_runtime.installation.provisioning_environment') as env:
+            with self.assertRaisesRegex(ValueError, 'PCAR_PYTHON'):
+                register_existing(self.paths, source_root=self.source, frontend='webview')
+        env.assert_not_called()
+        self.assertFalse((self.source / '.pcar-local.json').exists())
+
     def test_prepare_download_has_no_direct_fallback(self):
         from persona_runtime.installation import provisioning_environment
         with patch('persona_runtime.network_proxy.configured_proxy',return_value=None),self.assertRaisesRegex(ValueError,'不会回退直连'):

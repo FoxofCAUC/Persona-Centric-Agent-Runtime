@@ -4,6 +4,65 @@ from .models import LOCAL_USER_ID,PersonaSpec,RuntimeErrorBase,identifier,timest
 from .organization import digest,encoded
 
 
+HISTORY_REVIEW = "imported_history_review_required"
+REVIEW_MARK = "persona.portable.history.checked."
+
+
+def inherited_history_remaps(db, archive_id):
+    """Follow identity maps retained by older portable exports through each copy."""
+    row = db.execute("""SELECT json_extract(data_json,'$.identity_map'),
+        json_extract(data_json,'$.package.memory_imports') FROM memory_imports
+        WHERE id=? AND json_array_length(data_json,'$.package.memory_imports')>0""",(archive_id,)).fetchone()
+    if not row:
+        return
+    pending = [(old,(json.loads(row[0]),)) for old in json.loads(row[1])]
+    while pending:
+        old, parents = pending.pop()
+        if not isinstance(old,dict) or not isinstance(old.get("data_json"),str):
+            continue
+        try:
+            archive = json.loads(old["data_json"])
+        except (ValueError,TypeError):
+            continue
+        if not isinstance(archive,dict) or not isinstance(archive.get("identity_map"),dict):
+            continue
+        remap = archive["identity_map"]
+        for source,destination in remap.items():
+            if not source.startswith("imported."):
+                continue
+            for parent in parents:
+                destination = parent.get(destination) if isinstance(destination,str) else None
+                if destination is None:
+                    break
+            if isinstance(destination,str):
+                yield destination
+        package = archive.get("package")
+        if isinstance(package,dict) and isinstance(package.get("memory_imports"),list):
+            pending.extend((prior,(remap,*parents)) for prior in package["memory_imports"])
+
+
+def protect_history_remaps(db, import_id=None):
+    """Reapply source restrictions after portable imports assign new event IDs."""
+    query = """SELECT i.id,i.persona_id,i.user_id FROM memory_imports i
+               WHERE NOT EXISTS(SELECT 1 FROM knowledge_control c WHERE c.key=?||i.id)"""
+    params = [REVIEW_MARK]
+    if import_id is not None:
+        query += " AND i.id=?"
+        params.append(import_id)
+    for archive_id, pid, uid in db.execute(query, params).fetchall():
+        inherited = list(inherited_history_remaps(db,archive_id))
+        db.execute("""INSERT INTO source_exclusions(event_id,persona_id,user_id,reason,created_at)
+            SELECT e.id,e.persona_id,e.user_id,?,? FROM events e JOIN (
+                SELECT remap.value AS id FROM memory_imports i,json_each(i.data_json,'$.identity_map') remap
+                WHERE i.id=? AND remap.key GLOB 'imported.*'
+                UNION ALL SELECT value AS id FROM json_each(?)
+            ) original ON original.id=e.id
+            WHERE e.persona_id=? AND e.user_id=?
+            ON CONFLICT(event_id) DO UPDATE SET reason=excluded.reason,created_at=excluded.created_at
+            WHERE source_exclusions.reason='memory_revised'""",(HISTORY_REVIEW,timestamp(),archive_id,json.dumps(inherited),pid,uid))
+        db.execute("INSERT INTO knowledge_control(key,value) VALUES(?, 'true')", (REVIEW_MARK+archive_id,))
+
+
 def import_export(store,package,expected_selected,operation_id):
     if not isinstance(package,dict) or package.get('format_version') not in (17,18,19,20,21,22,23) or not isinstance(operation_id,str) or not operation_id:
         raise RuntimeErrorBase('invalid_business_export')
@@ -21,7 +80,7 @@ def import_export(store,package,expected_selected,operation_id):
         for rows in (sessions,events,memories):
             if any(r['persona_id']!=source_pid or r['user_id']!=LOCAL_USER_ID for r in rows):raise ValueError()
         for e in events:
-            if e['session_id'] not in sids or e['role'] not in ('user','persona','system') or not isinstance(e['text'],str):raise ValueError()
+            if e['session_id'] not in sids or e['role'] not in ('user','persona','note','system') or not isinstance(e['text'],str):raise ValueError()
         for m in memories:
             if m['source_event_id'] not in eids or m['root_id'] not in mids or m['previous_id'] and m['previous_id'] not in mids:raise ValueError()
             if m['status'] not in ('active','superseded','retracted') or type(m['revision']) is not int or m['revision']<1:raise ValueError()
@@ -72,10 +131,15 @@ def import_export(store,package,expected_selected,operation_id):
         # Keep all exported audit/source/temporal records without restoring
         # sender identities, task leases, policies or old execution IDs.
         archived={'package':package,'private_review_required':protected,'imported_as_review_only':True,'identity_map':mapping}
-        db.execute('INSERT INTO memory_imports VALUES(?,?,?,?,?,?)',(identifier(),pid,LOCAL_USER_ID,package['format_version'],encoded(archived),now))
+        archive_id = identifier()
+        db.execute('INSERT INTO memory_imports VALUES(?,?,?,?,?,?)',(archive_id,pid,LOCAL_USER_ID,package['format_version'],encoded(archived),now))
         for s in sessions:db.execute('INSERT INTO sessions VALUES(?,?,?,?,?)',(mapping[s['id']],pid,LOCAL_USER_ID,s.get('scope','private'),s['created_at']))
-        for e in events:db.execute('INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES(?,?,?,?,?,?,?)',(mapping[e['id']],mapping[e['session_id']],pid,LOCAL_USER_ID,e['role'],e['text'],e['created_at']))
+        for e in events:
+            role = "note" if e["role"] == "system" else e["role"]
+            db.execute('INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES(?,?,?,?,?,?,?)',
+                       (mapping[e["id"]],mapping[e["session_id"]],pid,LOCAL_USER_ID,role,e["text"],e["created_at"]))
         for s in package.get('source_exclusions',[]):db.execute('INSERT INTO source_exclusions VALUES(?,?,?,?,?)',(mapping[s['event_id']],pid,LOCAL_USER_ID,s['reason'],s['created_at']))
+        protect_history_remaps(db, archive_id)
         remaining=list(memories)
         exported_facts={f['memory_id']:f for f in package.get('memory_facts',[])}
         while remaining:

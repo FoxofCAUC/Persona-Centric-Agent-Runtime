@@ -403,6 +403,9 @@ class Store:
             if version < 33 and SCHEMA_VERSION >= 33:
                 from .schema_dialogue import migrate as migrate_dialogue
                 migrate_dialogue(conn)
+            if SCHEMA_VERSION >= 33:
+                from .portable_memory import protect_history_remaps
+                protect_history_remaps(conn)
             if conn.execute("PRAGMA foreign_key_check").fetchone():
                 raise RuntimeErrorBase("Migration foreign key verification failed")
             self._check(conn)

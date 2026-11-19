@@ -31,9 +31,27 @@ def context(targets):
             if 'recent' in origins and pair not in retained:
                 origins = [s for s in origins if s != 'recent']
             if origins:
-                state.append({'role':item['role'], 'source':origins, 'text':item['text']})
+                entry = {'role':item['role'], 'source':origins, 'text':item['text']}
+                if item.get("imported_history") and item.get("recorded_at"):
+                    entry["recorded_at"] = item["recorded_at"]
+                state.append(entry)
         if len(json.dumps(state, ensure_ascii=False, separators=(',', ':'))) <= MAX_CONTEXT:
             return state
+        if len(retained) == 1 and any(t.get("imported_history") and "recent" in t["origins"]
+                                      and t["pro_target"]["message_index"] - int(t["role"] == "assistant") == retained[0]
+                                      for t in targets):
+            mandatory = [item for item in state if item["source"] != ["recent"]]
+            available = MAX_CONTEXT - len(json.dumps(mandatory, ensure_ascii=False, separators=(",", ":")))
+            chosen = []
+            for item in reversed(state):
+                if item["source"] == ["recent"]:
+                    size = len(json.dumps(item, ensure_ascii=False, separators=(",", ":"))) + 1
+                    if size > available:
+                        continue
+                    available -= size
+                chosen.append(item)
+            if available >= 0:
+                return list(reversed(chosen))
         if not retained:
             return None
         retained = retained[1:]
@@ -111,7 +129,7 @@ def project(messages, assembly, card, *, notice=False):
             text = explicit_facts(text)
         elif name == 'reply_protocol':
             require(text == (SEARCH_NOTICE if notice else ''), 'reply_protocol')
-        elif name not in ('memory_summary','recall_support','explicit_references','search_notice'):
+        elif name not in ('memory_summary','recall_support','explicit_references','search_notice','history_recorded_at'):
             # Relationship, social style, temporary voices and optional guide blocks are not speech inputs here.
             continue
         if text:

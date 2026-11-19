@@ -29,7 +29,7 @@ class WorkbenchStartupTests(unittest.TestCase):
         stack = ExitStack()
         self.addCleanup(stack.close)
         self.show = stack.enter_context(patch('persona_runtime.workbench_errors.show_error', return_value=True))
-        self.lock_type = stack.enter_context(patch('persona_runtime.desktop.InstanceLock'))
+        self.lock_type = stack.enter_context(patch('persona_runtime.desktop.acquire_or_wake'))
         self.lock = self.lock_type.return_value
         self.controller_type = stack.enter_context(patch('persona_runtime.desktop.ServiceController'))
         self.controller = self.controller_type.return_value
@@ -125,8 +125,7 @@ class WorkbenchStartupTests(unittest.TestCase):
     def test_incomplete_cleanup_does_not_open_workbench_or_report_success(self):
         self.environment()
         self.controller.has_resident_processes.return_value = True
-        self.force.return_value = {'success': False, 'report_file': 'private-control-report'}
-        with self.assertRaises(RuntimeError):
+        with patch('persona_runtime.workbench_instance.time.monotonic', side_effect=[0, 6]), self.assertRaises(RuntimeErrorBase):
             run(self.paths)
         self.window_type.assert_not_called()
         self.controller.end_console.assert_called_once()

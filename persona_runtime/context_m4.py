@@ -45,17 +45,22 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
     history = []
     history_rows = []
     history_items=[];initial_removed=[]
+    from .history_context import fit_speech, project_speech
+    from .scene_policy import BASELINE
+    context_policy = json.loads(turn.get("context_policy_snapshot") or "{}") or {}
+    native_bursts = (turn["channel"]=="desktop" and (context_policy.get("companion") or {}).get("version")==BASELINE)
     if evidence is None:
         from .knowledge_search_notice import read_many as read_search_notices
         notices=read_search_notices(conn,turns[-10:])
         for previous in turns[-10:]:
             if previous['ordinal'] in covered:continue
             if previous.get('source_key','').startswith('imported.'):
-                from .import_history import group, conversation_messages
+                from .import_history import group, chronological
                 from .archive import turn_scope
                 entry=group(conn,previous,turn_scope(conn,previous),{'kind':'turn','id':previous['id']})
                 if entry['status']=='found':
-                    history.append(conversation_messages(entry))
+                    pair, _ = project_speech(chronological(entry),native_bursts)
+                    history.append(pair)
                     history_rows.append(previous['ordinal'])
                 continue
             event=conn.execute('SELECT text FROM events WHERE id=?',(previous['reply_event_id'],)).fetchone()
@@ -71,14 +76,22 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
             if evidence['context_mode']=='legacy_recent' and evidence['orders'][tid] in covered:reason='covered_by_summary'
             pair=[{'role':'user','content':render_input(group['members'],bool(group['batch_id']))}]
             if group.get('coverage')=='imported_transcript':
-                from .import_history import conversation_messages
-                pair=conversation_messages(group)
+                from .import_history import chronological
+                remaining = 6000 - used if evidence["context_mode"] == "working_set" else None
+                retained, pair, dates, omitted = fit_speech(chronological(group), native_bursts, remaining)
+                initial_removed.extend({"kind":"history_event","id":eid,"reason":"history_budget"} for eid in omitted)
+                if not pair:
+                    reason = reason or "history_budget"
             elif group['replies']:pair.append({'role':'assistant','content':'\n'.join(r['text'] for r in group['replies'])})
             cost=sum(len(m['content']) for m in pair)
             if evidence['context_mode']=='working_set' and used+cost>6000:reason=reason or 'history_budget'
             if reason:
                 initial_removed.append({'kind':'history','id':tid,'reason':reason});continue
-            used+=cost;history_items.append({**item,'pair':pair})
+            used += cost
+            merged = {**item, "pair":pair}
+            if group.get("coverage") == "imported_transcript":
+                merged.update(source_times=dates,speech_rows=retained,native_bursts=native_bursts)
+            history_items.append(merged)
         history_items.sort(key=lambda i:evidence['orders'][i['group']['turn_id']])
         history=[i['pair'] for i in history_items]
         history_rows=[evidence['orders'][i['group']['turn_id']] for i in history_items]
@@ -131,7 +144,9 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         for _,_,_,memory,*_ in memories:
             f=conn.execute('SELECT valid_from,valid_until FROM memory_facts WHERE memory_id=?',(memory['id'],)).fetchone()
             if f:
-                source_times=sorted({r[0] for r in conn.execute('SELECT created_at FROM events WHERE id=? OR id IN (SELECT event_id FROM memory_sources WHERE memory_id=?)',(memory['source_event_id'],memory['id']))})
+                from .import_history import source_time
+                source_times=sorted({when for r in conn.execute('SELECT id,created_at FROM events WHERE id=? OR id IN (SELECT event_id FROM memory_sources WHERE memory_id=?)',(memory['source_event_id'],memory['id']))
+                                     if (when := source_time(conn,r['id']) if r['id'].startswith('imported.') else r['created_at'])})
                 memory_times.append({'id':memory['id'],'recorded_at':source_times,'valid_from':f['valid_from'],'valid_until':f['valid_until']})
     disputes=[]
     from .automatic_memory import available,validate_sources
@@ -246,6 +261,11 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
             *([PromptBlock('dialogue_context',experimental_context,'dialogue_pipeline','dialogue-context-v1')] if experimental_context else []),
             *experimental_blocks,
             PromptBlock('capsule',capsule_text,'decision_capsule','decision-capsule-voice-v2' if voice else 'decision-capsule-v1')]
+        if is_native:
+            from .history_context import time_block
+            stamp = time_block(history_items)
+            if stamp:
+                blocks.append(stamp)
         result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':text})
         assembly.update(expression_renderer=expression_renderer,format_renderer=format_renderer)
         if sum(len(m['content']) for m in result) <= limit:
@@ -267,6 +287,14 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         elif evidence is not None and memories:
             old=memories.pop();removed.append({'kind':'memory','id':old[3]['id'],'reason':'input_budget'})
         elif history:
+            if evidence is not None and len(history_items[0].get("speech_rows",[])) > 1:
+                from .history_context import project_speech
+                item = history_items[0]
+                old_event = item["speech_rows"].pop(0)
+                item["pair"], item["source_times"] = project_speech(item["speech_rows"], item["native_bursts"])
+                history[0] = item["pair"]
+                removed.append({"kind":"history_event", "id":old_event["id"], "reason":"input_budget"})
+                continue
             if evidence is not None:history_items.pop(0)
             history.pop(0)
             removed.append({'kind': 'history', 'ordinal': history_rows.pop(0), 'reason': 'input_budget'})
@@ -359,6 +387,9 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
                 history_items,excluded=filter_history(conn,turn,history_items,evidence,reference_manifest)
                 history=[i['pair'] for i in history_items]
                 history_rows=[evidence['orders'][i['group']['turn_id']] for i in history_items]
+                blocks=[b for b in blocks if b.name!="history_recorded_at"]
+                if stamp := time_block(history_items):
+                    blocks.append(stamp)
             study_record={'version':study['version'],'study_id':study['study_id'],'arm':study['arm'],
                           'character_version':study['character_version'],'field_projected':projected,
                           'omitted_history':excluded}
@@ -383,7 +414,10 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         from .knowledge_translation import SEARCH_NOTICE, search_notice_input
         from .knowledge_search_notice import VERSION as NOTICE_VERSION
         blocks=[block for block in blocks if block.name!='reply_protocol']
+        time_blocks = [b for b in blocks if b.name=="history_recorded_at"]
+        blocks = [b for b in blocks if b.name!="history_recorded_at"]
         blocks.append(PromptBlock('reply_protocol',SEARCH_NOTICE,'knowledge_translation',NOTICE_VERSION))
+        blocks.extend(time_blocks)
         result,assembly=assemble(blocks,[event for pair in history for event in pair],{'role':'user','content':search_notice_input(text)})
         if sum(len(message['content']) for message in result)>limit:
             raise ModelError('context_limit_exceeded')

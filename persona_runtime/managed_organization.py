@@ -251,8 +251,20 @@ class ManagedOrganization:
                 base=model_for_task(db,task['persona_id'],spec)
             expected=processing_model(base,spec)
             if model_contract(model)!=model_contract(expected):raise RuntimeErrorBase('organization_model_changed')
-        elif p['provider']!=provider_identity(model) or p['provider']!=provider_identity(self.engine.model()):
-            raise RuntimeErrorBase('organization_model_changed')
+        else:
+            current_model=self.engine.model()
+            if p['provider']!=provider_identity(current_model):
+                raise RuntimeErrorBase('organization_model_changed')
+            if p['provider']!=provider_identity(model):
+                from .import_memory_scope import has_history
+                saved = payload.get('automatic_memory') and contract['data'].get('phase')=='received' and has_history(db,payload)
+                if not saved or not db.execute("""SELECT 1 FROM organization_receipts r JOIN organization_attempts a
+                        ON a.id=r.attempt_id WHERE a.id=(SELECT id FROM organization_attempts
+                        WHERE task_id=? ORDER BY rowid DESC LIMIT 1)""",(task['id'],)).fetchone():
+                    raise RuntimeErrorBase('organization_model_changed')
+                # This physical call is complete. Only its local publication uses
+                # the renewed grant, and the original attempt keeps its provider.
+                model=current_model
         if payload.get('knowledge_processing'):
             selected=self.scope(db,payload)
             if selected!=contract['scope'] or selected['channel'] not in p['channels']:
@@ -281,12 +293,16 @@ class ManagedOrganization:
         if selected['channel']=='qq' and (selected['bot'],selected['peer'])!=(p['qq']['bot'],p['qq']['peer']):
             raise RuntimeErrorBase('organization_scope_mismatch')
         if task['mode']!='test':
+            from .import_memory_scope import check_payload, has_history
+            if has_history(db,payload) and not self.engine.model().get('encrypted_key'):
+                raise RuntimeErrorBase('history_memory_authorization_required')
+            check_payload(db,payload,model,p.get('memory_automation',False))
             guard_cloud_dispatch(self.store,task['persona_id'],'organization',model)
             if payload.get('automatic_memory'):
                 if not p.get('memory_automation',False):raise RuntimeErrorBase('organization_policy_changed')
                 if check_sources:
                     from .automatic_memory import validate_sources
-                    validate_sources(db,payload,check_memories=payload['automatic_memory']['stage']=='verify')
+                    validate_sources(db,payload,check_memories=payload['automatic_memory']['stage']=='verify',model=model)
             elif check_sources and (payload['guard']!=self.engine.guard(db,task['persona_id'],task['session_id']) or not valid(db,payload)):
                 raise RuntimeErrorBase('source_expired')
         if not model['base_url'] or not model['name']:raise RuntimeErrorBase('organization_model_not_configured')
@@ -624,7 +640,7 @@ class ManagedOrganization:
                     state='queued';c['data']['next_epoch']=self.clock()+(1,2,4)[count-1]
                 c['data']['phase']='received' if has_receipt else ('ready' if safe_retry else 'failed_known' if known_tool or provider_completed else 'unknown')
                 if code=='source_expired':state='stale'
-                if has_receipt and code in ('organization_policy_changed','private_cloud_provider_not_authorized','organization_model_changed'):state='blocked_authorization'
+                if has_receipt and code in ('history_memory_authorization_required','organization_policy_changed','private_cloud_provider_not_authorized','organization_model_changed'):state='blocked_authorization'
                 if self.owns(db,task['id'],generation):
                     db.execute('UPDATE organization_tasks SET status=?,error_code=?,updated_at=? WHERE id=?',(state,'cancelled_by_user' if c['data']['cancel_requested'] else code,timestamp(),task['id']))
                     self.save(db,c)

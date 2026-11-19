@@ -28,7 +28,7 @@ def main():
     store = Store(paths)
     if args.action=='status':
         with store.connection() as db:
-            result = active(db,args.persona)
+            result = active(db,args.persona,store)
         print(json.dumps({'enabled':bool(result),'catalog_sha256':result['catalog_sha256'] if result else None}))
         return
     _closed(paths)

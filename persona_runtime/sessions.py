@@ -149,7 +149,12 @@ def build_manifest(conn, row):
     for t in conn.execute('SELECT rowid AS ordinal,* FROM turns WHERE session_id=? ORDER BY rowid', (row['session_id'],)):
         t = dict(t); members = load_turn_input(conn,t); linked.update(m['id'] for m in members)
         if t['reply_event_id']: linked.add(t['reply_event_id'])
-        ordinary = read_exact(conn,selected,{'kind':'turn','id':t['id']})
+        target = {'kind':'turn','id':t['id']}
+        if t['source_key'].startswith('imported.'):
+            from .import_history import group
+            ordinary = group(conn,t,selected,target,purpose='evidence')
+        else:
+            ordinary = read_exact(conn,selected,target)
         refs = [{'kind':'event','id':m['id'],'hash':fingerprint(m['text'])} for m in members]
         reply = conn.execute('SELECT id,text FROM events WHERE id=?',(t['reply_event_id'],)).fetchone()
         if reply: refs.append({'kind':'event','id':reply['id'],'hash':fingerprint(reply['text']),'role':'generated_reply'})
@@ -162,6 +167,12 @@ def build_manifest(conn, row):
             if isinstance(v,dict):
                 versions[field]={k:({x:value[x] for x in ('id','revision') if x in value} if isinstance(value,dict) else value)
                                  for k,value in v.items() if k in ('id','revision','policy_id','core','expression','relationship','schema_version')}
+        if t['source_key'].startswith('imported.'):
+            from .turn_input import load_turn_sources
+            all_ids = load_turn_sources(conn, t)
+            linked.update(all_ids)
+            refs = [{'kind':'event', 'id':eid, 'hash':fingerprint(conn.execute(
+                'SELECT text FROM events WHERE id=?', (eid,)).fetchone()[0])} for eid in all_ids]
         turns.append({'turn_id':t['id'],'order':t['ordinal'],'status':t['status'],'sources':refs,'member_ids':[m['id'] for m in members],
                       'reply_event_id':t['reply_event_id'],'parts':parts,'binding':binding(ordinary),
                       'legacy_delivery':dict(legacy) if legacy else None,'legacy_disposition':dict(disposition) if disposition else None,
@@ -171,6 +182,23 @@ def build_manifest(conn, row):
     loose = [{'id':e['id'],'role':e['role'],'hash':fingerprint(e['text']),'reason':'no_complete_turn'} for e in conn.execute('SELECT * FROM events WHERE session_id=? ORDER BY seq',(row['session_id'],)) if e['id'] not in linked]
     return {'format_version':1,'pipeline_version':PIPELINE,'scope':selected,'session_id':row['session_id'],
             'activity_revision':row['activity_revision'],'turns':turns,'standalone_events':loose,'user_read':'unknown'}
+
+
+def seal_locked(conn, row, manifest, reason, _clock_evidence=None):
+    """Commit a prepared package while holding the business transaction."""
+    session_id, persona_id = row['session_id'], row['persona_id']
+    selected = {k: row[k] for k in ('persona_id','user_id','channel','bot','peer')}
+    now=timestamp(); package_id=identifier(); manifest.update({'sealed_at':now,'reason':reason})
+    if _clock_evidence is not None:manifest['clock_evidence']=_clock_evidence
+    conn.execute('INSERT INTO session_packages VALUES(?,?,?,?,?,?,?)',(package_id,persona_id,LOCAL_USER_ID,session_id,encoded(manifest),fingerprint(manifest),now))
+    conn.execute("UPDATE session_lifecycle SET state='sealed',revision=revision+1,sealed_at=?,seal_reason=? WHERE session_id=?",(now,reason,session_id))
+    conn.execute('DELETE FROM session_heads WHERE session_id=?',(session_id,))
+    row=owned(conn,session_id,selected);event(conn,row,'sealed',{'package_id':package_id,'reason':reason})
+    eligible=any(t['binding']['status']=='found' for t in manifest['turns'])
+    for kind,state in (('organize','awaiting_manual'),('reflect','deferred_m8')):
+        conn.execute('INSERT INTO session_triggers VALUES(?,?,?,?,?,?,?,?)',(identifier(),persona_id,LOCAL_USER_ID,package_id,kind,PIPELINE,state if eligible else 'no_action',now))
+    result={'state':'sealed','session_id':session_id,'package_id':package_id,'revision':row['revision']}
+    return result
 
 
 class OrganizationDecisionProvider:
@@ -237,16 +265,7 @@ class SessionService:
             row=owned(conn,session_id,selected);check_revision(row,expected_revision)
             blocked=blockers(conn,session_id)
             if blocked:return {'state':'blocked','session_id':session_id,'blockers':blocked,'revision':row['revision']}
-            now=timestamp(); package_id=identifier(); manifest.update({'sealed_at':now,'reason':reason})
-            if _clock_evidence is not None:manifest['clock_evidence']=_clock_evidence
-            conn.execute('INSERT INTO session_packages VALUES(?,?,?,?,?,?,?)',(package_id,persona_id,LOCAL_USER_ID,session_id,encoded(manifest),fingerprint(manifest),now))
-            conn.execute("UPDATE session_lifecycle SET state='sealed',revision=revision+1,sealed_at=?,seal_reason=? WHERE session_id=?",(now,reason,session_id))
-            conn.execute('DELETE FROM session_heads WHERE session_id=?',(session_id,))
-            row=owned(conn,session_id,selected);event(conn,row,'sealed',{'package_id':package_id,'reason':reason})
-            eligible=any(t['binding']['status']=='found' for t in manifest['turns'])
-            for kind,state in (('organize','awaiting_manual'),('reflect','deferred_m8')):
-                conn.execute('INSERT INTO session_triggers VALUES(?,?,?,?,?,?,?,?)',(identifier(),persona_id,LOCAL_USER_ID,package_id,kind,PIPELINE,state if eligible else 'no_action',now))
-            result={'state':'sealed','session_id':session_id,'package_id':package_id,'revision':row['revision']}
+            result=seal_locked(conn,row,manifest,reason,_clock_evidence)
             record_operation(conn,operation_id,'seal',selected,digest,result)
             return result
 

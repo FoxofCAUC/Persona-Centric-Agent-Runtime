@@ -100,13 +100,55 @@ def provisioning_environment(paths):
     return env
 
 
-def register_existing(paths,*,source_root=None):
+def ensure_existing_webview(paths, source, interpreter):
+    import tomllib
+
+    with (source / 'uv.lock').open('rb') as lock:
+        locked = tomllib.load(lock)['package']
+    packages = {item['name']: item for item in locked}
+    expected = packages['pywebview']['version']
+    probe = [str(interpreter), '-I', '-B', '-c',
+             'import sys, webview; from importlib.metadata import version; sys.exit(version("pywebview") != sys.argv[1])',
+             expected]
+    if subprocess.run(probe, capture_output=True, creationflags=NO_WINDOW).returncode == 0:
+        return
+    if interpreter.resolve() != (paths.home / '.venv/Scripts/python.exe').resolve():
+        raise ValueError('自定义解释器缺少新版窗口依赖，请清除 PCAR_PYTHON 后用新版入口打开所选实例，或在自定义环境安装 pywebview==' + expected + '。')
+    uv = shutil.which('uv')
+    if not uv:
+        raise ValueError('旧实例需要补装新版工作台依赖，请安装 uv 后重新双击新版入口。')
+    env = provisioning_environment(paths)
+    frontend_packages = {'pywebview'}
+    pending = ['pywebview']
+    while pending:
+        for dependency in packages[pending.pop()].get('dependencies', ()):
+            name = dependency['name']
+            if name not in frontend_packages:
+                frontend_packages.add(name)
+                pending.append(name)
+    command = [uv, 'sync', '--frozen', '--inexact', '--no-dev', '--no-install-project', '--no-managed-python',
+               '--python', str(interpreter), '--extra', 'workbench-webview']
+    for name in sorted(packages.keys() - frontend_packages):
+        command.extend(['--no-install-package', name])
+    log = paths.home / 'logs/environment-prepare.log'
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open('a', encoding='utf-8') as output:
+        for step in (command, probe):
+            result = subprocess.run(step, cwd=source, env=env, stdout=output, stderr=subprocess.STDOUT,
+                                    creationflags=NO_WINDOW)
+            if result.returncode:
+                raise ValueError('新版工作台依赖准备失败，请查看 ' + str(log) + ' 后重试新版入口。')
+
+
+def register_existing(paths,*,source_root=None,frontend='tk'):
     source=Path(source_root or SOURCE_ROOT).resolve();validate_home(paths.home,source_root=source)
     file=paths.home/'config/workbench.json'
     if not file.is_file():raise ValueError('该目录没有可识别的PCAR实例，未登记。')
     data=read_json(file)
     if data.get('version')!=3 or not data.get('instance_id'):raise ValueError('实例配置不兼容，未登记。')
-    runtime_python(paths)
+    interpreter = runtime_python(paths)
+    if frontend == 'webview':
+        ensure_existing_webview(paths, source, interpreter)
     atomic_json(source/LOCATOR,{'version':1,'runtime_home':str(paths.home)})
     return {'registered':True,'runtime_home':str(paths.home),'business_data_changed':False}
 

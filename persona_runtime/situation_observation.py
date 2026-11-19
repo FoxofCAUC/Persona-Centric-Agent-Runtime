@@ -204,6 +204,9 @@ class SituationObservationService:
             if fresh!=evidence:raise RuntimeErrorBase('observation_snapshot_invalid')
             if status_for(conn,turn['persona_id'],snap['version_id'],current=False)!='ready':return {'status':'projection_unavailable'}
             from .private_personas import guard_cloud_dispatch
+            from .history_context import references_allowed
+            if not references_allowed(conn,turn,model):
+                return {"status":"projection_unavailable"}
             guard_cloud_dispatch(self.store,turn['persona_id'],'selector',model)
             from .memory_policy import project_capacity_used
             cfg=self.config.load();limit=cfg['model']['hourly_limit']

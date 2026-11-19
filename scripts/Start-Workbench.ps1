@@ -20,8 +20,16 @@ try {
     }
     $pythonw = Join-Path (Split-Path -Parent $python) 'pythonw.exe'
     if (-not (Test-Path -LiteralPath $pythonw)) { throw '当前实例缺少pythonw，请修复环境。' }
-    & $python -B -m persona_runtime --home $RuntimeHome prepare --register-existing | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw '实例验证失败，未启动桌面。' }
+    Push-Location -LiteralPath $projectRoot
+    try {
+        $ErrorActionPreference = 'Continue'
+        $verification = & $python -B -m persona_runtime --home $RuntimeHome prepare --register-existing --frontend $Frontend 2>&1
+        $verifyCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = 'Stop'
+        Pop-Location
+    }
+    if ($verifyCode -ne 0) { throw ("实例准备未完成。" + [Environment]::NewLine + ($verification -join [Environment]::NewLine)) }
     Start-Process -FilePath $pythonw -ArgumentList @('-B', '-m', 'persona_runtime', 'gui', '--frontend', $Frontend) -WorkingDirectory $projectRoot -WindowStyle Hidden
 } catch {
     Add-Type -AssemblyName System.Windows.Forms

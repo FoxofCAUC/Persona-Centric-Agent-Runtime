@@ -172,6 +172,36 @@ class Delivery(unittest.IsolatedAsyncioTestCase):
         self.assertIn(self.cards['daily'],self.main.calls[0][0]['content'])
         self.assertIn('ID-NOTICE',self.main.calls[0][0]['content'])
 
+    async def test_imported_history_reaches_jev_preface_and_main_only(self):
+        from persona_runtime.import_personas import PersonaImports
+        imports = PersonaImports(self.store,self.cfg)
+        d = imports.library.add(b"## 1\n88101\n## 1\n88102\n## 2 [2018-12-12 09:45]\n88201\n## 2 [2018-12-12T10:30:00+02:00]\n88202\n> 88909\n")
+        preview = imports.history.preview(d["id"],d["revision"],"A",d["mapping"],persona_id=self.pid)
+        sid = imports.history.commit(preview,identifier(),True)["session_id"]
+        self.enable()
+        self.need_web = True
+        turn = self.send("ID-USER ID-PUBLIC",session_id=sid,public="ID-PUBLIC")
+        notices = await self.wait_for(turn,lambda _:self.chat.history_snapshot(sid).get("pending_notices"))
+        notice = notices[0] | {"persona_id":self.pid,"session_id":sid}
+        self.assertFalse(self.provider.calls)
+        self.assertEqual([r["text"] for r in self.choice.wires[0]["state"] if "recent" in r["source"]],
+                         ["88101","88102","88201","88202"])
+        self.assertIn("88202",json.dumps(self.main.notices[0]))
+        self.assertEqual(self.choice.wires[0]["state"][2]["recorded_at"], "2018-12-12T09:45:00+08:00")
+        self.assertNotIn("recorded_at", self.choice.wires[0]["state"][1])
+        self.assertNotIn("recorded_at", self.choice.wires[0]["state"][-1])
+        tk_notice.display(self.org.processing.search_notice,**notice,acknowledge=True)
+        await self.wait_for(turn,lambda v:v.get("scene_speech"))
+        self.assertEqual(len(self.choice.wires),1)
+        self.assertEqual(len(self.main.calls),1)
+        self.assertIn("88202",json.dumps(self.main.calls[0]))
+        self.assertNotIn("88909",json.dumps(self.main.calls[0]))
+        self.assertNotIn("88202",json.dumps(self.provider.calls[0][1]))
+        for wire in (self.main.calls[0],self.main.notices[0]):
+            dates = json.loads(wire[0]["content"].splitlines()[-1])["history_recorded_at"]
+            self.assertEqual([(wire[row["message_index"]]["content"],row["recorded_at"]) for row in dates],
+                              [("88201\n\n88202","2018-12-12T09:45:00+08:00"),("88201\n\n88202","2018-12-12T10:30:00+02:00")])
+
     async def test_unknown_display_reopen_retains_receipt_and_does_not_replay(self):
         self.enable()
         turn = self.send()

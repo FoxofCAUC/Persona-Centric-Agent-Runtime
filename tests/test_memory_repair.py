@@ -170,14 +170,33 @@ class MemoryRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(turn['ordinal'] if 'ordinal' in turn else 2,fresh['rows'])
 
     async def test_upgrade_twenty_preserves_receipts_on_repeat_and_cascades_delete(self):
-        import sqlite3
-        db=sqlite3.connect(self.store.path)
-        from persona_runtime.schema_m8d import TABLES as automatic_tables
-        for name in reversed(automatic_tables):db.execute('DROP TABLE '+name)
-        from persona_runtime.schema_m8a import TABLES as managed_tables
-        for name in reversed(managed_tables):db.execute('DROP TABLE '+name)
-        db.execute('DROP TABLE organization_receipts');db.execute('PRAGMA user_version=20');db.commit();db.close()
-        self.store.initialize();self.store.initialize()
+        from unittest.mock import patch
+        from persona_runtime.chat import ChatEngine
+        from persona_runtime.config import ConfigStore
+        from persona_runtime.context_policy import compatibility_defaults
+        from persona_runtime.models import generic_persona
+        from persona_runtime.paths import RuntimePaths
+        from persona_runtime.service import RuntimeService
+        self.paths = RuntimePaths(self.paths.home / 'from-version-20')
+        self.store = Store(self.paths)
+        self.cfg = ConfigStore(self.paths)
+        self.cfg.initialize()
+        self.cfg.update({'model':{'name':'101','base_url':'http://127.0.0.1:1/v1'},
+                         'organization':{'model':{'name':'102','base_url':'http://127.0.0.1:1/v1'}}})
+        with patch('persona_runtime.storage.SCHEMA_VERSION',20), patch(
+                'persona_runtime.context_policy.new_persona_defaults',side_effect=compatibility_defaults):
+            self.store.initialize()
+            self.service = RuntimeService(self.store)
+            self.persona = self.service.create_persona(generic_persona())
+            self.service.use_persona(self.persona['id'])
+            session = self.service.create_session()
+            prior = self.service.append_event(session['id'],'user','103')
+        self.store.initialize()
+        self.store.initialize()
+        with self.store.connection() as db:
+            self.assertEqual(db.execute('SELECT text FROM events WHERE id=?',(prior['id'],)).fetchone()[0],'103')
+        self.chat = ChatEngine(self.store,self.cfg,fixtures.ChatModel())
+        self.org = OrganizationEngine(self.store,self.cfg,self.model,self.chat)
         self.assertTrue(list((self.paths.home/'backups').glob('before-memory-repair-*.sqlite3')))
         first=(await self.seed())[0];task=await self.organize(first['session_id'])
         with self.store.connection(write=True) as db:

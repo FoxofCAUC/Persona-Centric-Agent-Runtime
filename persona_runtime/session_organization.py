@@ -4,6 +4,7 @@ from .archive import scope, encoded, fingerprint, read_exact, binding
 from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, timestamp
 from .sessions import owned, operation, record_operation, check_revision
 from .organization_output import OutputError
+from . import import_memory_scope as history_scope
 
 
 def valid(conn,payload):
@@ -137,6 +138,8 @@ class SessionOrganization:
 
     def _preview(self,conn,session_id,selected,mode,rebuild):
         row=owned(conn,session_id,selected)
+        model=self.engine.model()
+        memory_enabled=model.get('encrypted_key') and self.engine.automatic and self.engine.automatic.is_enabled(conn,selected['persona_id'])
         p=conn.execute('SELECT * FROM session_packages WHERE session_id=?',(session_id,)).fetchone()
         if not p:raise RuntimeErrorBase('session_not_sealed')
         manifest=json.loads(p['manifest_json']);completed=set();previous=None;coverage_gaps=[]
@@ -145,7 +148,7 @@ class SessionOrganization:
             if prev:
                 candidate=dict(prev)
                 if not candidate['source_refs_json']:candidate=legacy_previous(conn,selected,manifest,candidate)
-                if candidate and valid(conn,{'source_format':2,'scope':selected,'bindings':[],'previous':candidate}):previous=candidate
+                if candidate and history_scope.allowed_summary(conn,candidate,model,memory_enabled) and valid(conn,{'source_format':2,'scope':selected,'bindings':[],'previous':candidate}):previous=candidate
             for task in conn.execute("SELECT payload_json FROM organization_tasks WHERE session_id=? AND status='completed'",(session_id,)):
                 source=json.loads(task[0])
                 if source.get('package_id')==p['id'] and source['mode'] in (mode,'both') and valid(conn,source):
@@ -159,7 +162,10 @@ class SessionOrganization:
                     if selected['channel']=='qq':coverage_gaps.append('legacy_qq_semantics_not_sent_part_coverage')
         groups=[];excluded=[]
         for t in manifest['turns']:
-            r=read_exact(conn,selected,{'kind':'turn','id':t['turn_id']})
+            turn=conn.execute('SELECT * FROM turns WHERE id=? AND session_id=?',(t['turn_id'],session_id)).fetchone()
+            if not turn or (history_scope.imported(turn) and not memory_enabled):
+                excluded.append({'turn_id':t['turn_id'],'reason':'history_memory_not_enabled'});continue
+            r=history_scope.source_group(conn,selected,dict(turn),model=model)
             if r['status']!='found' or binding(r)!=t['binding']:
                 excluded.append({'turn_id':t['turn_id'],'reason':'source_unavailable_or_changed'});continue
             if not rebuild and t['order'] in completed:continue
@@ -172,14 +178,15 @@ class SessionOrganization:
               'excluded':excluded,'coverage_gaps':sorted(set(coverage_gaps)),'covered_rows':sorted(completed),'lifecycle_revision':row['revision']}
         for t,r in groups[:10]:
             proposal=json.loads(encoded(base));proposal['rows'].append(t['order']);proposal['bindings'].append({'turn_id':t['turn_id'],'binding':t['binding']})
-            for e in r['members']+r['replies']:
+            from .import_history import chronological
+            for e in chronological(r):
                 kind='part' if e.get('kind')=='part' else 'event';role=e.get('role','assistant')
                 ref={'kind':kind,'id':e['id'],'hash':fingerprint(e['text']), 'event_id':t['reply_event_id'] if kind=='part' else e['id']}
                 proposal['source_refs'].append(ref)
                 proposal['events'].append({'id':e['id'],'kind':kind,'role':role,'text':e['text'],'state':e.get('state','recorded'),'turn':t['order']})
             from .chat import terms
             query=terms(' '.join(e['text'] for e in proposal['events'] if e['role']=='user'))
-            proposal['existing_memories']=[dict(m) for m in conn.execute("SELECT id,text,category,revision FROM memories WHERE persona_id=? AND user_id=? AND status='active' ORDER BY updated_at DESC",(selected['persona_id'],LOCAL_USER_ID)) if query.intersection(terms(m['text']))][:30]
+            proposal['existing_memories']=[dict(m) for m in conn.execute("SELECT id,text,category,revision FROM memories WHERE persona_id=? AND user_id=? AND status='active' ORDER BY updated_at DESC",(selected['persona_id'],LOCAL_USER_ID)) if query.intersection(terms(m['text'])) and history_scope.allowed_memory(conn,m['id'],model,memory_enabled)][:30]
             from .organization_output import VERSION
             proposal['output_contract']=VERSION
             if sum(len(m['content']) for m in messages(proposal))>self.engine.model()['max_input_chars']:break

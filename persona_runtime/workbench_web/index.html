@@ -100,6 +100,10 @@
     .bubble { width: fit-content; max-width: min(82%, 555px); padding: 11px 15px; border-radius: 14px; background: var(--neutral-bubble); overflow-wrap: anywhere; white-space: pre-wrap; }
     .bubble.own { justify-self: end; background: var(--selected); border-end-end-radius: 5px; }
     .bubble.reply { border-end-start-radius: 5px; }
+    button.bubble { border: 0; font: inherit; color: inherit; text-align: start; cursor: pointer; }
+    .history-reference { display: flex; align-items: center; gap: .7rem; color: var(--muted); margin-bottom: 6px; }
+    .history-reference span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .history-actions { justify-self: start; }
     .sample-bubble { width: min(78%, var(--sample-width, 295px)); display: grid; gap: 7px; padding: 16px 17px; }
     .sample-bubble span { height: 4px; display: block; border-radius: 4px; background: #779789; opacity: .6; }
     .sample-bubble.reply span { background: #87958a; }
@@ -119,6 +123,21 @@
     .dialog-body { padding: 19px 22px; display: grid; gap: 13px; }
     .dialog-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 13px 22px; border-top: 1px solid var(--line); background: var(--surface); }
     .dialog-foot:empty { display: none; }
+    .import-original, .import-citation { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .import-create-actions { width:100%; display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:7px; }
+    .import-create-actions label { display:flex; align-items:center; gap:5px; }
+    .import-template-row { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:8px; color:var(--muted); }
+    .import-conflict-dialog { width:min(460px,calc(100vw - 30px)); }
+    .import-conflict-row { display:grid; gap:6px; border-left:3px solid var(--error); padding:8px 12px; background:var(--surface); overflow-wrap:anywhere; }
+    .import-conflict-row p { margin:0; }
+    .import-conflict-row .button { justify-self:start; }
+    .import-section-label { display: block; font-weight: 600; color: var(--muted); }
+    .import-citation { max-width: 100%; text-align: left; }
+    .import-batch { display: grid; gap: 5px; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
+    .import-batch .button { justify-self: start; }
+    .import-editor-section { min-width: 0; border-top: 1px solid var(--line); padding: 8px 0; }
+    .import-editor-section[open] > summary { margin-bottom: 9px; }
+    .import-editor-section pre { margin: 0; font: inherit; }
     .fields { display: grid; gap: 12px; }
     .field { display: grid; gap: 5px; font-weight: 600; }
     .field input, .field textarea, .field select { min-width: 0; width: 100%; border-radius: 8px; border: 1px solid var(--line-strong); background: #fcfdf7; color: var(--ink); font-weight: 400; padding: 7px 10px; min-height: 38px; }
@@ -186,6 +205,7 @@
             <section class="rail-section" aria-labelledby="sessions-heading">
               <div class="section-heading"><h2 id="sessions-heading">会话</h2><button class="icon-button" id="new-session" aria-label="新建会话" hidden><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
               <label class="rail-search" id="search-box" hidden><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="session-search" type="search" placeholder="查找会话" aria-label="查找会话" autocomplete="off"></label>
+              <button class="rail-row" id="import-history" hidden><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>导入历史并接着聊</span></button>
               <div class="rail-list" id="sessions"></div>
             </section>
           </div>
@@ -206,6 +226,7 @@
           </header>
           <div class="timeline first" id="timeline"></div>
           <div class="composer-wrap">
+            <div id="history-reference" class="history-reference" hidden><span></span><button type="button" class="button ghost">取消引用</button></div>
             <form class="composer off" id="composer" autocomplete="off">
               <textarea id="message" rows="1" aria-label="输入消息" placeholder="准备完成后即可输入消息" maxlength="1500" disabled></textarea>
               <button class="button primary" id="send" disabled>发送</button>
@@ -361,6 +382,7 @@
       const container = byId("sessions");
       const person = currentPerson();
       byId("new-session").hidden = !person;
+      byId("import-history").hidden = !person || !window.pcarLive?.active;
       byId("search-box").hidden = !person;
       container.replaceChildren();
       if (!person) {
@@ -432,7 +454,7 @@
     }
 
     function updateSendButton() {
-      byId("send").disabled = !ready() || !state.connected || !message.value.trim();
+      byId("send").disabled = !ready() || currentSession()?.readOnly || !state.connected || !message.value.trim();
     }
 
     function render({ scrollToEnd = false } = {}) {
@@ -447,9 +469,9 @@
       else renderOnboarding();
       timeline.scrollTop = scrollToEnd ? timeline.scrollHeight : previousScroll;
       byId("composer").classList.toggle("off", !ready());
-      message.disabled = !ready();
+      message.disabled = !ready() || Boolean(session?.readOnly);
       message.value = session?.draft ?? "";
-      message.placeholder = ready() ? "输入消息" : "准备完成后即可输入消息";
+      message.placeholder = session?.readOnly ? "已封存的会话可供查阅" : ready() ? "输入消息" : "准备完成后即可输入消息";
       updateSendButton();
     }
 
@@ -716,6 +738,10 @@
     byId("scrim").addEventListener("click", () => {
       closeDrawer();
       byId("sidebar-toggle").focus();
+    });
+    byId("import-history").addEventListener("click",()=>window.pcarLive?.importHistory());
+    byId("history-reference").querySelector("button").addEventListener("click",()=>{
+      const s=currentSession(); if(s){s.reference=null; render(); message.focus();}
     });
     byId("new-person").addEventListener("click", () => openRoleForm());
     byId("new-session").addEventListener("click", () => {

@@ -76,6 +76,7 @@ class ImportAnalysis:
             with self.library.db() as db:
                 db.execute("UPDATE documents SET status='interrupted' WHERE status='running'")
                 db.execute("UPDATE calls SET state='unknown' WHERE state='sending' AND raw IS NULL")
+                db.execute("UPDATE calls SET state='unsent' WHERE state='reserved' AND raw IS NULL")
 
     def start(self, ident, revision, confirmed, *, cached_only=False):
         require(confirmed is True, "需要确认脱敏视图和云端分析用途。")

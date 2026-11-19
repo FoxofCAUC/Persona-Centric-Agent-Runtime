@@ -172,7 +172,10 @@ class CognitiveService:
     def finalize(self,conn,turn,prepared):
         from .recall_runtime import validate as validate_recall
         validate_recall(conn,turn,prepared.get('details',{}).get('recall_support'))
-        if prepared.get('_conversation_frozen'):return prepared
+        from .history_context import capture as capture_history, validate as validate_history
+        if prepared.get('_conversation_frozen'):
+            validate_history(conn,turn,prepared['details'].get('import_history_sources'))
+            return prepared
         if prepared.get('_dialogue_pipeline'):
             from .chat import ModelError
             if self.engine.dialogue_pipeline is None:raise ModelError('dialogue_pipeline_missing')
@@ -208,6 +211,10 @@ class CognitiveService:
         prepared['manifest']['_shadow_prepared']=None if is_minimal else self.shadow.recheck(conn,turn,prepared['manifest'].get('_shadow_prepared'))
         from .prompt_assembly import fit_manifest
         prepared['manifest']=fit_manifest(prepared['manifest'])
+        history_proof = capture_history(conn,turn,prepared["details"])
+        if history_proof:
+            validate_history(conn,turn,history_proof)
+            prepared["details"]["import_history_sources"] = history_proof
         prepared['_conversation_frozen']=True
         return prepared
 

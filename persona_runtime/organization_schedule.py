@@ -5,6 +5,7 @@ from datetime import datetime
 
 from .models import LOCAL_USER_ID, RuntimeErrorBase, identifier, timestamp
 from .organization import encoded, eligible_turns
+from .import_memory_scope import accepted_turns
 
 
 class OrganizationSchedule:
@@ -154,7 +155,7 @@ class OrganizationSchedule:
                 if not policy['enabled'] or 'daily' not in policy['triggers']:return
                 sessions = []
                 for session in conn.execute("SELECT id FROM sessions WHERE persona_id=? ORDER BY created_at,id", (persona,)):
-                    turns = eligible_turns(conn, session[0])
+                    turns = list(accepted_turns(conn,eligible_turns(conn,session[0]),model,False))
                     if turns:
                         sessions.append({"id": session[0], "upper": turns[-1]["ordinal"], "cursor": 0, "rebuild": True, 'total_turns':len(turns)})
             next_epoch = row["next_epoch"]
@@ -233,7 +234,8 @@ class OrganizationSchedule:
                     progress = conn.execute("SELECT * FROM organization_progress WHERE session_id=?", (session[0],)).fetchone()
                     if progress['blocked_task']:
                         continue
-                    turns = [t for t in eligible_turns(conn, session[0]) if t['ordinal'] > max(progress['cursor'],progress['boundary'])]
+                    turns = [t for t in accepted_turns(conn,eligible_turns(conn,session[0]),self.engine.model(),False)
+                             if t['ordinal'] > max(progress['cursor'],progress['boundary'])]
                     if len(turns) >= 20:
                         choices.append((turns[0]['ordinal'], session[0], progress['cursor'], turns[-11]['ordinal']))
                 if not choices:

@@ -2,6 +2,8 @@
 
 本手册适用于 **v0.2** 桌面包，程序版本 **0.2.0**，业务数据库结构 **33**。桌面包自带公开的本地角色检索模型。Agent 协助准备 Python、依赖和资料位置，用户配置自己的模型服务。[第一次使用](docs/user/getting-started.md) · [发布页](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.2)
 
+带「启动PCAR-新版.bat」的双人成卡工作台包可直接使用内置的发布版提示词。新实例从新版入口首次启动会准备 WebView2 界面依赖。旧工作台用户退出原窗口后选择原数据目录，新版入口会补齐缺少的界面依赖并沿用原设置。[导入提示词和聊天记录](docs/user/双人聊天生成角色卡.md)
+
 ## 部署前核对
 
 - 使用 Windows 11 x64、Python 3.12 x64（含 Tkinter）和 uv。为程序、数据和工具选择可写的本机目录。程序与数据目录各自独立。

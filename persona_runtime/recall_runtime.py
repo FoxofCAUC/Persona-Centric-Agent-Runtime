@@ -24,6 +24,21 @@ def query_terms(db,selected,parts):
         if len(ordered)>=256:break
     return ordered[:256]
 
+HISTORY_RANGE = "import_session:"
+
+
+def enqueue_imported_session(db,pid,sid):
+    """Coalesce new transcript events into a bounded, resumable index range."""
+    if not policy(db,pid)["data"]["enabled"]:
+        return
+    db.execute("""DELETE FROM recall_runtime_dirty WHERE persona_id=? AND kind='dialogue'
+        AND source_id IN (SELECT id FROM events WHERE persona_id=? AND session_id=? AND id LIKE 'imported.%')""",
+        (pid,pid,sid))
+    db.execute("""INSERT INTO recall_runtime_dirty(persona_id,kind,source_id) VALUES(?,'dialogue',?)
+        ON CONFLICT(persona_id,kind,source_id) DO UPDATE SET cursor_json='[0,0]',revision=revision+1""",
+        (pid,HISTORY_RANGE+sid))
+
+
 def policy(db,pid):
     row=db.execute('SELECT * FROM recall_runtime_policies WHERE persona_id=?',(pid,)).fetchone()
     return {'revision':row['revision'],'data':json.loads(row['data_json'])} if row else {'revision':0,'data':dict(DEFAULT)}
@@ -81,9 +96,12 @@ def render(items,db=None):
             'user_memory':'有来源的记忆','user_correction':'用户更正'}.get(item['source_type'],'参考材料')
         lines.append(label+'（'+source_label+'）：\n'+item['text'])
         if db is not None and item['kind']=='memory':
-            memory=db.execute('SELECT previous_id,created_at FROM memories WHERE id=?',(item['source_id'],)).fetchone()
+            memory=db.execute('SELECT previous_id,created_at,source_event_id FROM memories WHERE id=?',(item['source_id'],)).fetchone()
             if memory:
-                lines.append('记忆记录时间：'+memory['created_at'])
+                from .import_history import source_time
+                when = source_time(db,memory['source_event_id']) if memory['source_event_id'].startswith('imported.') else memory['created_at']
+                if when:
+                    lines.append('记忆记录时间：'+when)
                 if memory['previous_id']:lines.append('这是当前更正版本；原始交流中的旧值只表示当时记录。')
     return '\n'.join(lines)
 
@@ -144,16 +162,19 @@ class RecallRuntime:
                 args=[];extra=''
                 if pid:extra=' AND d.persona_id=?';args=[pid]
                 row=db.execute('''SELECT d.* FROM recall_runtime_dirty d JOIN recall_runtime_policies p ON p.persona_id=d.persona_id
-                    WHERE json_extract(p.data_json,'$.enabled')=1'''+extra+" ORDER BY (d.source_id!='*') DESC,d.rowid LIMIT 1",args).fetchone()
+                    WHERE json_extract(p.data_json,'$.enabled')=1'''+extra+" ORDER BY CASE WHEN d.source_id='*' THEN 2 WHEN d.source_id LIKE 'import_session:%' THEN 1 ELSE 0 END,d.rowid LIMIT 1",args).fetchone()
                 if not row:break
                 now,_=self.service._time(db);cursor=json.loads(row['cursor_json']);only=None
-                if row['source_id']!='*':
+                session_range = None
+                if row['kind']=='dialogue' and row['source_id'].startswith(HISTORY_RANGE):
+                    session_range = row['source_id'][len(HISTORY_RANGE):]
+                elif row['source_id']!='*':
                     table,column=('knowledge_control','key') if row['kind']=='native' else ('memories','id') if row['kind']=='memory' else ('events','id')
                     source=db.execute('SELECT rowid AS source_row FROM '+table+' WHERE '+column+'=?',(row['source_id'],)).fetchone()
                     if not source:
                         db.execute('DELETE FROM recall_runtime_dirty WHERE persona_id=? AND kind=? AND source_id=?',(row['persona_id'],row['kind'],row['source_id']));continue
                     only=source['source_row'];cursor=[only,cursor[1]]
-                entries,next_cursor,done=scan(db,row['persona_id'],row['kind'],cursor,limit,now,only_row=only)
+                entries,next_cursor,done=scan(db,row['persona_id'],row['kind'],cursor,limit,now,only_row=only,imported_session=session_range)
                 for ref,data in entries:
                     if not data.get('skip_fragment'):self.service._register(db,row['kind'],ref,data,now)
                 if done:db.execute('DELETE FROM recall_runtime_dirty WHERE persona_id=? AND kind=? AND source_id=?',(row['persona_id'],row['kind'],row['source_id']))
@@ -179,6 +200,14 @@ class RecallRuntime:
             if not cross:recent=[r for r in recent if r['session_id']==turn['session_id']]
             if any(cue in question for cue in ('刚才','那页','那份','这份','就用','接着','这件事','那件事','回到','前面说','查到的','之前那','前面那')):
                 for prior in recent[:2]:
+                    if prior["source_key"].startswith("imported."):
+                        from .archive import read_exact
+                        from .import_history import chronological
+                        group = read_exact(db,selected,{"kind":"turn","id":prior["id"]})
+                        if group.get("usable"):
+                            excerpt = "\n".join(e["text"] for e in chronological(group))
+                            parts.append(excerpt[-2048:])
+                        continue
                     parts.append(input_text(db,prior)[:1024])
                     reply=db.execute('SELECT text FROM events WHERE id=?',(prior['reply_event_id'],)).fetchone()
                     if reply:parts.append(reply[0][:1024])

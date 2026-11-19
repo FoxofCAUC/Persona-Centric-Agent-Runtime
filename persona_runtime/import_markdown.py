@@ -8,13 +8,23 @@ from .corpus_moect import MAX_RECORDS
 from .corpus_views import build_dataset
 
 VERSION = "dyadic-md-v1"
-DATE = r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?"
+DATE = r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:?\d{2})?"
 MOECT = re.compile(r"^\[(" + DATE + r")\] (.+)$")
 HEADING = re.compile(r"^#{2,4}[ \t]+(.+?)\s*$")
 DATED = re.compile(r"^(.*?)\s+\[(" + DATE + r")\]$")
 FENCE = re.compile(r"^ {0,3}(\x60{3,}|~{3,})")
 SYSTEM = {"系统", "系统消息", "system", "通知"}
 PLACEHOLDER = re.compile(r"^\[(?:图片|动画表情|表情|语音|视频|文件|位置|链接|转账|红包|系统消息)(?:[:： ].*)?\]$")
+
+
+def valid_message_date(value):
+    try:
+        datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return False
+    # fromisoformat accepts overflow minutes in a UTC offset and carries them into hours.
+    offset = re.search(r"[+-]\d{2}:?(\d{2})$", value)
+    return offset is None or int(offset[1]) < 60
 
 
 def parse(raw):
@@ -65,6 +75,8 @@ def parse(raw):
                 raise CorpusError("说话人标题无效。")
             record = dict(id=str(len(rows)+1), speaker=name.strip(), date=date,
                           start=offset+len(line), line=line_number)
+            if date is not None and not valid_message_date(date):
+                record.update(date=None, raw_date=date)
         else:
             marker = FENCE.match(value)
             if marker:
@@ -105,7 +117,9 @@ def partition_rows(rows, key, namespace):
     for i,r in enumerate(rows):
         if r["date"]:
             try:
-                local = datetime.fromisoformat(r["date"]).replace(tzinfo=timezone(timedelta(hours=8)))
+                local = datetime.fromisoformat(r["date"])
+                if local.tzinfo is None:
+                    local = local.replace(tzinfo=timezone(timedelta(hours=8)))
                 last_epoch = int(local.timestamp())
             except ValueError:
                 raise CorpusError("消息时间无效。") from None
@@ -122,6 +136,9 @@ def partition_rows(rows, key, namespace):
 
 
 def learning_rows(rows, key, namespace):
-    view = partition_rows(rows, key, namespace)
+    return learning_view(partition_rows(rows, key, namespace))
+
+
+def learning_view(view):
     return [dict(id=r["message_id"], speaker=r["role"], text=r["text"], group=r["fragment_id"])
             for r in view["messages"] if r["split"] == "learn" and r["target_candidate"]]

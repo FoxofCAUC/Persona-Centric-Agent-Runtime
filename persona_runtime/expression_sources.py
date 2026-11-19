@@ -44,13 +44,18 @@ def capture(db, turn, details):
         row = db.execute('SELECT * FROM events WHERE id=? AND persona_id=? AND user_id=?', (ident, turn['persona_id'], LOCAL_USER_ID)).fetchone()
         if not row:raise ExpressionAssetError('expression_source_event_missing')
         hashes[ident] = fingerprint(dict(row))
-    return {'scope': selected, 'execution_revision': turn['execution_revision'], 'authority': authority(db, turn['persona_id']),
+    from .history_context import capture as capture_history
+    history_proof = details.get("import_history_sources") or capture_history(db,turn,details)
+    return {**({"import_history_sources":history_proof} if history_proof else {}),
+            'scope': selected, 'execution_revision': turn['execution_revision'], 'authority': authority(db, turn['persona_id']),
             'relationship': head(db, turn['persona_id'], 'relationship')['id'], 'events': hashes,
             'memories': memories, 'summary': summary, 'relationship_refs': relation_refs}
 
 
 def validate(store, db, turn, context):
     proof, details = context['guard'], context['details']
+    from .history_context import validate as validate_history
+    validate_history(db,turn,proof.get("import_history_sources"))
     if turn.get('cancelled_at') or turn['execution_revision'] != proof['execution_revision'] or turn_scope(db, turn) != proof['scope']:
         raise ExpressionAssetError('expression_request_inactive')
     if authority(db, turn['persona_id']) != proof['authority'] or head(db, turn['persona_id'], 'relationship')['id'] != proof['relationship']:

@@ -48,7 +48,7 @@ def values(policy):
             'cross_session':bool(data.get('cross_session',False)), 'character_retrieval':read(data), 'disposition_mode':data.get('disposition_mode','baseline'), 'situation_observation_mode':data.get('situation_observation_mode','disabled')}
 
 
-def snapshot(policy,conn=None):
+def snapshot(policy,conn=None,store=None):
     result = {'schema_version':1,'policy_id':policy['id'],'revision':policy['revision'],**values(policy)}
     from .style_study import KEY
     study = json.loads(policy['data_json']).get(KEY)
@@ -57,7 +57,7 @@ def snapshot(policy,conn=None):
     if conn is not None:
         if policy['channel']=='desktop':
             from .scene_policy import KEY as SCENE_KEY, active
-            enrolled=active(conn,policy['persona_id'])
+            enrolled=active(conn,policy['persona_id'],store)
             if enrolled:result[SCENE_KEY]=enrolled
             elif (result.get('companion') or {}).get('version')=='companion-runtime-v8' and not study:
                 from .import_style import KEY as IMPORT_KEY, snapshot as import_snapshot
@@ -85,9 +85,9 @@ def snapshot(policy,conn=None):
     return result
 
 
-def current(conn,persona_id,channel):
+def current(conn,persona_id,channel,store=None):
     row=conn.execute('SELECT p.* FROM interaction_policies p JOIN interaction_heads h ON h.version_id=p.id WHERE h.persona_id=? AND h.channel=?',(persona_id,channel)).fetchone()
-    if row:return snapshot(dict(row),conn)
+    if row:return snapshot(dict(row),conn,store)
     return {'schema_version':1,'policy_id':None,'revision':0,**DEFAULT_CONTEXT}
 
 

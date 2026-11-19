@@ -42,7 +42,7 @@ class SceneRuntime:
         policy = scene_policy.frozen(turn)
         config = self.engine.config.load()
         persona = turn['persona_id']
-        require(policy and scene_policy.active(db,persona)==policy
+        require(policy and scene_policy.active(db,persona,self.store)==policy
                 and config['instance_id']==policy['instance'] and self.store.current(db,required=False)==persona
                 and turn['channel']=='desktop' and turn['reply_mode_snapshot']=='context_full'
                 and turn['status'] in ('queued','running') and not turn.get('cancelled_at')
@@ -81,14 +81,22 @@ class SceneRuntime:
             else:
                 ordered[row['seq']] = {'role':role,'text':event['text'],'origins':[origin],
                                        'pro_target':{'message_index':index}}
+                if event["id"].startswith("imported."):
+                    ordered[row['seq']]["imported_history"] = True
+                    ordered[row['seq']]["recorded_at"] = event.get("created_at")
         scope = turn_scope(db,turn)
         previous = db.execute("""SELECT * FROM turns WHERE session_id=? AND status='completed'
+              AND (source_key NOT LIKE 'imported.%' OR user_event_id IS NOT NULL OR reply_event_id IS NOT NULL)
               AND rowid<(SELECT rowid FROM turns WHERE id=?) ORDER BY rowid DESC LIMIT 2""",
                               (turn['session_id'],turn['id'])).fetchall()
         for i, prior in enumerate(reversed(previous)):
             group = read_exact(db,scope,{'kind':'turn','id':prior['id']})
             if not group.get('usable'):
                 continue
+            if group.get("coverage") == "imported_transcript":
+                from .import_history import history_allowed
+                if not history_allowed(db,turn["session_id"],"jev"):
+                    continue
             for event in group['members']:
                 add(event,'recent',2*i+1,'user')
             for event in group['replies']:
@@ -101,6 +109,10 @@ class SceneRuntime:
             for group in json.loads(block.split('\n',2)[2])['turns']:
                 require(db.execute('SELECT 1 FROM turns WHERE id=? AND session_id=?',
                                    (group['turn_id'],turn['session_id'])).fetchone(),'reference_scope')
+                if any(e["id"].startswith("imported.") for e in group["members"] + group["replies"]):
+                    from .import_history import history_allowed
+                    if not history_allowed(db,turn["session_id"],"jev"):
+                        continue
                 for event in [*group['members'],*group['replies']]:
                     if any(t['kind']=='turn' or t['id']==event['id'] for t in group['targets']):
                         add(event,'reference',0,event.get('role','assistant'))

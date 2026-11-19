@@ -82,11 +82,19 @@ def material(db,kind,ref,*,now):
             if projection['status']!='found':return None
             if event['role']=='persona' and turn['channel']=='qq':return None  # semantic output is not a sent receipt
         else:
+            if event['id'].startswith('imported.'):
+                return None
             if db.execute('SELECT 1 FROM source_exclusions WHERE event_id=?',(event['id'],)).fetchone():return None
             if db.execute("SELECT 1 FROM channel_sessions WHERE session_id=? AND channel!='desktop'",(event['session_id'],)).fetchone():return None
             selected=make_scope(event['persona_id'],'desktop')
-        data={'text':event['text'],'scope':selected,'session_id':event['session_id'],
-            'origin_epoch':epoch(event['created_at']),'version':fingerprint(dict(event)),
+        original_text, recorded = event['text'], event['created_at']
+        if turn and turn['source_key'].startswith('imported.'):
+            material_row = next((e for e in projection['members'] + projection['replies'] if e['id']==event['id']), None)
+            if not material_row or not material_row['text']:
+                return None
+            original_text, recorded = material_row['text'], material_row['created_at']
+        data={'text':original_text,'scope':selected,'session_id':event['session_id'],
+            'origin_epoch':epoch(recorded) if recorded else None,'version':fingerprint([dict(event),original_text]) if turn and turn['source_key'].startswith('imported.') else fingerprint(dict(event)),
             'lineage':event['id'],'source_type':'user_statement' if event['role']=='user' else 'assistant_statement',
             'canonical_id':event['id']}
     elif kind=='native':
@@ -122,7 +130,7 @@ def material(db,kind,ref,*,now):
     data['lineage']=fingerprint([kind,data['lineage'],offset])
     return data
 
-def scan(db,pid,kind,cursor,limit,now,*,only_row=None):
+def scan(db,pid,kind,cursor,limit,now,*,only_row=None,imported_session=None):
     """Keyset pagination over canonical rows, resumable even within a large page."""
     rowid,part=cursor
     if kind=='memory':sql='SELECT rowid AS source_row,id FROM memories WHERE persona_id=? AND rowid>=? ORDER BY rowid'
@@ -133,7 +141,13 @@ def scan(db,pid,kind,cursor,limit,now,*,only_row=None):
     # Bound row reads even when every source is withdrawn or otherwise ineligible.
     if only_row is not None:
         sql=sql.replace(' ORDER BY rowid',' AND rowid='+str(int(only_row))+' ORDER BY rowid')
-    for row in db.execute(sql+' LIMIT ?',(pid,rowid,limit+1)):
+    args = [pid,rowid]
+    if imported_session is not None:
+        if kind != 'dialogue':
+            raise RuntimeErrorBase('recall_kind_invalid')
+        sql = sql.replace(' ORDER BY rowid', " AND session_id=? AND id LIKE 'imported.%' ORDER BY rowid")
+        args.append(imported_session)
+    for row in db.execute(sql+' LIMIT ?',(*args,limit+1)):
         if seen>=limit: return result,next_cursor,False
         seen+=1;rid=row['source_row'];skip=part if rid==rowid else 0
         if kind=='native':

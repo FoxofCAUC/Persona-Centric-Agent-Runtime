@@ -346,7 +346,7 @@ class ChatEngine:
                 from .character import head as character_head
                 conn.execute('UPDATE turns SET character_snapshot=? WHERE id=?',(json.dumps(character_head(conn,persona_id),ensure_ascii=False),turn_id))
                 from .context_policy import current as context_policy
-                accepted_context=context_policy(conn,persona_id,channel)
+                accepted_context=context_policy(conn,persona_id,channel,self.store)
                 from .scene_policy import KEY as SCENE_KEY
                 if SCENE_KEY in accepted_context:raise RuntimeErrorBase('scene_workbench_required')
                 accepted_context.pop('import_style',None)
@@ -567,6 +567,14 @@ class ChatEngine:
                     from .expression_runtime import enabled as expression_enabled
                     expression_on=not direct_on and expression_enabled(conn,turn_id)
                     if expression_on and import_frozen(turn):raise ModelError('import_style_route_conflict')
+                    if prepared["details"].get("import_history_sources") and not (scene_on or expression_on or direct_on):
+                        from .tk_notice import required as visible_desktop
+                        if visible_desktop(conn,turn):
+                            origin = json.loads(turn.get("origin_json") or "null") or {}
+                            origin["history_presentation"] = 1
+                            turn["origin_json"] = json.dumps(origin)
+                            conn.execute("UPDATE turns SET origin_json=? WHERE id=?", (turn["origin_json"],turn_id))
+                            scene_on = True
                     if expression_on and self.generation_executor is not None:raise ModelError('expression_completion_receipt_executor_required')
                     evaluation=getattr(self,'evaluation_session',None)
                     if evaluation:evaluation.before_dispatch(self,turn,prepared)
@@ -699,6 +707,8 @@ class ChatEngine:
                     presentation['planned_wait_ms']=sum(m['wait_ms'] for m in display_messages)
                 with self.store.connection(write=True) as conn:
                     details['presentation']=presentation
+                    from .history_context import validate as validate_history
+                    validate_history(conn,turn,details.get("import_history_sources"))
                     from .knowledge_service import validate_used
                     validate_used(conn,self.store.paths,turn['persona_id'],turn['channel'],details.get('knowledge'))
                     from .recall_runtime import validate as validate_recall
@@ -847,7 +857,8 @@ class ChatEngine:
                 self.scene_publication.issue(db,turn|{'status':'running'},source)
                 return self._view(db,turn_id)
             from .import_style import frozen as import_frozen
-            if not import_frozen(turn):self.scene.current(db,turn|{'status':'queued'})
+            from .scene_policy import frozen as scene_frozen
+            if not import_frozen(turn) and scene_frozen(turn):self.scene.current(db,turn|{'status':'queued'})
             db.execute("UPDATE turns SET status='queued',error_code=NULL,updated_at=? WHERE id=?",
                        (timestamp(),turn_id))
             record_progress(db,turn_id,'retry_queued')

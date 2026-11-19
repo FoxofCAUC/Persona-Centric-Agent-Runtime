@@ -11,6 +11,7 @@ from .scene_voice import SCENES, VERSION, require
 
 KEY = 'scene_voice'
 PREFIX = 'persona.scene_voice.'
+IMPORTED_PREFIX = 'persona.import_card.scene.'
 BASELINE = 'companion-runtime-v8'
 JEV = 'jev-1.14'
 PRO = 'deepseek-v4-pro'
@@ -26,16 +27,24 @@ def save(db, key, value):
                (key, encoded(value)))
 
 
-def active(db, persona_id):
+def active(db, persona_id, store=None):
     entry = read(db, PREFIX + persona_id)
-    return entry if entry and not entry.get('paused') else None
+    if entry:
+        return entry if not entry.get('paused') else None
+    if store is not None:
+        imported = read(db, IMPORTED_PREFIX + persona_id)
+        if imported and not imported.get("paused"):
+            from .import_card_publish import imported_scene_available
+            if imported_scene_available(store, db, persona_id, imported):
+                return imported
+    return None
 
 
 def pause(db, persona_id=None):
-    sql = "UPDATE knowledge_control SET value=json_set(value,'$.paused',1) WHERE key "
+    sql = "UPDATE knowledge_control SET value=json_set(value,'$.paused',1) WHERE "
     if persona_id is None:
-        return db.execute(sql+"LIKE ?",(PREFIX+'%',)).rowcount
-    return db.execute(sql+"=?",(PREFIX+persona_id,)).rowcount
+        return db.execute(sql+"key LIKE ? OR key LIKE ?",(PREFIX+'%',IMPORTED_PREFIX+'%')).rowcount
+    return db.execute(sql+"key IN (?,?)",(PREFIX+persona_id,IMPORTED_PREFIX+persona_id)).rowcount
 
 
 def frozen(turn):
