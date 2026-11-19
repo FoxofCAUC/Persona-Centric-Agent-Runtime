@@ -9,9 +9,12 @@ from unittest.mock import Mock, patch
 from persona_runtime.__main__ import parser
 from persona_runtime.config import atomic_json
 from persona_runtime.instance import InstanceLock
+from persona_runtime.models import RuntimeErrorBase
 from persona_runtime.paths import RuntimePaths
 from persona_runtime.workbench_instance import acquire_or_wake, next_wakeup
-from persona_runtime.workbench_webview import WebViewHost, local_document_matches, workbench_html
+from persona_runtime.workbench_webview import (
+    APPEARANCE_FILE, DesktopControls, WebViewHost, local_document_matches, read_appearance, workbench_html,
+)
 
 
 class BrowserWorkbenchTests(unittest.TestCase):
@@ -62,6 +65,25 @@ class BrowserWorkbenchTests(unittest.TestCase):
         self.assertIn('id="app-menu"', html)
         self.assertIn("window.pywebview.api.exit_workbench()", html)
         self.assertLess(html.index("window.pcarDesktop ="), html.rindex("</body>"))
+
+    def test_appearance_preference_is_loaded_before_first_paint(self):
+        parent = RuntimePaths.from_environment().home / "tmp"
+        parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent) as temporary:
+            paths = RuntimePaths(Path(temporary))
+            paths.initialize()
+            controls = DesktopControls(Mock(), Mock(), paths, Mock())
+            self.assertEqual(read_appearance(paths), "system")
+            for mode in ("dark", "light", "system"):
+                controls.save_appearance(mode)
+                self.assertEqual(read_appearance(paths), mode)
+                html = workbench_html(read_appearance(paths))
+                self.assertLess(html.index(f'data-appearance="{mode}"'), html.index("<style>"))
+            with self.assertRaises(RuntimeErrorBase):
+                controls.save_appearance("invalid")
+            self.assertEqual(read_appearance(paths), "system")
+            (paths.home / APPEARANCE_FILE).write_text("{", encoding="utf-8")
+            self.assertEqual(read_appearance(paths), "system")
 
     def test_alternate_frontend_wakes_existing_owner_instead_of_acquiring(self):
         parent = RuntimePaths.from_environment().home / "tmp"

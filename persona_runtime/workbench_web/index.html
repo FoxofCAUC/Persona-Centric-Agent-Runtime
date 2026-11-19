@@ -1,44 +1,97 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-appearance="system">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <title>PCAR 工作台</title>
+  <script id="appearance-startup">
+    const appearanceRoot = document.documentElement;
+    const systemAppearance = matchMedia("(prefers-color-scheme: dark)");
+    function applyAppearance() {
+      const mode = appearanceRoot.dataset.appearance;
+      const theme = mode === "system" ? (systemAppearance.matches ? "dark" : "light") : mode;
+      appearanceRoot.dataset.theme = theme;
+      return theme;
+    }
+    applyAppearance();
+  </script>
   <style>
     :root {
       color-scheme: light;
-      --stage: #eeeee6;
-      --surface: #fffdf7;
-      --rail: #edf1e8;
-      --panel: #f3f5ed;
-      --line: #dce3d7;
-      --line-strong: #bdcec0;
-      --ink: #192f2a;
-      --muted: #506760;
-      --accent: #235747;
-      --accent-hover: #194638;
-      --selected: #dcebe1;
-      --neutral-bubble: #f0eee5;
-      --error: #963b30;
+      --stage: #e6e8de;
+      --surface: #efeee4;
+      --rail: #e4e9df;
+      --panel: #e9ece1;
+      --titlebar: #ebece2;
+      --field: #f3f1e7;
+      --line: #d2d9ce;
+      --line-strong: #7b8c81;
+      --ink: #24352f;
+      --muted: #495e54;
+      --accent: #2e604f;
+      --accent-hover: #234e40;
+      --on-accent: #f3f0e6;
+      --hover: #dfe8dd;
+      --selected: #d6e5da;
+      --selection: #c2d9ca;
+      --neutral-bubble: #e5e3d9;
+      --disabled: #dfe4db;
+      --focus: #3e7562;
+      --error: #943c32;
+      --shadow: #20372b28;
+      --overlay: #24392d52;
       --sidebar: 246px;
       font: 14px/1.55 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif;
       color: var(--ink);
       background: var(--stage);
+      accent-color: var(--accent);
+      caret-color: var(--accent);
+      scrollbar-color: var(--line-strong) transparent;
     }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --stage: #1a211e;
+      --surface: #232c27;
+      --rail: #1e2823;
+      --panel: #27332c;
+      --titlebar: #252f29;
+      --field: #19241e;
+      --line: #34463a;
+      --line-strong: #6c877a;
+      --ink: #dce6dc;
+      --muted: #a2b6aa;
+      --accent: #a1c9b2;
+      --accent-hover: #b3d3bf;
+      --on-accent: #20332a;
+      --hover: #2b4135;
+      --selected: #304e40;
+      --selection: #406551;
+      --neutral-bubble: #303b32;
+      --disabled: #2f4036;
+      --focus: #88b9a1;
+      --error: #eda497;
+      --shadow: #08110d66;
+      --overlay: #0d1712a6;
+    }
+    ::selection { background: var(--selection); color: var(--ink); }
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; min-width: 288px; }
     button, input, textarea, select { font: inherit; }
+    :where(input:not([type="checkbox"], [type="radio"], [type="range"]), textarea, select) {
+      min-width: 0; min-height: 38px; padding: 7px 10px; border-radius: 8px;
+      border: 1px solid var(--line-strong); background: var(--field); color: var(--ink);
+    }
     button { color: inherit; cursor: pointer; }
     button:disabled { cursor: default; }
     [hidden] { display: none !important; }
-    :focus-visible { outline: 2px solid #4d806c; outline-offset: 3px; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
     h1, h2, h3, p { margin: 0; }
     .svg-symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
     .icon { display: inline-block; width: 19px; height: 19px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
     .stage { padding: 26px; min-height: 100dvh; display: grid; place-items: center; }
-    .window { position: relative; display: grid; grid-template-rows: 53px minmax(0, 1fr); width: min(1388px, 100%); height: min(884px, calc(100dvh - 52px)); min-height: 440px; background: var(--surface); border: 1px solid #cbd6ca; border-radius: 16px; box-shadow: 0 16px 48px #1e3f2e13, 0 2px 7px #1e3f2e0c; overflow: hidden; }
-    .titlebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 0 13px; border-bottom: 1px solid var(--line); background: #f9faf2; z-index: 3; }
+    .window { position: relative; display: grid; grid-template-rows: 53px minmax(0, 1fr); width: min(1388px, 100%); height: min(884px, calc(100dvh - 52px)); min-height: 440px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 10px 30px var(--shadow); overflow: hidden; }
+    .titlebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 0 13px; border-bottom: 1px solid var(--line); background: var(--titlebar); z-index: 3; }
     .brand, .title-actions { display: flex; align-items: center; gap: 10px; }
     .brand strong { font-size: 16px; letter-spacing: .065em; }
     .demo-label { color: var(--muted); font-size: 12px; border-left: 1px solid var(--line-strong); padding-left: 10px; white-space: nowrap; }
@@ -51,27 +104,28 @@
     .section-heading h2 { font-size: 13px; font-weight: 700; letter-spacing: .05em; }
     .rail-list { display: grid; gap: 4px; }
     .rail-row { display: flex; align-items: center; gap: 9px; min-height: 42px; width: 100%; padding: 6px 9px; border: 0; border-radius: 9px; background: transparent; text-align: left; }
-    .rail-row:hover { background: #e2eae0; }
+    .rail-row:hover { background: var(--hover); }
     .rail-row[aria-current="true"] { background: var(--selected); font-weight: 650; }
     .row-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .rail-empty { color: var(--muted); font-size: 13px; padding: 3px 7px 7px; }
-    .rail-search { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; padding: 0 9px; height: 37px; background: #f9fbf5; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
-    .rail-search input { min-width: 0; width: 100%; background: transparent; border: 0; outline: 0; color: var(--ink); font-size: 13px; }
-    .rail-search:focus-within { outline: 2px solid #4d806c; outline-offset: 2px; }
+    .rail-search { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; padding: 0 9px; height: 37px; background: var(--field); border: 1px solid var(--line-strong); border-radius: 8px; color: var(--muted); }
+    .rail-search input { min-width: 0; min-height: 0; width: 100%; padding: 0; background: transparent; border: 0; outline: 0; color: var(--ink); font-size: 13px; }
+    .rail-search:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
     .rail-search .icon { width: 15px; height: 15px; }
     .rail-footer { margin-top: auto; padding: 12px 14px 15px; border-top: 1px solid var(--line); }
     .rail-footer button { justify-content: space-between; }
-    .menu { position: absolute; z-index: 5; bottom: 62px; left: 12px; right: 12px; border: 1px solid var(--line-strong); padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px #1d3d2a1a; }
+    .menu { position: absolute; z-index: 5; bottom: 62px; left: 12px; right: 12px; max-height: calc(100% - 74px); overflow: auto; border: 1px solid var(--line-strong); padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px var(--shadow); }
     .menu button { min-height: 38px; }
+    .appearance-setting { padding: 6px 9px 10px; margin-bottom: 3px; border-bottom: 1px solid var(--line); }
     .resize { position: absolute; inset: 0 -4px 0 auto; width: 8px; z-index: 2; cursor: ew-resize; touch-action: none; }
-    .resize::after { content: ""; position: absolute; top: 47%; left: 3px; width: 2px; height: 28px; background: #a8bcae; border-radius: 2px; }
+    .resize::after { content: ""; position: absolute; top: 47%; left: 3px; width: 2px; height: 28px; background: var(--line-strong); border-radius: 2px; }
     .collapsed .sidebar { visibility: hidden; overflow: hidden; }
     .scrim { display: none; }
     .conversation { min-width: 0; min-height: 0; display: grid; grid-template-rows: 65px minmax(0, 1fr) auto; }
     .chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 clamp(14px, 3vw, 30px); border-bottom: 1px solid var(--line); }
     .chat-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .chat-person h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 700; }
-    .avatar { width: 33px; height: 33px; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: #deebe0; color: var(--accent); }
+    .avatar { width: 33px; height: 33px; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--selected); color: var(--accent); }
     .avatar.small { width: 29px; height: 29px; }
     .avatar.small .icon { width: 16px; height: 16px; }
     .timeline { overflow: auto; min-height: 0; padding: 28px clamp(12px, 4vw, 44px); scrollbar-width: thin; }
@@ -84,17 +138,17 @@
     .step .step-copy { min-width: 0; flex: 1; }
     .step strong { display: block; font-size: 14px; }
     .step small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
-    .step-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 31px; height: 31px; color: var(--accent); background: #edf2e9; border-radius: 8px; }
+    .step-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 31px; height: 31px; color: var(--accent); background: var(--panel); border-radius: 8px; }
     .guide-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 39px; padding: 7px 13px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; white-space: nowrap; }
-    .button:hover { background: #eef4ec; }
-    .button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    .button:hover { background: var(--hover); }
+    .button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
     .button.primary:hover { background: var(--accent-hover); }
     .button.ghost { border-color: transparent; background: transparent; color: var(--accent); }
-    .button.ghost:hover { background: #e9f0e7; }
-    .button:disabled, .button.primary:disabled { background: #e4e8df; border-color: transparent; color: #52635a; }
+    .button.ghost:hover { background: var(--hover); }
+    .button:disabled, .button.primary:disabled { background: var(--disabled); border-color: transparent; color: var(--muted); }
     .icon-button { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--accent); }
-    .icon-button:hover { background: #e1ebe0; }
+    .icon-button:hover { background: var(--hover); }
     .conversation-inner { width: min(100%, 730px); margin: 0 auto; display: grid; align-content: start; gap: 13px; }
     .date-divider { justify-self: center; color: var(--muted); font-size: 12px; margin: 7px 0 9px; }
     .bubble { width: fit-content; max-width: min(82%, 555px); padding: 11px 15px; border-radius: 14px; background: var(--neutral-bubble); overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -109,19 +163,18 @@
     .bubble[data-awaiting-confirmation] { outline: 1px dashed var(--line-strong); outline-offset: -1px; }
     .history-actions { justify-self: start; }
     .sample-bubble { width: min(78%, var(--sample-width, 295px)); display: grid; gap: 7px; padding: 16px 17px; }
-    .sample-bubble span { height: 4px; display: block; border-radius: 4px; background: #779789; opacity: .6; }
-    .sample-bubble.reply span { background: #87958a; }
+    .sample-bubble span { height: 4px; display: block; border-radius: 4px; background: var(--line-strong); opacity: .6; }
     .chat-empty { display: grid; justify-items: center; align-content: center; gap: 11px; min-height: 100%; color: var(--muted); text-align: center; }
     .chat-empty strong { color: var(--ink); font-size: 18px; }
     .composer-wrap { padding: 5px clamp(12px, 4vw, 44px) 22px; }
     .composer { display: flex; align-items: flex-end; width: min(100%, 730px); gap: 10px; min-height: 61px; margin: 0 auto; padding: 9px 10px 9px 14px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 13px; }
     .composer.off { background: var(--panel); border-color: var(--line); }
     .composer textarea { flex: 1; min-width: 0; resize: none; field-sizing: content; min-height: 37px; max-height: 100px; padding: 7px 1px; border: 0; outline: none; background: transparent; color: var(--ink); line-height: 1.55; }
-    .composer:focus-within { outline: 2px solid #769989; outline-offset: 2px; }
-    .composer input::placeholder, textarea::placeholder { color: #52695f; opacity: 1; }
+    .composer:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
     .composer .button { min-width: 74px; }
-    dialog { width: min(530px, calc(100vw - 30px)); max-height: calc(100dvh - 36px); padding: 0; border: 1px solid var(--line-strong); border-radius: 15px; color: var(--ink); background: var(--surface); box-shadow: 0 22px 80px #233e2e39; }
-    dialog::backdrop { background: #20382e4e; }
+    dialog { width: min(530px, calc(100vw - 30px)); max-height: calc(100dvh - 36px); padding: 0; border: 1px solid var(--line-strong); border-radius: 15px; color: var(--ink); background: var(--surface); box-shadow: 0 14px 40px var(--shadow); }
+    dialog::backdrop { background: var(--overlay); }
     .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding: 14px 18px 14px 22px; }
     .dialog-head h2 { font-size: 19px; }
     .dialog-body { padding: 19px 22px; display: grid; gap: 13px; }
@@ -144,28 +197,28 @@
     .import-editor-section pre { margin: 0; font: inherit; }
     .fields { display: grid; gap: 12px; }
     .field { display: grid; gap: 5px; font-weight: 600; }
-    .field input, .field textarea, .field select { min-width: 0; width: 100%; border-radius: 8px; border: 1px solid var(--line-strong); background: #fcfdf7; color: var(--ink); font-weight: 400; padding: 7px 10px; min-height: 38px; }
+    .field :is(input:not([type="checkbox"], [type="radio"]), textarea, select) { width: 100%; font-weight: 400; }
     .field textarea { min-height: 66px; resize: vertical; }
     .hint { font-size: 13px; color: var(--muted); font-weight: 400; }
     .error { color: var(--error); font-size: 13px; }
-    details { border: 1px solid var(--line); padding: 9px 11px; border-radius: 9px; background: #f8faf2; }
+    details { border: 1px solid var(--line); padding: 9px 11px; border-radius: 9px; background: var(--panel); }
     summary { cursor: pointer; font-weight: 600; }
     details > div, details > p { margin-top: 10px; }
     .tablist, .inline-actions { display: flex; flex-wrap: wrap; gap: 7px; }
-    .tablist button[aria-pressed="true"] { background: var(--selected); border-color: #a9bdac; }
+    .tablist button[aria-pressed="true"] { background: var(--selected); border-color: var(--line-strong); }
     .profile-head { display: flex; align-items: center; gap: 10px; }
     .profile-head strong { font-size: 17px; overflow-wrap: anywhere; }
     .profile-text { white-space: pre-wrap; overflow-wrap: anywhere; }
     .summary-list { display: grid; gap: 7px; padding: 0; margin: 0; list-style: none; }
     .summary-list li { border-bottom: 1px solid var(--line); padding-bottom: 8px; overflow-wrap: anywhere; }
-    .toast { position: absolute; right: 20px; bottom: 100px; padding: 10px 14px; max-width: calc(100% - 40px); border: 1px solid var(--line-strong); background: #f1f7ed; color: var(--accent); border-radius: 10px; box-shadow: 0 2px 16px #233e2e16; z-index: 6; }
+    .toast { position: absolute; right: 20px; bottom: 100px; padding: 10px 14px; max-width: calc(100% - 40px); border: 1px solid var(--line-strong); background: var(--panel); color: var(--accent); border-radius: 10px; box-shadow: 0 2px 16px var(--shadow); z-index: 6; }
     @media (max-width: 760px) {
       .stage { display: block; padding: 0; }
       .window { border: 0; border-radius: 0; box-shadow: none; height: 100dvh; min-height: 380px; }
       .layout, .layout.collapsed { grid-template-columns: minmax(0, 1fr); }
       .sidebar { position: absolute; z-index: 4; top: 53px; left: 0; bottom: 0; width: min(270px, 85vw); transform: translateX(-100%); visibility: hidden; }
       .layout.drawer-open .sidebar { transform: translateX(0); visibility: visible; overflow: visible; }
-      .layout.drawer-open .scrim { display: block; position: absolute; inset: 53px 0 0; z-index: 3; border: 0; background: #1f392d38; }
+      .layout.drawer-open .scrim { display: block; position: absolute; inset: 53px 0 0; z-index: 3; border: 0; background: var(--overlay); }
       .sidebar .resize { display: none; }
       .titlebar { padding-right: 9px; }
       .title-actions .button { min-height: 34px; padding: 5px 7px; font-size: 12px; }
@@ -215,6 +268,13 @@
           </div>
           <div class="rail-footer"><button class="rail-row" id="menu-toggle" aria-controls="app-menu" aria-expanded="false"><span>应用菜单</span><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button></div>
           <div class="menu" id="app-menu" hidden>
+            <label class="field appearance-setting">外观
+              <select id="appearance-mode">
+                <option value="system">跟随系统</option>
+                <option value="light">浅色模式</option>
+                <option value="dark">深色模式</option>
+              </select>
+            </label>
             <button class="rail-row" data-menu="connection">模型连接</button>
             <button class="rail-row" data-menu="advanced">高级设置</button>
             <button class="rail-row" data-menu="help">使用帮助</button>
@@ -810,6 +870,42 @@
       returnFocus = null;
     });
     byId("menu-toggle").addEventListener("click", () => showMenu(byId("app-menu").hidden));
+    const appearanceMode = byId("appearance-mode");
+    appearanceMode.value = appearanceRoot.dataset.appearance;
+    appearanceMode.disabled = appearanceRoot.hasAttribute("data-native-workbench") && !window.pywebview?.api?.save_appearance;
+    let saveAppearance = Promise.resolve();
+    let syncWindowAppearance = Promise.resolve();
+    function updateAppearance() {
+      const theme = applyAppearance();
+      const api = window.pywebview?.api;
+      if (api?.set_window_appearance) {
+        syncWindowAppearance = syncWindowAppearance
+          .then(() => api.set_window_appearance(theme))
+          .catch(() => {});
+      }
+    }
+    appearanceMode.addEventListener("change", () => {
+      const mode = appearanceMode.value;
+      saveAppearance = saveAppearance.then(async () => {
+        try {
+          await window.pywebview?.api?.save_appearance?.(mode);
+          appearanceRoot.dataset.appearance = mode;
+          updateAppearance();
+        } catch {
+          if (appearanceMode.value === mode) appearanceMode.value = appearanceRoot.dataset.appearance;
+          notify("外观设置暂时无法保存，请重试。");
+        }
+      });
+    });
+    systemAppearance.addEventListener("change", () => {
+      if (appearanceRoot.dataset.appearance === "system") updateAppearance();
+    });
+    matchMedia("(forced-colors: active)").addEventListener("change", updateAppearance);
+    window.addEventListener("pywebviewready", () => {
+      appearanceMode.disabled = false;
+      updateAppearance();
+    }, { once: true });
+    if (window.pywebview?.api) updateAppearance();
     byId("app-menu").addEventListener("click", event => {
       const button = event.target.closest("[data-menu]");
       if (!button) return;
