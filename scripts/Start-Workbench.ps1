@@ -1,4 +1,4 @@
-﻿param([string]$RuntimeHome)
+﻿param([string]$RuntimeHome, [ValidateSet('tk', 'webview')][string]$Frontend = 'tk')
 $ErrorActionPreference = 'Stop'
 try {
     . (Join-Path $PSScriptRoot 'pcar-location.ps1')
@@ -9,7 +9,12 @@ try {
     $python = Get-PcarPython -RuntimeHome $RuntimeHome
     if (-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath (Join-Path $RuntimeHome 'config\workbench.json'))) {
         $prepare = Join-Path $PSScriptRoot 'Prepare-Desktop.ps1'
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $prepare -RuntimeHome $RuntimeHome
+        $options = @('-RuntimeHome', $RuntimeHome, '-Frontend', $Frontend)
+        $publicModel = Join-Path $projectRoot 'public-model'
+        if ($Frontend -eq 'webview' -and (Test-Path -LiteralPath $publicModel -PathType Container)) {
+            $options += @('-LocalModelSource', $publicModel)
+        }
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $prepare @options
         if ($LASTEXITCODE -ne 0) { throw '环境准备未完成，请查看所选数据目录中的准备日志。' }
         $python = Get-PcarPython -RuntimeHome $RuntimeHome
     }
@@ -17,7 +22,7 @@ try {
     if (-not (Test-Path -LiteralPath $pythonw)) { throw '当前实例缺少pythonw，请修复环境。' }
     & $python -B -m persona_runtime --home $RuntimeHome prepare --register-existing | Out-Null
     if ($LASTEXITCODE -ne 0) { throw '实例验证失败，未启动桌面。' }
-    Start-Process -FilePath $pythonw -ArgumentList @('-B', '-m', 'persona_runtime', 'gui') -WorkingDirectory $projectRoot -WindowStyle Hidden
+    Start-Process -FilePath $pythonw -ArgumentList @('-B', '-m', 'persona_runtime', 'gui', '--frontend', $Frontend) -WorkingDirectory $projectRoot -WindowStyle Hidden
 } catch {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Persona Workbench') | Out-Null

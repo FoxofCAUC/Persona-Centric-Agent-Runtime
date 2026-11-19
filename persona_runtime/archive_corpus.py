@@ -86,10 +86,13 @@ def capture_connection(conn,spec,budget,*,before_order=None,prefer_session=None,
         for turn in batch:
             budget.check()
             tid = turn['id']
-            mem = members.get(tid,[]) if turn['input_batch_id'] else [events[turn['user_event_id']]]
+            mem = members.get(tid,[]) if turn['input_batch_id'] else ([events[turn['user_event_id']]] if turn['user_event_id'] else [])
             semantic = events.get(turn['reply_event_id'])
             group = project_turn(turn,selected,{'kind':'turn','id':tid},mem,parts.get(tid,[]),raws.get(tid,[]),
                                  {k:semantic[k] for k in ('id','text')} if semantic else None,False,notice=notices.get(tid))
+            if 'import_document' in (json.loads(turn['origin_json'] or '{}') or {}):
+                from .import_history import group as imported_group
+                group=imported_group(conn,turn,selected,{'kind':'turn','id':tid})
             if group['status']!='found':
                 continue
             groups.append(group)
@@ -101,7 +104,7 @@ def capture_connection(conn,spec,budget,*,before_order=None,prefer_session=None,
                 recorded = part_by_id[sid]['created_at'] if is_part else (source.get('created_at') or (semantic or {}).get('created_at'))
                 document = {'document_id':sid,'turn_id':tid,'session_id':turn['session_id'],
                     'target':{'kind':'part' if is_part else 'event','id':sid},
-                    'source_kind':'qq_sent_part' if is_part else 'user_event' if source.get('role')=='user' else 'desktop_reply',
+                    'source_kind':'imported_message' if group['coverage']=='imported_transcript' else 'qq_sent_part' if is_part else 'user_event' if source.get('role')=='user' else 'desktop_reply',
                     'text':source['text'],'source_hash':fingerprint(source['text']),
                     'times':{'recorded':recorded,'received':raw.get('received_at'),'platform':raw.get('platform_time'),
                              'sent':part_by_id[sid]['sent_at'] if is_part else None},'coverage':group['coverage']}

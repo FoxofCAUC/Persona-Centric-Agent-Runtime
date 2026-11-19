@@ -24,8 +24,13 @@ def validate_used(conn,paths,pid,channel,knowledge):
         record_used(conn,paths,pid,channel,meta)
     # Older conversations remain conversations; no retrospective source verdict.
 def turn_usable(conn,turn_id):
-    row=conn.execute('SELECT t.persona_id,t.channel,c.details_json FROM turns t LEFT JOIN context_uses c ON c.turn_id=t.id WHERE t.id=? ORDER BY c.rowid DESC LIMIT 1',(turn_id,)).fetchone()
+    row=conn.execute('SELECT t.persona_id,t.channel,c.details_json,t.source_key,t.origin_json,t.session_id FROM turns t LEFT JOIN context_uses c ON c.turn_id=t.id WHERE t.id=? ORDER BY c.rowid DESC LIMIT 1',(turn_id,)).fetchone()
     if not row:return False
+    if row[3].startswith('imported.'):
+        origin=json.loads(row[4])
+        if conn.execute("""SELECT 1 FROM events e JOIN source_exclusions x ON x.event_id=e.id
+                WHERE e.session_id=? AND e.seq BETWEEN ? AND ? LIMIT 1""",
+                (row[5],origin['first_seq'],origin['last_seq'])).fetchone():return False
     try:validate_used(conn,None,row[0],row[1],json.loads(row[2] or '{}').get('knowledge'));return True
     except RuntimeErrorBase:return False
 def evidence_permitted(conn,pid,channel,item):return True

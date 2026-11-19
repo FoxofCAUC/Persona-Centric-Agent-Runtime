@@ -160,7 +160,8 @@ class AutomaticMemory:
             if exact['status']!='found':continue
             candidate=json.loads(encoded(p));candidate['rows'].append(turn['ordinal']);candidate['bindings'].append({'turn_id':turn['id'],'binding':binding(exact)})
             candidate['recorded_times'][turn['id']]=turn['created_at']
-            for e in exact['members']+exact['replies']:
+            from .import_history import chronological
+            for e in chronological(exact):
                 candidate['events'].append({'id':e['id'],'kind':'part' if e.get('kind')=='part' else 'event','role':e.get('role','assistant'),'text':e['text'],'turn':turn['ordinal'],'turn_id':turn['id']})
             candidate['existing_memories']=select_facts(all_memories,candidate['events'])
             limit=self.engine.model()['max_input_chars'];source_size=sum(len(e['text']) for e in candidate['events'])

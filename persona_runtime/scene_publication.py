@@ -1,7 +1,7 @@
 """Use the existing utterance outlet for native scene replies and confirmed history."""
 import json
 
-from . import scene_policy
+from . import scene_policy, import_style
 from .archive import fingerprint
 from .expression_contract import text_hash
 from .expression_utterance_publication import SpeechPublication
@@ -12,6 +12,10 @@ from .scene_style import short_frames, speech
 from .scene_voice import require
 
 SOURCE = 'scene_reply'
+
+
+def native_policy(turn):
+    return scene_policy.frozen(turn) or import_style.frozen(turn)
 
 
 class ScenePublication:
@@ -37,13 +41,18 @@ class ScenePublication:
 
     def issue(self, db, turn, source):
         context = json.loads(source['context_json'])
-        selected = self.engine.scene.selected(db,turn)
-        require(selected and context['details']['scene_voice']['card_sha256']==fingerprint(selected[1]),'source_changed')
-        body = batch_view(speech(source['raw_text'],selected[0]))[0]
+        imported = import_style.frozen(turn)
+        if imported:
+            import_style.validate(self.store,db,turn,context['details'].get(import_style.KEY))
+            body = source['body']
+        else:
+            selected = self.engine.scene.selected(db,turn)
+            require(selected and context['details']['scene_voice']['card_sha256']==fingerprint(selected[1]),'source_changed')
+            body = batch_view(speech(source['raw_text'],selected[0]))[0]
         require(body and body.strip(),'empty_reply')
         unit = self.outlet._register(db,turn,'main',SOURCE,source['id'],source['raw_hash'],body,
-                                    scene_policy.frozen(turn),{},context)
-        self.publisher.publish(db,unit,SOURCE,body,short_frames(body,True),'scene_native_reply')
+                                    native_policy(turn),{},context)
+        self.publisher.publish(db,unit,SOURCE,body,short_frames(body,True),'import_native_reply' if imported else 'scene_native_reply')
         db.execute("UPDATE turns SET status='running',usage_json=?,error_code=NULL,updated_at=? WHERE id=?",
                    (source['usage_json'],timestamp(),turn['id']))
         record(db,turn['id'],'generated',source['logical_attempt_id'])
@@ -59,10 +68,12 @@ class ScenePublication:
     def validate(self, db, turn, unit):
         from .expression_sources import validate
         context = json.loads(unit['context_json'])
-        selected = self.engine.scene.selected(db,turn)
-        policy = scene_policy.frozen(turn)
-        require(policy==json.loads(unit['policy_json']) and selected is not None
-                and fingerprint(selected[1])==context['details']['scene_voice']['card_sha256'],'source_changed')
+        require(native_policy(turn)==json.loads(unit['policy_json']),'source_changed')
+        if import_style.frozen(turn):
+            import_style.validate(self.store,db,turn,context['details'].get(import_style.KEY))
+        else:
+            selected = self.engine.scene.selected(db,turn)
+            require(selected is not None and fingerprint(selected[1])==context['details']['scene_voice']['card_sha256'],'source_changed')
         source = db.execute('SELECT raw_hash,raw_text FROM expression_main_receipts WHERE id=? AND turn_id=? AND valid=1',
                             (unit['source_id'],turn['id'])).fetchone()
         require(source and source['raw_hash']==unit['source_hash']==text_hash(source['raw_text'])
@@ -106,7 +117,8 @@ class ScenePublication:
                                AND status='interrupted' AND error_code='service_restarted'""",(unit['turn_id'],))
             receipts = db.execute("""SELECT r.* FROM expression_main_receipts r JOIN turns t ON t.id=r.turn_id
                 WHERE r.valid=1 AND t.status='interrupted' AND t.error_code='service_restarted' AND t.cancelled_at IS NULL
-                AND json_extract(t.context_policy_snapshot,'$.scene_voice') IS NOT NULL
+                AND (json_extract(t.context_policy_snapshot,'$.scene_voice') IS NOT NULL
+                     OR json_extract(t.context_policy_snapshot,'$.import_style') IS NOT NULL)
                 AND NOT EXISTS(SELECT 1 FROM expression_speech_units u WHERE u.turn_id=t.id AND u.phase='main')""").fetchall()
             for source in receipts:
                 root = self.engine.scene.root(db,source['turn_id'])

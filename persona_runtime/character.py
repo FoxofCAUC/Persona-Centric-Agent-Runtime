@@ -332,7 +332,11 @@ class CharacterService:
         _text(operation_id,'operation_id',200)
         fingerprint = hashlib.sha256(encode(['import',persona_id,package]).encode()).hexdigest()
         with self.store.connection(write=True) as conn:
-            self._check(conn,persona_id,True)
+            if persona_id is None:
+                if self.store.current(conn,required=False) is not None:
+                    raise RuntimeErrorBase('character_selection_conflict')
+            else:
+                self._check(conn,persona_id,True)
             old=conn.execute('SELECT * FROM character_operations WHERE operation_id=?',(operation_id,)).fetchone()
             if old:
                 if old['fingerprint'] != fingerprint:

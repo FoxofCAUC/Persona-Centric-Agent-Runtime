@@ -86,8 +86,8 @@ class ExpressionRuntime:
             changed = db.execute('UPDATE attempts SET status=\'completed\',usage_json=? WHERE id=? AND turn_id=?',
                                  (json.dumps(audit), logical_attempt_id, turn['id'])).rowcount
             if changed != 1:raise ExpressionAssetError('expression_main_attempt_missing')
-            from .scene_policy import frozen as scene_frozen
-            if scene_frozen(turn):
+            from .scene_publication import native_policy
+            if native_policy(turn):
                 db.execute('UPDATE expression_runtime_turns SET closed_at=coalesce(closed_at,?) WHERE turn_id=?',
                            (timestamp(),turn['id']))
             elif batch:

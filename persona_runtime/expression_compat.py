@@ -19,6 +19,9 @@ def pause(db):
     if 'knowledge_control' in tables:
         from .scene_policy import pause as pause_scene
         result['scene_policies_paused']=pause_scene(db)
+        db.execute("""UPDATE knowledge_control SET value=json_set(value,'$.enabled',json('false'),
+            '$.revision',json_extract(value,'$.revision')+1) WHERE key GLOB 'persona.import_style.*'
+            AND json_valid(value) AND json_type(value,'$.enabled')='true'""")
     if 'dialogue_generation_policies' in tables:
         from .schema_dialogue import pause as pause_dialogue
         result.update(pause_dialogue(db))

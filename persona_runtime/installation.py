@@ -141,7 +141,7 @@ def prepare_model(paths,*,local_source=None,source_root=None):
             shutil.rmtree(staging)
 
 
-def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics=False,source_root=None,register=True):
+def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics=False,source_root=None,register=True,frontend='tk'):
     from .paths import RuntimePaths
     source=Path(source_root or SOURCE_ROOT).resolve();home=validate_home(paths.home,source_root=source)
     if home.exists() and any(home.iterdir()) and not (home/'config/workbench.json').exists() and not (home/'runtime/install-progress.json').exists():
@@ -164,7 +164,11 @@ def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics
         check=subprocess.run([str(venv/'Scripts/python.exe'),'-I','-B','-c','import sys,struct;print(str(sys.version_info.major)+"."+str(sys.version_info.minor)+"/"+str(struct.calcsize("P")*8))'],capture_output=True,text=True,creationflags=NO_WINDOW)
         if check.returncode or check.stdout.strip()!='3.12/64':raise ValueError('未完成安装的虚拟环境不可用，请选择新的空目录重新准备。')
     if not (venv/'Scripts/python.exe').exists():commands.append([uv,'venv','--no-managed-python','--python',str(python),str(venv)])
-    commands.append([uv,'sync','--frozen','--no-managed-python','--extra','character-semantic']+(['--group','dev'] if diagnostics else ['--no-dev']))
+    sync = [uv, 'sync', '--frozen', '--no-managed-python', '--extra', 'character-semantic']
+    if frontend == 'webview':
+        sync += ['--extra', 'workbench-webview']
+    sync += ['--group', 'dev'] if diagnostics else ['--no-dev']
+    commands.append(sync)
     log=home/'logs/environment-prepare.log'
     with log.open('a',encoding='utf-8') as output:
         for command in commands:

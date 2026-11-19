@@ -19,9 +19,12 @@ def parser() -> argparse.ArgumentParser:
     groups = root.add_subparsers(dest="group", required=True)
     groups.add_parser("paths")
     groups.add_parser("init-storage")
-    for name in ("serve", "gui", "force-stop"):
+    for name in ("serve", "force-stop"):
         groups.add_parser(name)
+    gui = groups.add_parser("gui")
+    gui.add_argument("--frontend", choices=("tk", "webview"), default="tk")
     setup=groups.add_parser('prepare')
+    setup.add_argument("--frontend", choices=("tk", "webview"), default="tk")
     setup.add_argument('--base-python',type=Path);setup.add_argument('--local-model-source',type=Path)
     setup.add_argument('--diagnostics',action='store_true');setup.add_argument('--register-existing',action='store_true');setup.add_argument('--no-register',action='store_true')
     model=groups.add_parser('prepare-model');model.add_argument('--local-source',type=Path)
@@ -97,7 +100,7 @@ def dispatch(args, paths: RuntimePaths):
     if args.group == 'prepare':
         from .installation import register_existing,prepare_desktop
         if args.register_existing:return register_existing(paths)
-        return prepare_desktop(paths,base_python=args.base_python,local_model_source=args.local_model_source,diagnostics=args.diagnostics,register=not args.no_register)
+        return prepare_desktop(paths,base_python=args.base_python,local_model_source=args.local_model_source,diagnostics=args.diagnostics,register=not args.no_register,frontend=args.frontend)
     if args.group=='prepare-model':
         from .installation import prepare_model
         return prepare_model(paths,local_source=args.local_source)
@@ -105,7 +108,10 @@ def dispatch(args, paths: RuntimePaths):
         from .installation import configure_model
         return configure_model(paths,args.role,base_url=args.base_url,name=args.model,key_stdin=args.key_stdin)
     if args.group == "gui":
-        from .desktop import run
+        if args.frontend == "webview":
+            from .workbench_webview import run
+        else:
+            from .desktop import run
         run(paths)
         return {"closed": True}
     if args.group in ("paths", "init-storage"):

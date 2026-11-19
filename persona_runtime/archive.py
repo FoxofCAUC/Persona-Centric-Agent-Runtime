@@ -46,6 +46,9 @@ def turn_scope(conn, turn):
 
 
 def find_turn(conn, kind, ident):
+    if kind=='event' and ident.startswith('imported.') and len(ident.split('.'))==3:
+        row=conn.execute("SELECT * FROM turns WHERE id=? AND source_key='imported.'||id",(ident.split('.')[1],)).fetchone()
+        return dict(row) if row else None
     if kind == 'turn':
         row = conn.execute('SELECT * FROM turns WHERE id=?', (ident,)).fetchone()
     elif kind == 'part':
@@ -91,6 +94,9 @@ def read_exact(conn, selected_scope, target, audit=False):
                         'event': {k: row[k] for k in ('id','text','role','created_at')}}
         return {'status': 'not_found'}
     if turn_scope(conn, turn) != selected_scope: return {'status': 'not_found'}
+    if turn['source_key'].startswith('imported.'):
+        from .import_history import group
+        return group(conn,turn,selected_scope,target,audit)
     members = load_turn_input(conn, turn)
     ids = load_turn_sources(conn, turn)
     blocked = any(conn.execute('SELECT 1 FROM source_exclusions WHERE event_id=?', (i,)).fetchone() for i in ids)
@@ -154,6 +160,7 @@ def binding(result):
     body = {'turn_id':result['turn_id'],'members':result['members'],'replies':result['replies']}
     extra={'outbound_id':result['outbound_id']} if result.get('outbound_id') else {}
     body.update(extra)
+    if 'source_order' in result:body['source_order']=result['source_order']
     return {'status':'found','target':result['target'],'turn_id':result['turn_id'],**extra,'hash':fingerprint(body),
             'member_ids':[m['id'] for m in result['members']], 'reply_ids':[r['id'] for r in result['replies']]}
 

@@ -64,6 +64,8 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     dispositions=DispositionService(store,ingress)
     compiler=DispositionCompiler(dispositions,config,engine.client)
     if not pending_migration:compiler.recover()
+    from .import_personas import PersonaImports
+    imports=PersonaImports(store,config)
     profiles=ProfileService(store)
     characters=CharacterService(store)
     from .archive import ArchiveService
@@ -316,6 +318,22 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         service = engine.service
         if not isinstance(args, dict):
             raise RuntimeErrorBase("JSON object required")
+        if action.startswith('persona.import.'):
+            name=action.removeprefix('persona.import.')
+            local={'list':imports.library.list,'status':imports.library.status,'evidence':imports.library.evidence,
+                   'prepare':imports.library.prepare,'edit':imports.library.edit,'create':imports.create,
+                   'style':imports.info,'update':imports.update,'feedback':imports.feedback}
+            if name=='history':
+                from .import_history import page
+                return web.json_response(await asyncio.to_thread(page,store,**args))
+            if name=='replay':return web.json_response(imports.analysis.start(**args,confirmed=True,cached_only=True))
+            if name=='analyze':
+                if engine.draining:raise RuntimeErrorBase('service_draining')
+                return web.json_response(imports.analysis.start(**args))
+            if name=='cancel':return web.json_response(await imports.analysis.cancel(**args))
+            if name=='revoke':return web.json_response(await imports.revoke(**args))
+            if name not in local:raise RuntimeErrorBase('unknown_import_action')
+            return web.json_response(await asyncio.to_thread(local[name],**args))
         if action in ('chat.notice.preview','chat.notice.presented'):
             from .tk_notice import display
             return web.json_response(display(organization.processing.search_notice,
@@ -576,6 +594,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
         if operation == "resume":
             organization.draining = False
         if operation == "stop":
+            await imports.analysis.drain()
             await compiler.drain()
             await organization.drain()
             await engine.wait()
@@ -626,6 +645,7 @@ def create_app(paths, client=None, *, assist_admission=None, live_admission=None
     app.on_startup.append(startup)
 
     async def cleanup(_):
+        await imports.analysis.drain()
         engine.draining = True
         housekeeping=app.get('delivery_housekeeping')
         if housekeeping:

@@ -349,6 +349,7 @@ class ChatEngine:
                 accepted_context=context_policy(conn,persona_id,channel)
                 from .scene_policy import KEY as SCENE_KEY
                 if SCENE_KEY in accepted_context:raise RuntimeErrorBase('scene_workbench_required')
+                accepted_context.pop('import_style',None)
                 from .companion import freeze_auxiliary
                 auxiliary=freeze_auxiliary(self.config.load()['character_selector'],accepted_context)
                 conn.execute('UPDATE turns SET context_policy_snapshot=?,selector_model_snapshot=?,execution_revision=1 WHERE id=?',(json.dumps(accepted_context),json.dumps(auxiliary),turn_id))
@@ -474,7 +475,7 @@ class ChatEngine:
             return [self._view(conn, row[0]) for row in conn.execute(
                 "SELECT id FROM turns WHERE session_id=? ORDER BY rowid", (session_id,))]
 
-    def history_snapshot(self, session_id, version=None):
+    def history_snapshot(self, session_id, version=None, include_imports=True):
         with self.store.connection() as conn:
             persona_id = self.service._persona(conn)["id"]
             self.service._owned(conn, "sessions", session_id, persona_id)
@@ -484,7 +485,7 @@ class ChatEngine:
             pending=waiting(conn,session_id)
             return {**({'pending_notices':pending} if pending else {}),
                     "version": latest, "turns": None if version == latest else [self._view(conn, row[0]) for row in conn.execute(
-                "SELECT id FROM turns WHERE session_id=? ORDER BY rowid", (session_id,))]}
+                "SELECT id FROM turns WHERE session_id=? AND (? OR source_key NOT LIKE 'imported.%') ORDER BY rowid", (session_id,int(include_imports)))]}
 
     def requests(self):
         with self.store.connection() as conn:
@@ -532,7 +533,8 @@ class ChatEngine:
                 from .companion import read as companion_read
                 companion=companion_read(accepted_turn)
                 from .scene_policy import frozen as scene_frozen
-                scene_on = bool(scene_frozen(accepted_turn))
+                from .import_style import frozen as import_frozen, validate as validate_import
+                scene_on = bool(scene_frozen(accepted_turn) or import_frozen(accepted_turn))
                 if scene_on and self.dialogue_pipeline is not None:
                     raise ModelError('scene_pipeline_conflict')
                 from .style_study import policy_for as style_policy, verify_dispatch
@@ -558,10 +560,13 @@ class ChatEngine:
                     model = json.loads(turn["model_snapshot"])
                     from .private_personas import guard_cloud_dispatch
                     direct_on=self.direct.generation.enabled(conn,turn_id)
+                    if import_frozen(turn) and direct_on:
+                        raise ModelError('import_style_route_conflict')
                     if not direct_on:guard_cloud_dispatch(self.store,turn['persona_id'],'main',model)
                     prepared=self.cognitive.finalize(conn,turn,prepared)
                     from .expression_runtime import enabled as expression_enabled
                     expression_on=not direct_on and expression_enabled(conn,turn_id)
+                    if expression_on and import_frozen(turn):raise ModelError('import_style_route_conflict')
                     if expression_on and self.generation_executor is not None:raise ModelError('expression_completion_receipt_executor_required')
                     evaluation=getattr(self,'evaluation_session',None)
                     if evaluation:evaluation.before_dispatch(self,turn,prepared)
@@ -616,6 +621,7 @@ class ChatEngine:
                             if state['attempts'] or state['prior_failures']:
                                 raise ModelError('scene_first_attempt_only')
                             self.scene.selected(conn,current)
+                            validate_import(self.store,conn,current,prepared['details'].get('import_style'))
                             from .expression_sources import validate
                             validate(self.store,conn,current,expression_context)
                         fresh=self.cognitive.finalize(conn,current,prepared)
@@ -768,7 +774,8 @@ class ChatEngine:
         from .scene_policy import frozen as scene_frozen
         with self.store.connection() as conn:
             direct=self.direct.generation.enabled(conn,turn_id)
-            scene=bool(scene_frozen(self.scene.root(conn,turn_id)))
+            from .scene_publication import native_policy
+            scene=bool(native_policy(self.scene.root(conn,turn_id)))
         if direct:return await self.resume_direct(turn_id)
         if scene:return self.resume_scene(turn_id)
         with self.store.connection(write=True) as conn:
@@ -839,7 +846,8 @@ class ChatEngine:
                 require(source and not self.scene_publication.view(db,turn_id),'first_position_preserved')
                 self.scene_publication.issue(db,turn|{'status':'running'},source)
                 return self._view(db,turn_id)
-            self.scene.current(db,turn|{'status':'queued'})
+            from .import_style import frozen as import_frozen
+            if not import_frozen(turn):self.scene.current(db,turn|{'status':'queued'})
             db.execute("UPDATE turns SET status='queued',error_code=NULL,updated_at=? WHERE id=?",
                        (timestamp(),turn_id))
             record_progress(db,turn_id,'retry_queued')
@@ -904,7 +912,8 @@ class ChatEngine:
         if raw.get('cancelled_at'):return self.get(turn_id)
         with self.store.connection() as db:direct=self.direct.generation.enabled(db,turn_id)
         from .scene_policy import frozen as scene_frozen
-        if direct or scene_frozen(raw):
+        from .scene_publication import native_policy
+        if direct or native_policy(raw):
             if raw['status']=='completed':return self.get(turn_id)
             with self.store.connection(write=True) as db:
                 changed=db.execute("UPDATE turns SET status='interrupted',cancelled_at=?,error_code='cancelled_by_user',updated_at=? WHERE id=? AND status!='completed'",(timestamp(),timestamp(),turn_id)).rowcount

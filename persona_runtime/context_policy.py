@@ -59,6 +59,10 @@ def snapshot(policy,conn=None):
             from .scene_policy import KEY as SCENE_KEY, active
             enrolled=active(conn,policy['persona_id'])
             if enrolled:result[SCENE_KEY]=enrolled
+            elif (result.get('companion') or {}).get('version')=='companion-runtime-v8' and not study:
+                from .import_style import KEY as IMPORT_KEY, snapshot as import_snapshot
+                imported=import_snapshot(conn,policy['persona_id'])
+                if imported:result[IMPORT_KEY]=imported
         from .disposition import CONTEXT_ADAPTER
         from .situation_observation import VERSION as OBSERVATION_VERSION
         observed_mode=result['situation_observation_mode']

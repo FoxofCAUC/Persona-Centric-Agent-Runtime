@@ -12,9 +12,13 @@ SOURCE=Path(__file__).resolve().parents[1]
 SCRIPTS=('Start-Workbench.ps1','Prepare-Desktop.ps1','pcar-location.ps1','Manage-Migration.ps1',
          'dev.ps1','test.ps1','force_stop_services.py','force_stop_qq.py','build_desktop_bundle.py','pcar_acceptance_check.py','pcar_upgrade_check.py','pcar_recall_rollback.py','pcar_recall_preflight.py','pcar_scene_voice.py')
 ROOT_FILES=('启动PCAR.bat','README.md','AGENTS.md','AGENT_INSTALL.md','LICENSE','pyproject.toml','uv.lock','model-assets.json','source-delivery.json')
-SCENE_DOCS=('docs/expression/E.N6-场景发言接入与回退.md','docs/模型输入与提示词写作总则.md',
+WEBVIEW_FILES = (
+    '启动PCAR-新版.bat', 'persona_runtime/workbench_web/index.html',
+    'persona_runtime/workbench_web/desktop.js', 'persona_runtime/workbench_web/persona_import.js',
+)
+SCENE_DOCS=('docs/acceptance/工作台双人私聊导入与历史接续.md','docs/expression/E.N6-场景发言接入与回退.md','docs/模型输入与提示词写作总则.md',
             'docs/第三方角色Embedding依赖与许可.md','docs/M9R.5-本机验收与候选交付.md')
-SCENE_TESTS=('test_scene_voice_delivery.py','test_tk_notice.py','test_m9r_native_retrieval.py',
+SCENE_TESTS=('test_import_personas.py','test_scene_voice_delivery.py','test_tk_notice.py','test_m9r_native_retrieval.py',
              'test_m9r0_native_contract.py','test_general_retrieval.py','test_m4.py')
 PUBLIC_FIXTURE_SHA256={
     'v0.1':'6badfaccfed2a25626260e760f76a91b852ac7a99b2943cf4a6005e4fcbfa249',
@@ -37,6 +41,7 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
     policy=json.loads((SOURCE/'source-delivery.json').read_text(encoding='utf-8'))
     for name in policy['excluded_modules']:files.pop(name,None)
     files.update({n:SOURCE/n for n in ROOT_FILES})
+    files.update({n: SOURCE / n for n in WEBVIEW_FILES})
     files.update({'scripts/'+n:SOURCE/'scripts'/n for n in SCRIPTS})
     for name in ('__init__.py','m9r_comparison.py','m9r_comparison_materials.py','m9r_native_probe.py','m9r_fatigue_materials.py','recall_preparation.py','recall_continuity.py'):
         path=SOURCE/'experiments'/name

@@ -19,7 +19,8 @@ class SceneDialogue(DialogueBuilder):
         messages, details = super().render(db,turn,evidence,character,capsule)
         selected = self.engine.scene.selected(db,turn)
         if selected is None:
-            return messages,details
+            from .import_style import project as imported_projection
+            return imported_projection(self.engine,db,turn,messages,details)
         scene, body = selected
         result, assembly = project(messages,details['prompt_assembly'],body,notice=bool(turn.get('_search_notice')))
         assembly.update(expression_renderer=VERSION,format_renderer=details['prompt_assembly']['format_renderer'])

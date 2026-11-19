@@ -50,6 +50,14 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
         notices=read_search_notices(conn,turns[-10:])
         for previous in turns[-10:]:
             if previous['ordinal'] in covered:continue
+            if previous.get('source_key','').startswith('imported.'):
+                from .import_history import group, conversation_messages
+                from .archive import turn_scope
+                entry=group(conn,previous,turn_scope(conn,previous),{'kind':'turn','id':previous['id']})
+                if entry['status']=='found':
+                    history.append(conversation_messages(entry))
+                    history_rows.append(previous['ordinal'])
+                continue
             event=conn.execute('SELECT text FROM events WHERE id=?',(previous['reply_event_id'],)).fetchone()
             spoken=notices.get(previous['id'])
             reply=(''+spoken['text']+'\n\n' if spoken else '')+event[0]
@@ -62,7 +70,10 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
             reason='explicit_reference_duplicate' if tid in reference_manifest['turn_ids'] else None
             if evidence['context_mode']=='legacy_recent' and evidence['orders'][tid] in covered:reason='covered_by_summary'
             pair=[{'role':'user','content':render_input(group['members'],bool(group['batch_id']))}]
-            if group['replies']:pair.append({'role':'assistant','content':'\n'.join(r['text'] for r in group['replies'])})
+            if group.get('coverage')=='imported_transcript':
+                from .import_history import conversation_messages
+                pair=conversation_messages(group)
+            elif group['replies']:pair.append({'role':'assistant','content':'\n'.join(r['text'] for r in group['replies'])})
             cost=sum(len(m['content']) for m in pair)
             if evidence['context_mode']=='working_set' and used+cost>6000:reason=reason or 'history_budget'
             if reason:

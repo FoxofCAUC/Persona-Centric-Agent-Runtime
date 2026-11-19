@@ -349,6 +349,8 @@ class IngressService:
             if 'desktop_presentation' in value:policy['desktop_presentation']=value['desktop_presentation']
             from .scene_policy import KEY as SCENE_KEY
             from .tk_notice import CONTRACT as VISIBLE_DESKTOP
+            if policy.get('desktop_presentation')!=VISIBLE_DESKTOP:
+                policy['context'].pop('import_style',None)
             if SCENE_KEY in policy['context'] and policy.get('desktop_presentation')!=VISIBLE_DESKTOP:
                 raise RuntimeErrorBase('scene_workbench_required')
             frozen=snapshot(conn,pid);character=character_head(conn,pid)

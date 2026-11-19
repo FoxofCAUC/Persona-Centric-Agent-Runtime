@@ -35,19 +35,24 @@ class RuntimeService:
             raise RuntimeErrorBase("Record not found in the selected persona and user scope")
         return dict(row)
 
-    def create_persona(self, spec: PersonaSpec) -> dict:
+    @staticmethod
+    def insert_persona(conn, spec: PersonaSpec):
         data = spec.to_dict()
+        persona_id = identifier()
+        conn.execute("INSERT INTO personas VALUES (?, ?, ?, ?, ?)",
+                     (persona_id, spec.name, spec.format_version,
+                      json.dumps(data, ensure_ascii=False), timestamp()))
+        from .profile import initialize_profiles
+        initialize_profiles(conn,persona_id,actor='create')
+        from .character import initialize_characters
+        initialize_characters(conn,persona_id,actor='create')
+        from .context_policy import initialize as initialize_context_policies
+        initialize_context_policies(conn,persona_id,new_persona=True,disposition_default='baseline')
+        return persona_id
+
+    def create_persona(self, spec: PersonaSpec) -> dict:
         with self.store.connection(write=True) as conn:
-            persona_id = identifier()
-            conn.execute("INSERT INTO personas VALUES (?, ?, ?, ?, ?)",
-                         (persona_id, spec.name, spec.format_version,
-                          json.dumps(data, ensure_ascii=False), timestamp()))
-            from .profile import initialize_profiles
-            initialize_profiles(conn,persona_id,actor='create')
-            from .character import initialize_characters
-            initialize_characters(conn,persona_id,actor='create')
-            from .context_policy import initialize as initialize_context_policies
-            initialize_context_policies(conn,persona_id,new_persona=True,disposition_default='baseline')
+            persona_id = self.insert_persona(conn, spec)
             result=self._persona(conn, persona_id)
         callback=getattr(self.store,'character_committed',None)
         if callback:callback(persona_id)

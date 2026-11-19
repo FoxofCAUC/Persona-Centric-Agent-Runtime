@@ -39,7 +39,7 @@ def schedule(coordinator,db,pid,settings,enabled_at,force=False):
             ready=force or sealed or idle
             if ready:
                 fresh=[t for t in pending if datetime.fromisoformat(t['created_at']).timestamp()>=s['enabled_epoch']]
-                urgent=[t for t in fresh if re.search(r'更正|纠正|改为|以这次为准|\bcorrection\b',db.execute('SELECT text FROM events WHERE id=?',(t['user_event_id'],)).fetchone()[0],re.I)]
+                urgent=[t for t in fresh if t['user_event_id'] and re.search(r'更正|纠正|改为|以这次为准|\bcorrection\b',db.execute('SELECT text FROM events WHERE id=?',(t['user_event_id'],)).fetchone()[0],re.I)]
                 historical=[t for t in pending if t not in fresh]
                 trigger='sealed' if sealed else 'incremental'
                 if trigger in settings['triggers']:

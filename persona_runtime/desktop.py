@@ -9,7 +9,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 from .config import ConfigStore, atomic_json
 from .deployment import prepare
 from .desktop_client import LocalClient
-from .instance import InstanceLock
+from .workbench_instance import acquire_or_wake, next_wakeup, wait_for_previous_components
 from .lifecycle import ServiceController
 from .models import identifier
 from .reused.logs import LogTail
@@ -1565,14 +1565,12 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
 
     def check_wakeup(self):
         if self.closed:return
-        path=self.paths.home/'runtime/wakeup.json'
-        try:
-            value=json.loads(path.read_text(encoding='utf-8'))
-            if value.get('token')==self.controller.console_lease['token'] and value.get('id')!=getattr(self,'wake_id',None):
-                    self.wake_id=value['id']
-                    if value.get('action')=='exit':self.close_window()
-                    else:self.show_from_tray()
-        except (OSError,ValueError,KeyError,TypeError):pass
+        lease = self.controller.console_lease
+        wake = next_wakeup(self.paths, lease['token'], getattr(self, 'wake_id', None)) if lease else None
+        if wake:
+            self.wake_id, action = wake
+            if action == 'exit':self.close_window()
+            else:self.show_from_tray()
         self.after(1000,self.check_wakeup)
 
 
@@ -1585,25 +1583,15 @@ def run(paths):
     try:
         paths.initialize()
         stage = 'instance_lock'
-        try:lock = InstanceLock(paths.home / "runtime/desktop.lock")
-        except Exception:
-            from .lifecycle import require_console
-            lease=require_console(paths)
-            atomic_json(paths.home/'runtime/wakeup.json',{'token':lease['token'],'id':identifier()})
+        lock = acquire_or_wake(paths)
+        if lock is None:
             return
         stage = 'console_lease'
         controller = ServiceController(paths)
         lease = controller.start_console()
         # Pre-lease hosts and a crashed console must not obstruct the new one.
-        stage = 'resident_check'
-        legacy_running = controller.has_resident_processes()
-        if lease.get('previous_stale') or legacy_running:
-            stage = 'cleanup_legacy'
-            import time
-            deadline=time.monotonic()+5
-            while controller.has_resident_processes() and time.monotonic()<deadline:time.sleep(.2)
-            if controller.has_resident_processes():
-                raise RuntimeError('已登记的旧组件尚未退出；不接管或强停其他程序。')
+        stage = 'cleanup_legacy'
+        wait_for_previous_components(controller, lease)
         stage = 'create_workbench'
         window = Workbench(paths, managed_lifecycle=True, controller=controller)
         def exit_after_close():

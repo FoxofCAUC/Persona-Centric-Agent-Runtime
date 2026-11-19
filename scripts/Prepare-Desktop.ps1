@@ -1,12 +1,13 @@
 ﻿param([string]$RuntimeHome, [string]$BasePython, [string]$LocalModelSource,
-      [switch]$Diagnostics, [switch]$RegisterExisting, [switch]$NoRegister, [switch]$NonInteractive)
+      [switch]$Diagnostics, [switch]$RegisterExisting, [switch]$NoRegister, [switch]$NonInteractive,
+      [ValidateSet('tk', 'webview')][string]$Frontend = 'tk')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'pcar-location.ps1')
 $RuntimeHome = Get-PcarRuntimeHome -RuntimeHome $RuntimeHome -Interactive:(-not $NonInteractive)
 if (-not $RuntimeHome) { exit 0 }
 Set-PcarProcessEnvironment -RuntimeHome $RuntimeHome
 $python = Get-PcarBasePython -BasePython $BasePython
-$arguments = @('-B','-m','persona_runtime','--home',$RuntimeHome,'prepare')
+$arguments = @('-B','-m','persona_runtime','--home',$RuntimeHome,'prepare','--frontend',$Frontend)
 if ($BasePython) { $arguments += @('--base-python',$BasePython) }
 if ($LocalModelSource) { $arguments += @('--local-model-source',$LocalModelSource) }
 if ($Diagnostics) { $arguments += '--diagnostics' }
