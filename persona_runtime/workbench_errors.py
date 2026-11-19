@@ -39,6 +39,10 @@ def report_failure(paths, error, stage):
         hint = '无法取得工作台实例锁，请先检查是否已有 PCAR 窗口；也请检查数据目录是否可访问。'
     elif stage == 'cleanup_legacy':
         hint = '遗留服务清理未完成。请检查管理员授权及强停报告后再启动。'
+    elif stage == 'webview_dependency':
+        hint = '请为所选数据目录准备新版工作台的 Python 依赖，再双击新版启动入口。'
+    elif stage == 'webview_runtime':
+        hint = '请修复或安装 Microsoft Edge WebView2 Runtime，检查 Windows .NET 运行环境后重试。'
     elif stage in {'console_cleanup', 'lock_release'}:
         hint = '工作台退出清理未完成，请检查相关服务状态。'
     else:

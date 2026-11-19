@@ -1,0 +1,23 @@
+/* Extend the reviewed workbench tokens to the setup forms. */
+.setup-group {
+  min-inline-size: 0;
+  margin: 4px 0 0;
+  padding: 8px 0 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.setup-group legend {
+  padding: 0 10px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+#profile-summary .summary-list .summary-list,
+#version-content .summary-list .summary-list {
+  margin-top: 5px;
+  padding-left: 12px;
+}
+#version-conflict {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}

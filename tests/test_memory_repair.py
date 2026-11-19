@@ -2,11 +2,15 @@
 import json
 import unittest
 from copy import deepcopy
+from contextlib import closing
+from unittest.mock import patch
 
 from tests import test_m4 as fixtures
-from persona_runtime.models import RuntimeErrorBase, identifier
+from persona_runtime.models import RuntimeErrorBase, generic_persona, identifier
 from persona_runtime.organization import OrganizationEngine, encoded
 from persona_runtime.organization_output import parse, receipt, pending_conflicts
+from persona_runtime.paths import RuntimePaths
+from persona_runtime.service import RuntimeService
 from persona_runtime.storage import Store
 
 
@@ -171,13 +175,16 @@ class MemoryRepairTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_upgrade_twenty_preserves_receipts_on_repeat_and_cascades_delete(self):
         import sqlite3
-        db=sqlite3.connect(self.store.path)
-        from persona_runtime.schema_m8d import TABLES as automatic_tables
-        for name in reversed(automatic_tables):db.execute('DROP TABLE '+name)
-        from persona_runtime.schema_m8a import TABLES as managed_tables
-        for name in reversed(managed_tables):db.execute('DROP TABLE '+name)
-        db.execute('DROP TABLE organization_receipts');db.execute('PRAGMA user_version=20');db.commit();db.close()
-        self.store.initialize();self.store.initialize()
+        historical = Store(RuntimePaths(self.paths.home / "tmp/schema-20"))
+        with patch("persona_runtime.storage.SCHEMA_VERSION", 20):
+            historical.initialize()
+            service = RuntimeService(historical)
+            self.persona = service.create_persona(generic_persona())
+            service.use_persona(self.persona["id"])
+        with closing(sqlite3.connect(historical.path)) as legacy, closing(sqlite3.connect(self.store.path)) as target:
+            self.assertEqual(legacy.execute("PRAGMA user_version").fetchone()[0], 20)
+            legacy.backup(target)
+        self.store.initialize()
         self.assertTrue(list((self.paths.home/'backups').glob('before-memory-repair-*.sqlite3')))
         first=(await self.seed())[0];task=await self.organize(first['session_id'])
         with self.store.connection(write=True) as db:
@@ -189,6 +196,9 @@ class MemoryRepairTests(unittest.IsolatedAsyncioTestCase):
             db.execute("INSERT INTO organization_receipts VALUES (?,'artificial response','{}')",(attempt,))
             db.execute('DELETE FROM organization_attempts WHERE id=?',(attempt,))
             self.assertEqual(db.execute('SELECT count(*) FROM organization_receipts').fetchone()[0],1)
+        self.store.initialize()
+        with self.store.connection() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM organization_receipts").fetchone()[0], 1)
 
 
 if __name__ == '__main__':unittest.main()

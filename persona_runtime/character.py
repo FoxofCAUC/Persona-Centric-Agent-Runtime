@@ -324,15 +324,26 @@ class CharacterService:
             raise
         return {'path':str(path),'persona_id':persona_id}
 
-    def import_package(self, persona_id, package, operation_id):
+    def import_package(self, persona_id, package, operation_id, *, relationship=None):
         from .service import RuntimeService
         if not isinstance(package,dict) or set(package) != {'format','persona_spec','character'} or package['format']!='pcar_character_v1':
             raise RuntimeErrorBase('invalid_character_package')
         spec = PersonaSpec.from_dict(package['persona_spec']); data = validate_character(package['character'])
         _text(operation_id,'operation_id',200)
-        fingerprint = hashlib.sha256(encode(['import',persona_id,package]).encode()).hexdigest()
+        identity = ['import',persona_id,package]
+        if relationship is not None:
+            if not isinstance(relationship,str) or len(encode({'description':relationship}))>16000:
+                raise RuntimeErrorBase('invalid_relationship_fields')
+            identity.append(relationship)
+        fingerprint = hashlib.sha256(encode(identity).encode()).hexdigest()
         with self.store.connection(write=True) as conn:
-            self._check(conn,persona_id,True)
+            if persona_id is None:
+                if self.store.current(conn,required=False) is not None:
+                    raise RuntimeErrorBase('character_selection_conflict')
+                from .private_personas import guard_acceptance_write
+                guard_acceptance_write(self.store, None)
+            else:
+                self._check(conn,persona_id,True)
             old=conn.execute('SELECT * FROM character_operations WHERE operation_id=?',(operation_id,)).fetchone()
             if old:
                 if old['fingerprint'] != fingerprint:
@@ -340,8 +351,10 @@ class CharacterService:
                 return RuntimeService._persona(conn,old['persona_id']) | {'already_applied':True}
             new_id=identifier()
             conn.execute('INSERT INTO personas VALUES (?,?,?,?,?)',(new_id,spec.name,1,encode(spec.to_dict()),timestamp()))
-            from .profile import initialize_profiles
+            from .profile import append_version, initialize_profiles
             initialize_profiles(conn,new_id,actor='create')
+            if relationship:
+                append_version(conn,new_id,'relationship',{'description':relationship},actor='create')
             version=append(conn,new_id,data,'import')
             from .context_policy import initialize as initialize_context_policies
             initialize_context_policies(conn,new_id,new_persona=True,disposition_default='baseline')

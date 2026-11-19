@@ -1,5 +1,5 @@
 """Local desktop installation and diagnosis; no credentials or paid model calls."""
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import hashlib
 import importlib.metadata
 import json
@@ -16,6 +16,7 @@ import uuid
 SOURCE_ROOT=Path(__file__).resolve().parents[1]
 LOCATOR='.pcar-local.json'
 NO_WINDOW=getattr(subprocess,'CREATE_NO_WINDOW',0)
+WEBVIEW_VERSION = "6.2.1"
 
 
 def read_json(path):
@@ -100,12 +101,16 @@ def provisioning_environment(paths):
     return env
 
 
-def register_existing(paths,*,source_root=None):
-    source=Path(source_root or SOURCE_ROOT).resolve();validate_home(paths.home,source_root=source)
-    file=paths.home/'config/workbench.json'
+def require_existing_config(home):
+    file=home/'config/workbench.json'
     if not file.is_file():raise ValueError('该目录没有可识别的PCAR实例，未登记。')
     data=read_json(file)
     if data.get('version')!=3 or not data.get('instance_id'):raise ValueError('实例配置不兼容，未登记。')
+
+
+def register_existing(paths,*,source_root=None):
+    source=Path(source_root or SOURCE_ROOT).resolve();validate_home(paths.home,source_root=source)
+    require_existing_config(paths.home)
     runtime_python(paths)
     atomic_json(source/LOCATOR,{'version':1,'runtime_home':str(paths.home)})
     return {'registered':True,'runtime_home':str(paths.home),'business_data_changed':False}
@@ -141,7 +146,65 @@ def prepare_model(paths,*,local_source=None,source_root=None):
             shutil.rmtree(staging)
 
 
-def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics=False,source_root=None,register=True):
+def desktop_sync(uv, frontend, diagnostics=False):
+    command = [uv, "sync", "--frozen", "--no-managed-python", "--extra", "character-semantic"]
+    if frontend == "webview":
+        command += ["--extra", "workbench-webview"]
+    command += ["--group", "dev"] if diagnostics else ["--no-dev"]
+    return command
+
+
+def webview_ready(python):
+    probe = (
+        "from importlib.metadata import version; import webview; "
+        f"raise SystemExit(version('pywebview') != {WEBVIEW_VERSION!r})"
+    )
+    return subprocess.run([str(python), "-I", "-B", "-c", probe], stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL, creationflags=NO_WINDOW).returncode == 0
+
+
+def ensure_webview(paths, *, source_root=None):
+    """Add the locked desktop renderer to an existing idle PCAR environment."""
+    source = Path(source_root or SOURCE_ROOT).resolve()
+    home = validate_home(paths.home, source_root=source)
+    require_existing_config(home)
+    python = runtime_python(paths)
+    if webview_ready(python):
+        return {"frontend": "webview", "dependencies_changed": False}
+
+    venv = home / ".venv"
+    owned_python = venv / "Scripts/python.exe"
+    if python.resolve() != owned_python or any(
+        node.is_symlink() or node.is_junction() for node in (venv, venv / "Scripts", owned_python)
+    ):
+        raise ValueError("请为当前指定的 Python 环境准备新版工作台依赖，或选择此实例自带的环境。")
+
+    from .migration import _offline
+    from .models import RuntimeErrorBase
+
+    with ExitStack() as guards:
+        try:
+            guards.enter_context(_offline(paths))
+        except RuntimeErrorBase:
+            raise ValueError("请先正常退出此实例的 PCAR 工作台，再双击新版启动入口。") from None
+        if webview_ready(python):
+            return {"frontend": "webview", "dependencies_changed": False}
+        env = provisioning_environment(paths)
+        uv = shutil.which("uv")
+        if not uv:
+            raise ValueError("请先安装部署手册指定的 uv，再双击新版启动入口。")
+        log = home / "logs/environment-prepare.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        command = desktop_sync(uv, "webview") + ["--inexact"]
+        with log.open("a", encoding="utf-8") as output:
+            result = subprocess.run(command, cwd=source, env=env, stdout=output, stderr=subprocess.STDOUT,
+                                    creationflags=NO_WINDOW)
+        if result.returncode or not webview_ready(python):
+            raise ValueError("新版工作台依赖准备未完成。请检查准备日志 " + str(log))
+    return {"frontend": "webview", "dependencies_changed": True}
+
+
+def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics=False,source_root=None,register=True,frontend='tk'):
     from .paths import RuntimePaths
     source=Path(source_root or SOURCE_ROOT).resolve();home=validate_home(paths.home,source_root=source)
     if home.exists() and any(home.iterdir()) and not (home/'config/workbench.json').exists() and not (home/'runtime/install-progress.json').exists():
@@ -164,7 +227,7 @@ def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics
         check=subprocess.run([str(venv/'Scripts/python.exe'),'-I','-B','-c','import sys,struct;print(str(sys.version_info.major)+"."+str(sys.version_info.minor)+"/"+str(struct.calcsize("P")*8))'],capture_output=True,text=True,creationflags=NO_WINDOW)
         if check.returncode or check.stdout.strip()!='3.12/64':raise ValueError('未完成安装的虚拟环境不可用，请选择新的空目录重新准备。')
     if not (venv/'Scripts/python.exe').exists():commands.append([uv,'venv','--no-managed-python','--python',str(python),str(venv)])
-    commands.append([uv,'sync','--frozen','--no-managed-python','--extra','character-semantic']+(['--group','dev'] if diagnostics else ['--no-dev']))
+    commands.append(desktop_sync(uv, frontend, diagnostics))
     log=home/'logs/environment-prepare.log'
     with log.open('a',encoding='utf-8') as output:
         for command in commands:

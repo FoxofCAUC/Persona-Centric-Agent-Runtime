@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>PCAR 工作台 · 交互 Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --stage: #eeeee6;
+      --surface: #fffdf7;
+      --rail: #edf1e8;
+      --panel: #f3f5ed;
+      --line: #dce3d7;
+      --line-strong: #bdcec0;
+      --ink: #192f2a;
+      --muted: #506760;
+      --accent: #235747;
+      --accent-hover: #194638;
+      --selected: #dcebe1;
+      --neutral-bubble: #f0eee5;
+      --error: #963b30;
+      --sidebar: 246px;
+      font: 14px/1.55 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+      color: var(--ink);
+      background: var(--stage);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; min-width: 288px; }
+    button, input, textarea, select { font: inherit; }
+    button { color: inherit; cursor: pointer; }
+    button:disabled { cursor: default; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 2px solid #4d806c; outline-offset: 3px; }
+    h1, h2, h3, p { margin: 0; }
+    .svg-symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
+    .icon { display: inline-block; width: 19px; height: 19px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+    .stage { padding: 26px; min-height: 100dvh; display: grid; place-items: center; }
+    .window { position: relative; display: grid; grid-template-rows: 53px minmax(0, 1fr); width: min(1388px, 100%); height: min(884px, calc(100dvh - 52px)); min-height: 440px; background: var(--surface); border: 1px solid #cbd6ca; border-radius: 16px; box-shadow: 0 16px 48px #1e3f2e13, 0 2px 7px #1e3f2e0c; overflow: hidden; }
+    .titlebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 0 13px; border-bottom: 1px solid var(--line); background: #f9faf2; z-index: 3; }
+    .brand, .title-actions { display: flex; align-items: center; gap: 10px; }
+    .brand strong { font-size: 16px; letter-spacing: .065em; }
+    .demo-label { color: var(--muted); font-size: 12px; border-left: 1px solid var(--line-strong); padding-left: 10px; white-space: nowrap; }
+    .layout { display: grid; min-height: 0; grid-template-columns: var(--sidebar) minmax(0, 1fr); }
+    .layout.collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+    .sidebar { position: relative; min-height: 0; display: flex; flex-direction: column; background: var(--rail); border-right: 1px solid var(--line); }
+    .sidebar-content { min-height: 0; flex: 1; overflow: auto; padding: 22px 14px 20px; scrollbar-width: thin; }
+    .rail-section + .rail-section { margin-top: 29px; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 31px; padding: 0 3px 8px 7px; }
+    .section-heading h2 { font-size: 13px; font-weight: 700; letter-spacing: .05em; }
+    .rail-list { display: grid; gap: 4px; }
+    .rail-row { display: flex; align-items: center; gap: 9px; min-height: 42px; width: 100%; padding: 6px 9px; border: 0; border-radius: 9px; background: transparent; text-align: left; }
+    .rail-row:hover { background: #e2eae0; }
+    .rail-row[aria-current="true"] { background: var(--selected); font-weight: 650; }
+    .row-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .rail-empty { color: var(--muted); font-size: 13px; padding: 3px 7px 7px; }
+    .rail-search { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; padding: 0 9px; height: 37px; background: #f9fbf5; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
+    .rail-search input { min-width: 0; width: 100%; background: transparent; border: 0; outline: 0; color: var(--ink); font-size: 13px; }
+    .rail-search:focus-within { outline: 2px solid #4d806c; outline-offset: 2px; }
+    .rail-search .icon { width: 15px; height: 15px; }
+    .rail-footer { margin-top: auto; padding: 12px 14px 15px; border-top: 1px solid var(--line); }
+    .rail-footer button { justify-content: space-between; }
+    .menu { position: absolute; z-index: 5; bottom: 62px; left: 12px; right: 12px; border: 1px solid var(--line-strong); padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px #1d3d2a1a; }
+    .menu button { min-height: 38px; }
+    .resize { position: absolute; inset: 0 -4px 0 auto; width: 8px; z-index: 2; cursor: ew-resize; touch-action: none; }
+    .resize::after { content: ""; position: absolute; top: 47%; left: 3px; width: 2px; height: 28px; background: #a8bcae; border-radius: 2px; }
+    .collapsed .sidebar { visibility: hidden; overflow: hidden; }
+    .scrim { display: none; }
+    .conversation { min-width: 0; min-height: 0; display: grid; grid-template-rows: 65px minmax(0, 1fr) auto; }
+    .chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 clamp(14px, 3vw, 30px); border-bottom: 1px solid var(--line); }
+    .chat-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .chat-person h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 700; }
+    .avatar { width: 33px; height: 33px; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: #deebe0; color: var(--accent); }
+    .avatar.small { width: 29px; height: 29px; }
+    .avatar.small .icon { width: 16px; height: 16px; }
+    .timeline { overflow: auto; min-height: 0; padding: 28px clamp(12px, 4vw, 44px); scrollbar-width: thin; }
+    .timeline.first { display: grid; align-items: center; justify-items: center; }
+    .onboarding { width: min(100%, 548px); padding: clamp(18px, 3.2vw, 31px); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; }
+    .onboarding h2 { font-size: clamp(22px, 2.6vw, 29px); line-height: 1.25; font-weight: 700; letter-spacing: -.025em; }
+    .onboarding > p { margin-top: 10px; color: var(--muted); }
+    .setup-steps { display: grid; gap: 9px; margin: 23px 0 18px; }
+    .step { display: flex; align-items: center; gap: 12px; min-height: 66px; padding: 10px 11px 10px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+    .step .step-copy { min-width: 0; flex: 1; }
+    .step strong { display: block; font-size: 14px; }
+    .step small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+    .step-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 31px; height: 31px; color: var(--accent); background: #edf2e9; border-radius: 8px; }
+    .guide-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 39px; padding: 7px 13px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .button:hover { background: #eef4ec; }
+    .button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    .button.primary:hover { background: var(--accent-hover); }
+    .button.ghost { border-color: transparent; background: transparent; color: var(--accent); }
+    .button.ghost:hover { background: #e9f0e7; }
+    .button:disabled, .button.primary:disabled { background: #e4e8df; border-color: transparent; color: #52635a; }
+    .icon-button { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--accent); }
+    .icon-button:hover { background: #e1ebe0; }
+    .conversation-inner { width: min(100%, 730px); margin: 0 auto; display: grid; align-content: start; gap: 13px; }
+    .date-divider { justify-self: center; color: var(--muted); font-size: 12px; margin: 7px 0 9px; }
+    .bubble { width: fit-content; max-width: min(82%, 555px); padding: 11px 15px; border-radius: 14px; background: var(--neutral-bubble); overflow-wrap: anywhere; white-space: pre-wrap; }
+    .bubble.own { justify-self: end; background: var(--selected); border-end-end-radius: 5px; }
+    .bubble.reply { border-end-start-radius: 5px; }
+    .sample-bubble { width: min(78%, var(--sample-width, 295px)); display: grid; gap: 7px; padding: 16px 17px; }
+    .sample-bubble span { height: 4px; display: block; border-radius: 4px; background: #779789; opacity: .6; }
+    .sample-bubble.reply span { background: #87958a; }
+    .chat-empty { display: grid; justify-items: center; align-content: center; gap: 11px; min-height: 100%; color: var(--muted); text-align: center; }
+    .chat-empty strong { color: var(--ink); font-size: 18px; }
+    .composer-wrap { padding: 5px clamp(12px, 4vw, 44px) 22px; }
+    .composer { display: flex; align-items: flex-end; width: min(100%, 730px); gap: 10px; min-height: 61px; margin: 0 auto; padding: 9px 10px 9px 14px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 13px; }
+    .composer.off { background: var(--panel); border-color: var(--line); }
+    .composer textarea { flex: 1; min-width: 0; resize: none; field-sizing: content; min-height: 37px; max-height: 100px; padding: 7px 1px; border: 0; outline: none; background: transparent; color: var(--ink); line-height: 1.55; }
+    .composer:focus-within { outline: 2px solid #769989; outline-offset: 2px; }
+    .composer input::placeholder, textarea::placeholder { color: #52695f; opacity: 1; }
+    .composer .button { min-width: 74px; }
+    dialog { width: min(530px, calc(100vw - 30px)); max-height: calc(100dvh - 36px); padding: 0; border: 1px solid var(--line-strong); border-radius: 15px; color: var(--ink); background: var(--surface); box-shadow: 0 22px 80px #233e2e39; }
+    dialog::backdrop { background: #20382e4e; }
+    .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding: 14px 18px 14px 22px; }
+    .dialog-head h2 { font-size: 19px; }
+    .dialog-body { padding: 19px 22px; display: grid; gap: 13px; }
+    .dialog-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 13px 22px; border-top: 1px solid var(--line); background: var(--surface); }
+    .dialog-foot:empty { display: none; }
+    .fields { display: grid; gap: 12px; }
+    .field { display: grid; gap: 5px; font-weight: 600; }
+    .field input, .field textarea, .field select { min-width: 0; width: 100%; border-radius: 8px; border: 1px solid var(--line-strong); background: #fcfdf7; color: var(--ink); font-weight: 400; padding: 7px 10px; min-height: 38px; }
+    .field textarea { min-height: 66px; resize: vertical; }
+    .hint { font-size: 13px; color: var(--muted); font-weight: 400; }
+    .error { color: var(--error); font-size: 13px; }
+    details { border: 1px solid var(--line); padding: 9px 11px; border-radius: 9px; background: #f8faf2; }
+    summary { cursor: pointer; font-weight: 600; }
+    details > div, details > p { margin-top: 10px; }
+    .tablist, .inline-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .tablist button[aria-pressed="true"] { background: var(--selected); border-color: #a9bdac; }
+    .profile-head { display: flex; align-items: center; gap: 10px; }
+    .profile-head strong { font-size: 17px; overflow-wrap: anywhere; }
+    .profile-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .summary-list { display: grid; gap: 7px; padding: 0; margin: 0; list-style: none; }
+    .summary-list li { border-bottom: 1px solid var(--line); padding-bottom: 8px; overflow-wrap: anywhere; }
+    .toast { position: absolute; right: 20px; bottom: 100px; padding: 10px 14px; max-width: calc(100% - 40px); border: 1px solid var(--line-strong); background: #f1f7ed; color: var(--accent); border-radius: 10px; box-shadow: 0 2px 16px #233e2e16; z-index: 6; }
+    @media (max-width: 760px) {
+      .stage { display: block; padding: 0; }
+      .window { border: 0; border-radius: 0; box-shadow: none; height: 100dvh; min-height: 380px; }
+      .layout, .layout.collapsed { grid-template-columns: minmax(0, 1fr); }
+      .sidebar { position: absolute; z-index: 4; top: 53px; left: 0; bottom: 0; width: min(270px, 85vw); transform: translateX(-100%); visibility: hidden; }
+      .layout.drawer-open .sidebar { transform: translateX(0); visibility: visible; overflow: visible; }
+      .layout.drawer-open .scrim { display: block; position: absolute; inset: 53px 0 0; z-index: 3; border: 0; background: #1f392d38; }
+      .sidebar .resize { display: none; }
+      .titlebar { padding-right: 9px; }
+      .title-actions .button { min-height: 34px; padding: 5px 7px; font-size: 12px; }
+      .timeline { padding-top: 16px; padding-bottom: 16px; }
+      .composer-wrap { padding-bottom: 12px; }
+    }
+    @media (max-width: 400px) {
+      .step-icon { display: none; }
+      .step { gap: 8px; padding-left: 10px; }
+      .step .button { padding: 6px 8px; }
+      .demo-label { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <svg class="svg-symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5.5 19v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/><path d="M8 10h8m-8 3h5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 7-1 1a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0m2 6a3 3 0 0 0 4 0l4-4a3 3 0 0 0-4-4l-1 1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m6 12 4 4 8-8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.1m6.9 0h.1m6.9 0h.1" stroke-width="3"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  </svg>
+  <div class="stage">
+    <div class="window">
+      <header class="titlebar">
+        <div class="brand"><button id="sidebar-toggle" class="icon-button" aria-label="收起侧栏" aria-controls="sidebar" aria-expanded="true"><svg class="icon" aria-hidden="true"><use href="#i-sidebar"/></svg></button><strong>PCAR</strong><span class="demo-label">交互 Demo</span></div>
+        <div class="title-actions"><button class="button ghost" id="sample-mode">体验日常聊天</button></div>
+      </header>
+      <div class="layout" id="layout">
+        <aside class="sidebar" id="sidebar" aria-label="人物与会话">
+          <div class="sidebar-content">
+            <section class="rail-section" aria-labelledby="people-heading">
+              <div class="section-heading"><h2 id="people-heading">人物</h2></div>
+              <div class="rail-list" id="people"></div>
+              <button class="rail-row" id="new-person"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>新建角色</span></button>
+            </section>
+            <section class="rail-section" aria-labelledby="sessions-heading">
+              <div class="section-heading"><h2 id="sessions-heading">会话</h2><button class="icon-button" id="new-session" aria-label="新建会话" hidden><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+              <label class="rail-search" id="search-box" hidden><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="session-search" type="search" placeholder="查找会话" aria-label="查找会话" autocomplete="off"></label>
+              <div class="rail-list" id="sessions"></div>
+            </section>
+          </div>
+          <div class="rail-footer"><button class="rail-row" id="menu-toggle" aria-controls="app-menu" aria-expanded="false"><span>应用菜单</span><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button></div>
+          <div class="menu" id="app-menu" hidden>
+            <button class="rail-row" data-menu="connection">模型连接</button>
+            <button class="rail-row" data-menu="advanced">高级设置</button>
+            <button class="rail-row" data-menu="help">使用帮助</button>
+            <button class="rail-row" data-menu="reset">重置演示</button>
+          </div>
+          <div class="resize" id="sidebar-resize" role="separator" aria-label="调整侧栏宽度" aria-orientation="vertical" aria-valuemin="190" aria-valuemax="330" aria-valuenow="246" tabindex="0"></div>
+        </aside>
+        <button class="scrim" id="scrim" aria-label="关闭侧栏"></button>
+        <main class="conversation" aria-labelledby="current-person">
+          <header class="chat-header">
+            <div class="chat-person"><span class="avatar"><svg class="icon" aria-hidden="true"><use href="#i-person"/></svg></span><h1 id="current-person">尚未选择人物</h1></div>
+            <button id="profile-button" class="button ghost" hidden>人物资料</button>
+          </header>
+          <div class="timeline first" id="timeline"></div>
+          <div class="composer-wrap">
+            <form class="composer off" id="composer" autocomplete="off">
+              <textarea id="message" rows="1" aria-label="输入消息" placeholder="准备完成后即可输入消息" maxlength="1500" disabled></textarea>
+              <button class="button primary" id="send" disabled>发送</button>
+            </form>
+          </div>
+        </main>
+      </div>
+      <div class="toast" id="toast" role="status" hidden></div>
+    </div>
+  </div>
+  <dialog id="dialog" aria-labelledby="dialog-title">
+    <form id="dialog-form" autocomplete="off">
+      <div class="dialog-head"><h2 id="dialog-title"></h2><button class="icon-button" id="dialog-close" type="button" aria-label="关闭"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+      <div class="dialog-body" id="dialog-body"></div>
+      <div class="dialog-foot" id="dialog-actions"></div>
+    </form>
+  </dialog>
+  <script>
+    "use strict";
+
+    const byId = id => document.getElementById(id);
+    const timeline = byId("timeline");
+    const message = byId("message");
+    const dialog = byId("dialog");
+    const dialogBody = byId("dialog-body");
+    const dialogForm = byId("dialog-form");
+    const sidebarQuery = matchMedia("(max-width: 760px)");
+    const profileFields = [
+      ["name", "名称", "input", 40],
+      ["introduction", "人物介绍", "textarea", 600],
+      ["traits", "性格与边界", "textarea", 600],
+      ["expression", "表达习惯", "textarea", 600],
+      ["background", "背景、外貌与兴趣", "textarea", 600],
+      ["relationship", "关系说明", "textarea", 600]
+    ];
+    let nextId = 0;
+    let viewport = { collapsed: false, drawerOpen: false, width: 246 };
+    let state = freshState();
+    let returnFocus = null;
+    let toastTimer = null;
+
+    function freshState() {
+      return { people: [], current: null, connected: false, guide: true, paused: false, model: "deepseek-v4-pro" };
+    }
+
+    function icon(name) {
+      return '<svg class="icon" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+    }
+
+    function currentPerson() {
+      return state.people.find(person => person.id === state.current);
+    }
+
+    function currentSession() {
+      const person = currentPerson();
+      return person?.sessions.find(session => session.id === person.activeSession);
+    }
+
+    function ready() {
+      return Boolean(currentSession() && state.connected && !state.guide);
+    }
+
+    function createSession(person, label, sample = false) {
+      const session = { id: ++nextId, label, sample, draft: "", messages: [] };
+      person.sessions.unshift(session);
+      person.activeSession = session.id;
+      return session;
+    }
+
+    function createPerson(profile, sample = false) {
+      const person = { id: ++nextId, profile, sample, materials: [], versions: [], memory: false, sessions: [] };
+      createSession(person, sample ? "当前会话" : "新会话", sample);
+      if (sample) {
+        const active = person.activeSession;
+        createSession(person, "较早的会话");
+        person.sessions.reverse();
+        person.activeSession = active;
+      }
+      state.people.push(person);
+      return person;
+    }
+
+    function notify(text) {
+      const toast = byId("toast");
+      clearTimeout(toastTimer);
+      toast.textContent = text;
+      toast.hidden = false;
+      toastTimer = setTimeout(() => { toast.hidden = true; }, 2600);
+    }
+
+    function showMenu(open) {
+      byId("app-menu").hidden = !open;
+      byId("menu-toggle").setAttribute("aria-expanded", String(open));
+    }
+
+    function applySidebar() {
+      const narrow = sidebarQuery.matches;
+      const expanded = narrow ? viewport.drawerOpen : !viewport.collapsed;
+      byId("layout").classList.toggle("collapsed", !narrow && !expanded);
+      byId("layout").classList.toggle("drawer-open", narrow && expanded);
+      byId("sidebar").inert = !expanded;
+      document.querySelector(".conversation").inert = narrow && expanded;
+      const toggle = byId("sidebar-toggle");
+      toggle.setAttribute("aria-expanded", String(expanded));
+      toggle.setAttribute("aria-label", expanded ? "收起侧栏" : "打开侧栏");
+      if (!expanded) showMenu(false);
+    }
+
+    function closeDrawer() {
+      viewport.drawerOpen = false;
+      applySidebar();
+    }
+
+    function selectPerson(person) {
+      state.current = person.id;
+      byId("session-search").value = "";
+      closeDrawer();
+      render({ scrollToEnd: true });
+    }
+
+    function emptyList(container, text) {
+      const item = document.createElement("p");
+      item.className = "rail-empty";
+      item.textContent = text;
+      container.append(item);
+    }
+
+    function listButton(label, selected, handler, showAvatar = false) {
+      const button = document.createElement("button");
+      button.className = "rail-row";
+      if (selected) button.setAttribute("aria-current", "true");
+      if (showAvatar) button.innerHTML = '<span class="avatar small">' + icon("person") + '</span>';
+      const caption = document.createElement("span");
+      caption.className = "row-text";
+      caption.textContent = label;
+      button.title = label;
+      button.append(caption);
+      button.addEventListener("click", handler);
+      return button;
+    }
+
+    function renderPeople() {
+      const container = byId("people");
+      container.replaceChildren();
+      if (!state.people.length) emptyList(container, "还没有人物");
+      for (const person of state.people) {
+        container.append(listButton(person.profile.name, person.id === state.current, () => selectPerson(person), true));
+      }
+    }
+
+    function renderSessions() {
+      const container = byId("sessions");
+      const person = currentPerson();
+      byId("new-session").hidden = !person;
+      byId("search-box").hidden = !person;
+      container.replaceChildren();
+      if (!person) {
+        emptyList(container, "聊天后显示记录");
+        return;
+      }
+      const query = byId("session-search").value.trim().toLowerCase();
+      const found = person.sessions.filter(session => session.label.toLowerCase().includes(query));
+      if (!found.length) emptyList(container, "没有匹配的会话");
+      for (const session of found) {
+        container.append(listButton(session.label, session.id === person.activeSession, () => {
+          person.activeSession = session.id;
+          closeDrawer();
+          render({ scrollToEnd: true });
+        }));
+      }
+    }
+
+    function renderOnboarding() {
+      const person = currentPerson();
+      timeline.classList.add("first");
+      if (state.paused) {
+        timeline.innerHTML = '<div class="chat-empty">' + icon("chat") +
+          '<strong>继续完成设置</strong><p>准备人物和模型连接后，即可开始聊天。</p>' +
+          '<button class="button primary" data-guide="resume">继续设置</button></div>';
+        return;
+      }
+      timeline.innerHTML =
+        '<section class="onboarding" aria-labelledby="guide-heading">' +
+          '<h2 id="guide-heading">开始第一次聊天</h2>' +
+          '<p>准备人物和模型连接，两项可以任选先后。</p>' +
+          '<div class="setup-steps">' +
+            '<div class="step"><span class="step-icon">' + icon(person ? "check" : "person") + '</span>' +
+              '<div class="step-copy"><strong>准备人物</strong><small id="guide-person"></small></div>' +
+              '<button class="button ' + (person ? '' : 'primary') + '" data-guide="person">' + (person ? '更换人物' : '选择人物') + '</button></div>' +
+            '<div class="step"><span class="step-icon">' + icon(state.connected ? "check" : "link") + '</span>' +
+              '<div class="step-copy"><strong>连接模型</strong><small>' + (state.connected ? '演示连接已就绪' : '配置基础聊天所需的连接') + '</small></div>' +
+              '<button class="button ' + (!state.connected && person ? 'primary' : '') + '" data-guide="connection">' + (state.connected ? '查看连接' : '配置连接') + '</button></div>' +
+          '</div><div class="guide-actions">' +
+            '<button class="button ghost" data-guide="pause">稍后继续</button>' +
+            '<button class="button primary" data-guide="start"' + (person && state.connected ? '' : ' disabled') + '>开始聊天</button>' +
+          '</div></section>';
+      byId("guide-person").textContent = person ? person.profile.name : "从空白创建或导入角色";
+    }
+
+    function renderMessages(session) {
+      timeline.classList.remove("first");
+      if (!session.sample && !session.messages.length) {
+        timeline.innerHTML = '<div class="chat-empty">' + icon("chat") + '<strong>还没有消息</strong><p>从下方发出第一条消息。</p></div>';
+        return;
+      }
+      const thread = document.createElement("div");
+      thread.className = "conversation-inner";
+      thread.innerHTML = '<div class="date-divider">' + (session.sample ? "聊天样式预览" : "今天") + '</div>';
+      if (session.sample) {
+        thread.insertAdjacentHTML("beforeend",
+          '<div class="bubble own sample-bubble" style="--sample-width:240px" aria-label="用户消息样式"><span></span><span style="width:63%"></span></div>' +
+          '<div class="bubble reply sample-bubble" style="--sample-width:310px" aria-label="人物消息样式"><span></span><span style="width:72%"></span><span style="width:87%"></span></div>' +
+          '<div class="bubble reply sample-bubble" style="--sample-width:188px" aria-hidden="true"><span style="width:76%"></span></div>');
+      }
+      for (const text of session.messages) {
+        const bubble = document.createElement("p");
+        bubble.className = "bubble own";
+        bubble.textContent = text;
+        thread.append(bubble);
+      }
+      timeline.replaceChildren(thread);
+    }
+
+    function updateSendButton() {
+      byId("send").disabled = !ready() || !message.value.trim();
+    }
+
+    function render({ scrollToEnd = false } = {}) {
+      const previousScroll = timeline.scrollTop;
+      const person = currentPerson();
+      const session = currentSession();
+      renderPeople();
+      renderSessions();
+      byId("current-person").textContent = person?.profile.name ?? "尚未选择人物";
+      byId("profile-button").hidden = !person;
+      if (ready()) renderMessages(session);
+      else renderOnboarding();
+      timeline.scrollTop = scrollToEnd ? timeline.scrollHeight : previousScroll;
+      byId("composer").classList.toggle("off", !ready());
+      message.disabled = !ready();
+      message.value = session?.draft ?? "";
+      message.placeholder = ready() ? "输入消息" : "准备完成后即可输入消息";
+      updateSendButton();
+    }
+
+    function present(title, body, actionLabel = "", onSubmit = null) {
+      showMenu(false);
+      if (!dialog.open) {
+        const candidate = document.activeElement;
+        returnFocus = candidate instanceof HTMLElement && byId("app-menu").contains(candidate)
+          ? byId("menu-toggle") : candidate;
+      }
+      byId("dialog-title").textContent = title;
+      dialogBody.innerHTML = body;
+      byId("dialog-actions").innerHTML = actionLabel
+        ? '<button type="button" data-dialog-cancel class="button ghost">取消</button><button class="button primary" type="submit">' + actionLabel + '</button>'
+        : '';
+      dialogForm.onsubmit = event => {
+        event.preventDefault();
+        if (onSubmit) onSubmit(new FormData(dialogForm));
+      };
+      if (!dialog.open) dialog.showModal();
+      (dialogBody.querySelector("[data-autofocus]") || byId("dialog-close")).focus();
+    }
+
+    function finish(messageText) {
+      dialog.close();
+      render();
+      if (messageText) notify(messageText);
+    }
+
+    function fieldMarkup([key, label, type, limit]) {
+      const common = ' name="' + key + '" maxlength="' + limit + '"';
+      const input = type === "input"
+        ? '<input' + common + ' required data-autofocus>'
+        : '<textarea' + common + ' rows="2"></textarea>';
+      return '<label class="field">' + label + input + '</label>';
+    }
+
+    function openRoleForm(person = null, mode = "blank", draft = null) {
+      const isEdit = Boolean(person);
+      const fields = profileFields.slice(0, 4).map(fieldMarkup).join("");
+      const extra = profileFields.slice(4).map(fieldMarkup).join("");
+      const tabs = isEdit ? "" :
+        '<div class="tablist"><button type="button" class="button" data-role-mode="blank" aria-pressed="' + (mode === "blank") + '">空白创建</button>' +
+        '<button type="button" class="button" data-role-mode="import" aria-pressed="' + (mode === "import") + '">导入人设</button></div>';
+      const importer = mode === "import" ?
+        '<label class="field">选择 JSON 文件<input type="file" name="roleFile" accept=".json,application/json" data-autofocus></label>' +
+        '<p class="hint" id="import-note">读取后可核对名称再保存。</p>' : "";
+      present(isEdit ? "编辑人物" : "新建角色",
+        tabs + importer + '<div class="fields">' + fields +
+        '<details><summary>补充设定</summary><div class="fields">' + extra + '</div></details></div>' +
+        '<p id="role-error" class="error" role="alert" hidden></p>',
+        isEdit ? "保存修改" : "创建并选用",
+        form => {
+          const profile = Object.fromEntries(profileFields.map(([key]) => [key, String(form.get(key) ?? "").trim()]));
+          if (!profile.name) {
+            const error = byId("role-error");
+            error.textContent = "请输入人物名称。";
+            error.hidden = false;
+            dialogForm.elements.name.focus();
+            return;
+          }
+          if (isEdit) {
+            person.versions.push({ label: "修改人物设定", at: new Date() });
+            person.profile = profile;
+            finish("人物设定已保存");
+          } else {
+            const created = createPerson(profile);
+            state.current = created.id;
+            state.paused = false;
+            byId("session-search").value = "";
+            finish("角色已创建并选用");
+          }
+        });
+      const saved = person?.profile ?? draft;
+      if (saved) {
+        for (const [key] of profileFields) dialogForm.elements.namedItem(key).value = saved[key] ?? "";
+      }
+      for (const tab of dialogBody.querySelectorAll("[data-role-mode]")) {
+        tab.addEventListener("click", () => {
+          if (mode === tab.dataset.roleMode) return;
+          const form = new FormData(dialogForm);
+          const currentDraft = Object.fromEntries(profileFields.map(([key]) => [key, form.get(key)]));
+          openRoleForm(null, tab.dataset.roleMode, currentDraft);
+        });
+      }
+      dialogForm.elements.namedItem("roleFile")?.addEventListener("change", loadRoleFile);
+    }
+
+    async function loadRoleFile(event) {
+      const file = event.target.files[0];
+      const note = byId("import-note");
+      if (!file || !note) return;
+      try {
+        if (file.size > 256 * 1024) throw new Error("large");
+        const source = JSON.parse(await file.text());
+        if (!note.isConnected || event.target.files[0] !== file) return;
+        const role = source?.persona ?? source?.spec ?? source;
+        if (typeof role?.name !== "string" || !role.name.trim()) throw new Error("name");
+        const data = {
+          name: role.name, introduction: role.introduction, traits: role.core_traits,
+          expression: role.expression_style, background: role.initial_background
+        };
+        for (const [key, , , limit] of profileFields) {
+          const field = data[key];
+          const value = Array.isArray(field) ? field.filter(line => typeof line === "string").join("\n") : field;
+          if (typeof value === "string") dialogForm.elements.namedItem(key).value = value.slice(0, limit);
+        }
+        note.textContent = "已读取可预览字段，请核对后保存。";
+      } catch {
+        if (note.isConnected && event.target.files[0] === file) note.textContent = "无法读取人物名称。请选择包含名称的角色 JSON，或手动填写。";
+      }
+    }
+
+    function openPersonPicker() {
+      if (!state.people.length) {
+        openRoleForm();
+        return;
+      }
+      present("选择人物", '<div class="rail-list" id="picker-list"></div><button type="button" class="button" id="picker-create">新建角色</button>');
+      for (const person of state.people) {
+        byId("picker-list").append(listButton(person.profile.name, person.id === state.current, () => {
+          state.current = person.id;
+          byId("session-search").value = "";
+          finish("已切换人物");
+        }, true));
+      }
+      byId("picker-create").addEventListener("click", () => openRoleForm());
+    }
+
+    function openConnection() {
+      present("模型连接",
+        '<div class="fields">' +
+          '<label class="field">接口基础地址<input value="https://api.deepseek.com" readonly></label>' +
+          '<label class="field">模型<select name="model"><option value="deepseek-v4-pro">DeepSeek V4 Pro</option><option value="deepseek-flash">DeepSeek Flash</option></select></label>' +
+          '<label class="field">API Key<input type="password" name="key" autocomplete="new-password" placeholder="仅填写测试值，可留空" maxlength="100" data-autofocus></label>' +
+          '<p class="hint">' + (state.connected ? "当前状态：演示连接已就绪。" : "当前状态：尚未配置演示连接。") + ' 本页只用于试走配置流程。</p>' +
+        '</div>', "保存演示连接", form => {
+          state.model = String(form.get("model"));
+          dialogForm.elements.namedItem("key").value = "";
+          state.connected = true;
+          state.paused = false;
+          finish("演示连接已保存");
+        });
+      dialogForm.elements.namedItem("model").value = state.model;
+    }
+
+    function openProfile() {
+      const person = currentPerson();
+      if (!person) return;
+      present("人物资料",
+        '<div class="profile-head"><span class="avatar">' + icon("person") + '</span><strong id="profile-name"></strong></div>' +
+        '<p id="profile-intro" class="profile-text hint" hidden></p>' +
+        '<div class="inline-actions">' +
+          '<button type="button" class="button" data-profile="edit">编辑设定</button>' +
+          '<button type="button" class="button" data-profile="append">补充资料</button>' +
+          '<button type="button" class="button" data-profile="versions">版本历史</button>' +
+        '</div>' +
+        '<details><summary>已补充的资料</summary><ul id="materials" class="summary-list"></ul></details>' +
+        '<label><input type="checkbox" id="remember"> 自动记忆</label><p class="hint">此开关作用于当前角色。</p>');
+      byId("profile-name").textContent = person.profile.name;
+      byId("profile-intro").textContent = person.profile.introduction ?? "";
+      byId("profile-intro").hidden = !person.profile.introduction;
+      setList(byId("materials"), person.materials.map(item => item.title), "还没有补充资料");
+      byId("remember").checked = person.memory;
+      byId("remember").addEventListener("change", event => {
+        person.memory = event.target.checked;
+        notify(person.memory ? "当前角色的演示记忆已开启" : "当前角色的演示记忆已暂停");
+      });
+      const actions = { edit: () => openRoleForm(person), append: () => openAppend(person), versions: () => openVersions(person) };
+      for (const button of dialogBody.querySelectorAll("[data-profile]")) {
+        button.addEventListener("click", actions[button.dataset.profile]);
+      }
+    }
+
+    function setList(list, labels, emptyLabel) {
+      for (const label of labels.length ? labels : [emptyLabel]) {
+        const li = document.createElement("li");
+        li.textContent = label;
+        list.append(li);
+      }
+    }
+
+    function openAppend(person) {
+      present("补充资料",
+        '<p class="hint">新增资料归入当前角色。</p>' +
+        '<div class="fields"><label class="field">条目名称<input name="title" maxlength="80" required data-autofocus></label>' +
+        '<label class="field">资料内容<textarea name="content" rows="3" maxlength="1500"></textarea></label>' +
+        '<label class="field">可见范围<select name="visibility"><option>仅作者可见</option><option>可用于聊天</option></select></label></div>',
+        "保存资料", form => {
+          const title = String(form.get("title")).trim();
+          if (!title) {
+            dialogForm.elements.namedItem("title").focus();
+            return;
+          }
+          person.materials.push({ title, content: form.get("content"), visibility: form.get("visibility") });
+          person.versions.push({ label: "补充资料", at: new Date() });
+          openProfile();
+          const summary = byId("materials").closest("details");
+          summary.open = true;
+        });
+    }
+
+    function openVersions(person) {
+      present("版本历史", '<ul id="versions" class="summary-list"></ul><button type="button" id="back-profile" class="button">返回人物资料</button>');
+      const labels = [...person.versions].reverse().map(version =>
+        version.label + " · " + version.at.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
+      setList(byId("versions"), labels, "目前没有修改记录");
+      byId("back-profile").addEventListener("click", openProfile);
+    }
+
+    function openAdvanced() {
+      present("高级设置",
+        '<p class="hint">以下为暂定分组，明细将在无人值守和 G-AUTO 验收后确认。</p>' +
+        '<details><summary>运行与诊断</summary><p class="hint">服务状态、日志、备份恢复。</p></details>' +
+        '<details><summary>模型与调用</summary><p class="hint">超时、长度限制、用量和内部调用参数。</p></details>' +
+        '<details><summary>记忆与后台任务</summary><p class="hint">自动整理、待核对任务、索引与召回诊断。</p></details>');
+    }
+
+    function openHelp() {
+      present("使用帮助",
+        '<p>选择人物和演示连接，即可试走首次聊天。</p>' +
+        '<p class="hint">输入后用 Enter 发送，Shift + Enter 换行。演示内容保存在当前页面，刷新或重置后清空。</p>' +
+        '<p class="hint">右上角可以直接进入日常聊天样式。</p>');
+    }
+
+    function openSample() {
+      let person = state.people.find(item => item.sample);
+      if (!person) person = createPerson({ name: "演示角色" }, true);
+      state.connected = true;
+      state.guide = false;
+      state.paused = false;
+      selectPerson(person);
+      notify("已进入日常聊天样式");
+    }
+
+    function reset() {
+      state = freshState();
+      viewport = { collapsed: false, drawerOpen: false, width: 246 };
+      setWidth(246);
+      byId("session-search").value = "";
+      applySidebar();
+      finish("已回到首次打开");
+    }
+
+    function setWidth(value) {
+      viewport.width = Math.max(190, Math.min(330, value));
+      document.documentElement.style.setProperty("--sidebar", viewport.width + "px");
+      byId("sidebar-resize").setAttribute("aria-valuenow", String(viewport.width));
+    }
+
+    byId("sidebar-toggle").addEventListener("click", () => {
+      if (sidebarQuery.matches) viewport.drawerOpen = !viewport.drawerOpen;
+      else viewport.collapsed = !viewport.collapsed;
+      applySidebar();
+    });
+    sidebarQuery.addEventListener("change", () => {
+      viewport.drawerOpen = false;
+      applySidebar();
+    });
+    byId("scrim").addEventListener("click", () => {
+      closeDrawer();
+      byId("sidebar-toggle").focus();
+    });
+    byId("new-person").addEventListener("click", () => openRoleForm());
+    byId("new-session").addEventListener("click", () => {
+      const person = currentPerson();
+      if (!person) return;
+      createSession(person, "会话 " + (person.sessions.length + 1));
+      byId("session-search").value = "";
+      closeDrawer();
+      render({ scrollToEnd: true });
+      if (ready()) message.focus();
+    });
+    byId("session-search").addEventListener("input", renderSessions);
+    byId("profile-button").addEventListener("click", openProfile);
+    byId("sample-mode").addEventListener("click", openSample);
+    byId("dialog-close").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("click", event => {
+      if (event.target.closest("[data-dialog-cancel]")) dialog.close();
+    });
+    dialog.addEventListener("close", () => {
+      dialogBody.replaceChildren();
+      byId("dialog-actions").replaceChildren();
+      if (returnFocus instanceof HTMLElement && returnFocus.isConnected && !returnFocus.closest("[inert]") && returnFocus.getClientRects().length) {
+        returnFocus.focus();
+      } else if (document.activeElement === document.body) {
+        const next = timeline.querySelector("[data-guide=start]:not(:disabled), [data-guide=person], [data-guide=resume]");
+        (next ?? byId("sidebar-toggle")).focus();
+      }
+      returnFocus = null;
+    });
+    byId("menu-toggle").addEventListener("click", () => showMenu(byId("app-menu").hidden));
+    byId("app-menu").addEventListener("click", event => {
+      const button = event.target.closest("[data-menu]");
+      if (!button) return;
+      const actions = {
+        connection: openConnection, advanced: openAdvanced, help: openHelp,
+        reset: () => present("重置演示", "<p>清空本页的角色、消息与连接状态，回到首次打开。</p>", "重置演示", reset)
+      };
+      actions[button.dataset.menu]();
+    });
+    document.addEventListener("click", event => {
+      if (!event.target.closest("#app-menu, #menu-toggle")) showMenu(false);
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || dialog.open) return;
+      if (!byId("app-menu").hidden) {
+        showMenu(false);
+        byId("menu-toggle").focus();
+      } else if (viewport.drawerOpen) {
+        closeDrawer();
+        byId("sidebar-toggle").focus();
+      }
+    });
+    timeline.addEventListener("click", event => {
+      const button = event.target.closest("[data-guide]");
+      if (!button) return;
+      const actions = {
+        person: openPersonPicker, connection: openConnection,
+        pause: () => { state.paused = true; render(); },
+        resume: () => { state.paused = false; render(); },
+        start: () => {
+          if (!currentPerson() || !state.connected) return;
+          state.guide = false;
+          render({ scrollToEnd: true });
+          message.focus();
+        }
+      };
+      actions[button.dataset.guide]();
+    });
+
+    message.addEventListener("input", () => {
+      const session = currentSession();
+      if (!session) return;
+      session.draft = message.value;
+      updateSendButton();
+    });
+    message.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        byId("composer").requestSubmit();
+      }
+    });
+    byId("composer").addEventListener("submit", event => {
+      event.preventDefault();
+      const session = currentSession();
+      const text = message.value.trim();
+      if (!ready() || !text) return;
+      session.messages.push(text);
+      session.draft = "";
+      render({ scrollToEnd: true });
+      message.focus();
+    });
+
+    const resizer = byId("sidebar-resize");
+    resizer.addEventListener("pointerdown", event => {
+      if (event.button !== 0) return;
+      const before = viewport.width;
+      const start = event.clientX;
+      resizer.setPointerCapture(event.pointerId);
+      resizer.onpointermove = move => setWidth(before + move.clientX - start);
+      resizer.onlostpointercapture = () => { resizer.onpointermove = null; };
+      event.preventDefault();
+    });
+    resizer.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      event.preventDefault();
+      setWidth(viewport.width + (event.key === "ArrowLeft" ? -12 : 12));
+    });
+
+    applySidebar();
+    render();
+  </script>
+</body>
+</html>

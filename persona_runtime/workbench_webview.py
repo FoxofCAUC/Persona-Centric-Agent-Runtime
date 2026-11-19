@@ -1,0 +1,437 @@
+"""Host the reviewed workbench UI in a Windows WebView2 window."""
+
+import ctypes
+import json
+from base64 import b64encode
+from ctypes import wintypes
+from contextlib import ExitStack
+from importlib.metadata import version
+from pathlib import Path
+from queue import Empty, SimpleQueue
+from threading import Thread
+import time
+from urllib.parse import unquote
+
+from .app_runtime import AppRuntime
+from .config import atomic_json
+from .installation import WEBVIEW_VERSION
+from .lifecycle import ServiceController
+from .models import RuntimeErrorBase
+from .workbench_conversation import WorkbenchConversation
+from .workbench_errors import report_failure
+from .workbench_instance import acquire_or_wake, next_wakeup, wait_for_previous_components
+from .workbench_setup import WorkbenchSetup
+
+
+STARTUP_TIMEOUT = 25
+WINDOW_TITLE = "PCAR 新版工作台 · 预览"
+
+
+def workbench_html():
+    assets = Path(__file__).with_name("workbench_web")
+    html = (assets / "index.html").read_text(encoding="utf-8")
+    styles = (assets / "setup.css").read_text(encoding="utf-8")
+    html = html.replace("</head>", "<style>\n" + styles + "\n</style></head>", 1)
+    scripts = [(assets / name).read_text(encoding="utf-8") for name in ("desktop.js", "history.js", "setup.js")]
+    body, mark, rest = html.rpartition("</body>")
+    if not mark:
+        raise RuntimeErrorBase("新版工作台页面不完整。")
+    return body + "".join("<script>\n" + script + "\n</script>" for script in scripts) + mark + rest
+
+
+def taskbar_available():
+    find = ctypes.WinDLL("user32", use_last_error=True).FindWindowW
+    find.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    find.restype = wintypes.HWND
+    return bool(find("Shell_TrayWnd", None))
+
+
+def local_document_matches(uri, encoded_document):
+    uri = uri.split("#", 1)[0]
+    if uri == "about:blank":
+        return True
+    header, separator, payload = uri.partition(",")
+    if not separator or header.split(";", 1)[0].lower() != "data:text/html":
+        return False
+    return header.lower().endswith(";base64") and unquote(payload) == encoded_document
+
+
+class DesktopControls:
+    """Expose window controls, conversations and setup to the local page."""
+
+    def __init__(self, post, status, conversation):
+        self._post = post
+        self._status = status
+        self._conversation = conversation
+        self._history = conversation.history
+        self._setup = WorkbenchSetup(conversation, status)
+
+    def setup(self, action, args):
+        return self._setup.call(action, args)
+
+    def history_people(self):
+        return self._history.people()
+
+    def history_sessions(self, persona_id):
+        return self._history.sessions(persona_id)
+
+    def history_page(self, persona_id, session_id, before=None):
+        return self._history.page(persona_id, session_id, before)
+
+    def chat_state(self, persona_id, session_id):
+        return self._conversation.state(persona_id, session_id)
+
+    def chat_activate(self, persona_id, session_id=None, fresh=False):
+        return self._conversation.activate(persona_id, session_id, fresh)
+
+    def chat_draft(self, persona_id, session_id):
+        return self._conversation.get_draft(persona_id, session_id)
+
+    def chat_save_draft(self, persona_id, session_id, text, revision):
+        self._conversation.save_draft(persona_id, session_id, text, revision)
+
+    def chat_send(self, persona_id, session_id, text, request_id, revision):
+        return self._conversation.send(persona_id, session_id, text, request_id, revision)
+
+    def chat_check(self, persona_id, session_id, request_id):
+        return self._conversation.check_submission(persona_id, session_id, request_id)
+
+    def chat_retry(self, persona_id, session_id):
+        return self._conversation.retry_submission(persona_id, session_id)
+
+    def chat_cancel(self, persona_id, session_id, kind, target_id):
+        self._conversation.cancel(persona_id, session_id, kind, target_id)
+
+    def chat_resume_batch(self, persona_id, session_id, batch_id):
+        self._conversation.resume_batch(persona_id, session_id, batch_id)
+
+    def chat_offer(self, persona_id, session_id):
+        return self._conversation.offer(persona_id, session_id)
+
+    def chat_ack(self, ticket, shown):
+        self._conversation.acknowledge(ticket, shown)
+
+    def ready(self):
+        self._post(("ready", None))
+
+    def runtime_status(self):
+        return self._status()
+
+    def hide_to_tray(self):
+        self._post(("tray", None))
+
+    def exit_workbench(self):
+        self._post(("exit", None))
+
+
+class WebViewHost:
+    def __init__(self, controller):
+        self.controller = controller
+        self.paths = controller.paths
+        self.lease_token = controller.console_lease["token"]
+        self.runtime = None
+        self.window = None
+        self.form = None
+        self.tray = None
+        self.menu = None
+        self.timer = None
+        self.queue = SimpleQueue()
+        self.close_worker = None
+        self.failure = None
+        self.closed = False
+        self.closing = False
+        self.in_tray = False
+        self.native_visible = False
+        self.wake_id = None
+        self.next_poll = 0
+        self.conversation = WorkbenchConversation(
+            self.paths, lambda: self.native_visible and not self.closing, self.chat_available,
+        )
+        self.controls = DesktopControls(self.queue.put, self.runtime_status, self.conversation)
+
+    def chat_available(self):
+        return self.runtime is not None and not self.closed and not self.closing and not self.controller.closing.is_set()
+
+    def run(self, webview, html):
+        self.encoded_document = b64encode(html.encode("utf-8")).decode("ascii")
+        self.window = webview.create_window(
+            WINDOW_TITLE, html=html, js_api=self.controls,
+            width=1120, height=780, min_size=(390, 560),
+        )
+        self.window.events.initialized += self.check_renderer
+        self.window.events.before_show += self.attach
+        self.window.events.closing += self.on_closing
+        webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False
+        webview.start(
+            gui="edgechromium", debug=False, http_server=False, private_mode=True,
+            storage_path=str(self.paths.home / "cache/webview"),
+        )
+        if self.failure is not None:
+            raise self.failure
+        if not self.closed:
+            raise RuntimeErrorBase("新版工作台窗口意外结束。")
+
+    def check_renderer(self, renderer):
+        if renderer != "edgechromium":
+            self.failure = RuntimeErrorBase("无法使用 Microsoft Edge WebView2。")
+            return False
+        return True
+
+    def keep_local_page(self, sender, args):
+        if not local_document_matches(str(args.Uri), self.encoded_document):
+            args.Cancel = True
+
+    def attach(self):
+        from System import Action
+        from System.Windows.Forms import Timer
+
+        self.form = self.window.native
+        try:
+            self.timer = Timer()
+            self.timer.Interval = 150
+            self.timer.Tick += self.tick
+            self.form.FormClosed += self.detach
+            self.form.VisibleChanged += self.update_visibility
+            self.form.Resize += self.update_visibility
+            self.form.webview.NavigationStarting += self.keep_local_page
+            self.deadline = time.monotonic() + STARTUP_TIMEOUT
+            try:
+                self.attach_tray()
+            except Exception:
+                self.release_tray()
+            self.timer.Start()
+        except Exception as error:
+            self.form.BeginInvoke(Action(lambda failure=error: self.abort(failure)))
+
+    def update_visibility(self, *_):
+        from System.Windows.Forms import FormWindowState
+
+        self.native_visible = self.form.Visible and self.form.WindowState != FormWindowState.Minimized
+
+    def attach_tray(self):
+        from System.Drawing import SystemIcons
+        from System.Windows.Forms import ContextMenuStrip, MouseButtons, NotifyIcon
+
+        self.menu = ContextMenuStrip()
+        for text, action in (
+            ("打开工作台", "show"), ("运行状态", "status"), ("退出", "exit"),
+        ):
+            self.menu.Items.Add(text).Click += (
+                lambda sender, args, value=action: self.queue.put((value, None))
+            )
+        self.tray = NotifyIcon()
+        self.tray.Icon = SystemIcons.Application
+        self.tray.Text = WINDOW_TITLE
+        self.tray.ContextMenuStrip = self.menu
+
+        def open_from_tray(sender, args):
+            if args.Button == MouseButtons.Left:
+                self.queue.put(("show", None))
+
+        self.tray.MouseClick += open_from_tray
+        self.tray.Visible = True
+
+    def release_tray(self):
+        if self.tray is not None:
+            self.tray.Visible = False
+            self.tray.Dispose()
+            self.tray = None
+        if self.menu is not None:
+            self.menu.Dispose()
+            self.menu = None
+
+    def detach(self, *_):
+        self.native_visible = False
+        if self.timer is not None:
+            self.timer.Stop()
+            self.timer.Dispose()
+            self.timer = None
+        self.release_tray()
+
+    def run_script(self, script):
+        if self.window.events.loaded.is_set():
+            self.form.webview.ExecuteScriptAsync(script)
+
+    def notice(self, message):
+        self.run_script("window.pcarDesktop.notice(" + json.dumps(message) + ")")
+
+    def record_display(self, state):
+        lease = self.controller.console_lease
+        if lease is not None and not self.closing:
+            value = lease | {"display_state": state}
+            atomic_json(self.paths.home / "runtime/console.json", value)
+            self.controller.console_lease = value
+
+    def show(self):
+        from System.Windows.Forms import FormWindowState
+
+        self.form.Show()
+        if self.form.WindowState == FormWindowState.Minimized:
+            self.form.WindowState = FormWindowState.Normal
+        self.form.Activate()
+        self.in_tray = False
+        try:
+            self.record_display("visible")
+        except OSError:
+            self.notice("窗口已打开，运行状态暂未保存。")
+
+    def hide(self):
+        if not self.tray or not self.tray.Visible or not taskbar_available():
+            self.notice("托盘暂不可用，窗口保持可见。")
+            return
+        try:
+            self.record_display("tray")
+        except OSError:
+            self.notice("无法保存窗口状态，窗口保持可见。")
+            return
+        self.form.Hide()
+        self.in_tray = True
+
+    def runtime_status(self):
+        if self.closing:
+            return {"label": "正在结算并释放本机组件。"}
+        if self.controller.closing.is_set():
+            return {"label": "退出未完成。请检查本机组件后再次退出。"}
+        if self.runtime is None:
+            return {"label": "工作台正在打开。"}
+        try:
+            running = self.controller.health("service")["state"] == "运行"
+        except (OSError, ValueError, KeyError, RuntimeErrorBase):
+            running = False
+        return {"label": "本机人格服务已运行。" if running else "本机人格服务尚未就绪。"}
+
+    def start_runtime(self):
+        if self.runtime is None:
+            self.record_display("visible")
+            self.runtime = AppRuntime(self.controller)
+            self.runtime.start()
+
+    def on_closing(self):
+        if self.closed:
+            return True
+        if not self.closing:
+            self.closing = True
+            self.controller.closing.set()
+            if self.runtime is not None:
+                self.runtime.stop()
+            self.notice("正在退出并释放本机组件。")
+            self.close_worker = Thread(target=self.shutdown, name="webview-shutdown", daemon=True)
+            self.close_worker.start()
+        return False
+
+    def shutdown(self):
+        try:
+            self.conversation.settle_on_close()
+            with self.controller.lifecycle_lock:
+                if self.controller.console_lease is not None:
+                    released = self.controller.shutdown()["processes_released"]
+                else:
+                    released = not self.controller.has_resident_processes()
+        except Exception:
+            released = False
+        self.queue.put(("closed", released))
+
+    def finish_close(self, released):
+        if released:
+            self.closed = True
+            self.detach()
+            self.form.Close()
+            return
+        self.closing = False
+        self.show()
+        self.notice("退出未完成。请检查本机组件后再次退出。")
+
+    def tick(self, *_):
+        try:
+            while not self.closed:
+                try:
+                    action, value = self.queue.get_nowait()
+                except Empty:
+                    break
+                if action == "closed":
+                    self.finish_close(value)
+                elif action == "exit":
+                    self.on_closing()
+                elif action in ("show", "status"):
+                    self.show()
+                    if action == "status":
+                        self.run_script("window.pcarDesktop.status()")
+                elif not self.closing and not self.controller.closing.is_set():
+                    if action == "ready":
+                        self.start_runtime()
+                    elif action == "tray":
+                        self.hide()
+            if self.closed or self.closing:
+                return
+            now = time.monotonic()
+            if self.runtime is None and now >= self.deadline:
+                raise RuntimeErrorBase("WebView2 窗口未能加载工作台页面。")
+            if now < self.next_poll:
+                return
+            self.next_poll = now + .5
+            wake = next_wakeup(self.paths, self.lease_token, self.wake_id)
+            if wake:
+                self.wake_id, action = wake
+                if action == "exit":
+                    self.on_closing()
+                else:
+                    self.show()
+            elif self.in_tray and not taskbar_available():
+                self.show()
+                self.notice("托盘暂不可用，已恢复工作台窗口。")
+        except Exception as error:
+            self.abort(error)
+
+    def abort(self, error):
+        self.failure = error
+        self.closed = True
+        self.detach()
+        self.form.Close()
+
+    def release(self):
+        if self.runtime is not None:
+            self.runtime.stop()
+        if self.close_worker is not None:
+            self.close_worker.join()
+        if self.controller.console_lease is None:
+            return
+        try:
+            if self.runtime is not None:
+                self.controller.closing.set()
+                with self.controller.lifecycle_lock:
+                    if not self.controller.shutdown()["processes_released"]:
+                        raise RuntimeErrorBase("本机组件仍在退出，请检查该实例的运行状态。")
+        finally:
+            if self.controller.console_lease is not None:
+                self.controller.end_console()
+
+
+def run(paths):
+    stage = "initialize_paths"
+    try:
+        with ExitStack() as cleanup:
+            paths.initialize()
+            stage = "instance_lock"
+            lock = acquire_or_wake(paths)
+            if lock is None:
+                return
+            cleanup.callback(lock.close)
+            stage = "webview_dependency"
+            if version("pywebview") != WEBVIEW_VERSION:
+                raise RuntimeErrorBase("新版窗口依赖的版本不匹配。")
+            import webview
+
+            stage = "webview_resources"
+            html = workbench_html()
+            stage = "console_lease"
+            controller = ServiceController(paths)
+            lease = controller.start_console()
+            host = WebViewHost(controller)
+            cleanup.callback(host.release)
+            stage = "cleanup_legacy"
+            wait_for_previous_components(controller, lease)
+            stage = "webview_runtime"
+            host.run(webview, html)
+    except Exception as error:
+        report_failure(paths, error, stage)
+        raise

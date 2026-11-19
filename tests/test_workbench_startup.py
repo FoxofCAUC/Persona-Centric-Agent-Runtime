@@ -29,8 +29,9 @@ class WorkbenchStartupTests(unittest.TestCase):
         stack = ExitStack()
         self.addCleanup(stack.close)
         self.show = stack.enter_context(patch('persona_runtime.workbench_errors.show_error', return_value=True))
-        self.lock_type = stack.enter_context(patch('persona_runtime.desktop.InstanceLock'))
+        self.lock_type = stack.enter_context(patch('persona_runtime.workbench_instance.InstanceLock'))
         self.lock = self.lock_type.return_value
+        self.require_console = stack.enter_context(patch('persona_runtime.workbench_instance.require_console'))
         self.controller_type = stack.enter_context(patch('persona_runtime.desktop.ServiceController'))
         self.controller = self.controller_type.return_value
         self.controller.start_console.return_value = {'previous_stale': False}
@@ -92,6 +93,7 @@ class WorkbenchStartupTests(unittest.TestCase):
     def test_instance_lock_conflict_does_not_close_existing_console(self):
         self.environment()
         self.lock_type.side_effect = RuntimeErrorBase('already running private details')
+        self.require_console.side_effect = RuntimeErrorBase('no live owner')
         with self.assertRaises(RuntimeErrorBase):
             run(self.paths)
         self.controller_type.assert_not_called()
@@ -125,13 +127,14 @@ class WorkbenchStartupTests(unittest.TestCase):
     def test_incomplete_cleanup_does_not_open_workbench_or_report_success(self):
         self.environment()
         self.controller.has_resident_processes.return_value = True
-        self.force.return_value = {'success': False, 'report_file': 'private-control-report'}
-        with self.assertRaises(RuntimeError):
+        clock = SimpleNamespace(monotonic=Mock(side_effect=[0, 6]), sleep=Mock())
+        with patch('persona_runtime.workbench_instance.time', clock), self.assertRaises(RuntimeErrorBase):
             run(self.paths)
         self.window_type.assert_not_called()
         self.controller.end_console.assert_called_once()
         self.lock.close.assert_called_once()
         self.assertEqual(self.errors()[0]['stage'], 'cleanup_legacy')
+        self.force.assert_not_called()
         self.assertNotIn('private-control-report', self.show.call_args.args[0])
 
     def test_workbench_construction_failure_is_logged_before_window_exists(self):
