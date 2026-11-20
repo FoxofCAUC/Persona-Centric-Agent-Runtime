@@ -3,11 +3,12 @@ from dataclasses import asdict
 import json
 
 from .archive import fingerprint, turn_scope
+from .bubble_limits import BubbleLimitError, LIMIT_VIOLATION, MAX_BUBBLE_CHARS, limit_ranges
 from .expression_assets import ExpressionAssetError, text
 from .expression_contract import (InteractionRef, CallReceipt, MainDraftReceipt, ExpressionArtifact,
     ProtectedSpan, BubbleRange, PresentationPlan, validate_plan, text_hash)
 from .expression_sources import protected
-from .models import identifier, timestamp, LOCAL_USER_ID
+from .models import identifier, timestamp, LOCAL_USER_ID, RuntimeErrorBase
 
 
 class ExpressionPublication:
@@ -47,7 +48,13 @@ class ExpressionPublication:
         plan=make(segments)
         try:validate_plan(producer,plan)
         except ValueError:
-            plan=make([{'start':0,'end':len(body),'kind':'technical' if spans else 'chat','required':True,'delay_ms':0}]);validate_plan(producer,plan)
+            segments = [{'start':0,'end':len(body),'kind':'technical' if spans else 'chat','required':True,'delay_ms':0}]
+            plan = make(segments)
+            validate_plan(producer, plan)
+        limited = limit_ranges(body, segments)
+        if limited is not segments:
+            plan = make(limited)
+            validate_plan(producer, plan)
         if current:
             db.execute('UPDATE expression_publications SET revision=?,producer_kind=?,producer_id=?,state=\'pending\',reason=? WHERE id=?',(revision,kind,producer_id,reason,pub_id))
         else:
@@ -59,6 +66,8 @@ class ExpressionPublication:
               (id,publication_id,revision,ordinal,text,content_hash,kind,required,delay_ms,state)
               VALUES(?,?,?,?,?,?,?,?,?,'pending')''',(bubble.utterance_id,pub_id,revision,ordinal,part,text_hash(part),bubble.kind,int(bubble.required),bubble.delay_ms))
         db.execute('UPDATE turns SET status=\'completed\',error_code=NULL,usage_json=?,updated_at=? WHERE id=?',(draft['usage_json'],timestamp(),turn['id']))
+        from .progress import record
+        record(db,turn['id'],'desktop_publication_changed')
         return dict(db.execute('SELECT * FROM expression_publications WHERE id=?',(pub_id,)).fetchone())
 
     def fallback(self, turn_id, reason):
@@ -72,7 +81,7 @@ class ExpressionPublication:
                 result=self._publish(db,turn,draft,'draft',draft['id'],draft['body'],
                          [{'start':0,'end':len(draft['body']),'kind':'chat','required':True,'delay_ms':0}],reason,replace_unoffered=True)
                 return {'state':result['state'],'publication_id':result['id'],'fallback':True,'reason':reason}
-        except ExpressionAssetError as error:
+        except (ExpressionAssetError, BubbleLimitError) as error:
             with self.store.connection(write=True) as db:
                 if not db.execute('SELECT 1 FROM expression_publications WHERE turn_id=?',(turn_id,)).fetchone():
                     db.execute('UPDATE expression_runtime_turns SET closed_at=? WHERE turn_id=?',(timestamp(),turn_id))
@@ -127,6 +136,9 @@ class ExpressionPublication:
             item=db.execute('SELECT * FROM expression_presentation_items WHERE publication_id=? AND revision=? AND ordinal=?',(publication_id,revision,ordinal)).fetchone()
             if not item:raise ExpressionAssetError('expression_utterance_missing')
             if item['state']!='pending':return {'id':item['id'],'state':item['state'],'new_offer':False}
+            if len(item['text']) > MAX_BUBBLE_CHARS:
+                self._cancel_pending(db, pub, LIMIT_VIOLATION)
+                return {'state':'stopped','reason':LIMIT_VIOLATION,'new_offer':False}
             if db.execute("SELECT 1 FROM expression_presentation_items WHERE publication_id=? AND revision=? AND ordinal<? AND state NOT IN ('presented','cancelled','not_presented')",(publication_id,revision,ordinal)).fetchone():
                 raise ExpressionAssetError('expression_presentation_order_gap')
             lease=identifier()
@@ -134,33 +146,60 @@ class ExpressionPublication:
             return {'id':item['id'],'lease_id':lease,'state':'offered','body':item['text'],'body_hash':item['content_hash'],
                     'kind':item['kind'],'required':bool(item['required']),'delay_ms':item['delay_ms']}
 
-    def acknowledge(self, persona_id, session_id, turn_id, utterance_id, lease_id, presenter_id, receipt_id, body_hash, state='presented'):
+    def acknowledge(self, persona_id, session_id, turn_id, utterance_id, lease_id, presenter_id, receipt_id, body_hash, state='presented',
+                    *,webview=False,publication_id=None,revision=None,ordinal=None):
         uid=self._direct_main(turn_id)
         if uid:return self.runtime.outlet.direct.publication.acknowledge(persona_id,session_id,uid,utterance_id,lease_id,presenter_id,receipt_id,body_hash,state)
         if state not in ('presented','not_presented','unknown'):raise ExpressionAssetError('expression_receipt_state_invalid')
         text(receipt_id,'receipt_id',200)
+        if webview and presenter_id!="webview-v2."+receipt_id:
+            raise ExpressionAssetError('expression_receipt_identity_mismatch')
         with self.store.connection(write=True) as db:
             self._owner(db,persona_id,session_id,turn_id)
             previous=db.execute('SELECT * FROM expression_presentation_receipts WHERE id=?',(receipt_id,)).fetchone()
             if previous:
+                belongs=db.execute("""SELECT i.publication_id,i.revision,i.ordinal FROM expression_presentation_items i
+                    JOIN expression_publications p ON p.id=i.publication_id WHERE i.id=? AND p.turn_id=?""",
+                    (utterance_id,turn_id)).fetchone()
+                if not belongs or webview and tuple(belongs)!=(publication_id,revision,ordinal):
+                    raise ExpressionAssetError("expression_receipt_identity_mismatch")
                 if (previous['utterance_id'],previous['lease_id'],previous['presenter_id'],previous['body_hash'],previous['state'])==(utterance_id,lease_id,presenter_id,body_hash,state):
                     return {'state':state,'already_applied':True}
                 raise ExpressionAssetError('expression_receipt_conflict')
             item=db.execute('SELECT i.* FROM expression_presentation_items i JOIN expression_publications p ON p.id=i.publication_id WHERE i.id=? AND p.turn_id=?',(utterance_id,turn_id)).fetchone()
             if not item or (item['lease_id'],item['presenter_id'],item['content_hash'])!=(lease_id,presenter_id,body_hash):
                 raise ExpressionAssetError('expression_receipt_identity_mismatch')
-            publication=db.execute('SELECT state FROM expression_publications WHERE id=?',(item['publication_id'],)).fetchone()
+            publication=db.execute('SELECT state,revision FROM expression_publications WHERE id=?',(item['publication_id'],)).fetchone()
+            if webview and ((publication_id,revision,ordinal)!=(item['publication_id'],item['revision'],item['ordinal']) or revision!=publication["revision"]):
+                raise ExpressionAssetError('expression_receipt_identity_mismatch')
             if publication[0] in ('closed','complete'):raise ExpressionAssetError('expression_publication_closed')
             if item['receipt_id']:
                 if item['receipt_id']==receipt_id and item['state']==state:return {'state':state,'already_applied':True}
                 if item['state']!='unknown':raise ExpressionAssetError('expression_receipt_conflict')
+            if webview and state=='presented':
+                turn = self._owner(db,persona_id,session_id,turn_id)
+                try:
+                    self.runtime._validate_main(db,turn,self.runtime._draft(db,turn_id))
+                except RuntimeErrorBase:
+                    pub=db.execute("SELECT * FROM expression_publications WHERE id=?",(publication_id,)).fetchone()
+                    self._cancel_pending(db,pub,"source_or_permission_changed")
+                    if db.execute("SELECT state FROM expression_publications WHERE id=?",(publication_id,)).fetchone()[0]=="unknown":
+                        self._close(db,pub,"desktop_presentation_unknown")
+                    return {"state":"closed","already_applied":False}
             now=timestamp()
             db.execute('INSERT INTO expression_presentation_receipts VALUES(?,?,?,?,?,?,?)',(receipt_id,utterance_id,lease_id,presenter_id,body_hash,state,now))
             db.execute('UPDATE expression_presentation_items SET state=?,receipt_id=?,acknowledged_at=? WHERE id=?',(state,receipt_id,now,utterance_id))
             if state=='presented':
                 db.execute('INSERT INTO expression_utterances VALUES(?,?,?,?,?,?,?,?)',(utterance_id,turn_id,item['publication_id'],item['revision'],item['ordinal'],item['text'],receipt_id,now))
             pub=db.execute('SELECT * FROM expression_publications WHERE id=?',(item['publication_id'],)).fetchone()
-            if state=='unknown':db.execute('UPDATE expression_publications SET state=\'unknown\' WHERE id=?',(pub['id'],))
+            if webview and state=='not_presented' and pub['reason'] not in ('cancelled_by_user','source_changed','source_or_permission_changed'):
+                db.execute("""UPDATE expression_presentation_items SET state='pending',receipt_id=NULL,lease_id=NULL,
+                    presenter_id=NULL,offered_at=NULL,acknowledged_at=NULL WHERE id=?""",(utterance_id,))
+                db.execute("UPDATE expression_publications SET state=? WHERE id=?",('partial' if item['ordinal'] else 'pending',pub['id']))
+            elif webview and state=='unknown':
+                self._cancel_pending(db,pub,'desktop_presentation_unknown')
+                self._close(db,pub,'desktop_presentation_unknown')
+            elif state=='unknown':db.execute('UPDATE expression_publications SET state=\'unknown\' WHERE id=?',(pub['id'],))
             elif db.execute("SELECT 1 FROM expression_presentation_items WHERE publication_id=? AND revision=? AND state IN ('pending','offered','unknown')",(pub['id'],pub['revision'])).fetchone():
                 db.execute('UPDATE expression_publications SET state=\'partial\' WHERE id=?',(pub['id'],))
             else:self._close(db,pub,pub['reason'] if pub['reason'] in ('source_changed','source_or_permission_changed','cancelled_by_user') else 'complete')

@@ -114,14 +114,26 @@ class RuntimeRetry(fixture.SelectorTests):
         with patch.object(self.model,'complete',new=AsyncMock(side_effect=ModelError('provider_timeout'))) as call:await self.engine._run(turn['id'])
         self.assertEqual(call.await_count,4);self.assertEqual(self.engine.get(turn['id'])['error_code'],'provider_retries_exhausted')
 
-    async def test_exhausted_automatic_selector_retry_does_not_quota_block_manual_main(self):
+    async def test_automatic_selector_retry_resumes_after_quota_decision_then_runs_original_main(self):
         self.enable();self.config.update({'model':{'hourly_limit':1}});turn=await self.turn('书店');counts={'selector':0,'main':0}
         async def complete(model,messages):
             kind='selector' if model.get('_character_selection') else 'main';counts[kind]+=1
-            if kind=='selector':raise ModelError('provider_timeout')
+            if kind=='selector':
+                if counts[kind]==1:raise ModelError('provider_timeout')
+                return json.dumps({'schema_version':1,'lore_ids':[],'example_ids':[]}),{'total_tokens':1}
             return '主回复',{'total_tokens':1}
-        with patch.object(self.rt,'local_pool',side_effect=self.pool),patch.object(self.model,'complete',side_effect=complete):await self.engine._run(turn['id'])
-        self.assertEqual(counts,{'selector':1,'main':1});self.assertEqual(self.engine.get(turn['id'])['status'],'completed')
+        from persona_runtime.call_limits import pending,decide
+        with patch.object(self.rt,'local_pool',side_effect=self.pool),patch.object(self.model,'complete',side_effect=complete):
+            job=asyncio.create_task(self.engine._run(turn['id']))
+            async with asyncio.timeout(5):
+                while True:
+                    with self.store.connection() as db:waits=pending(db)
+                    if waits:break
+                    await asyncio.sleep(.02)
+            self.assertEqual(counts,{'selector':1,'main':0})
+            decide(self.store,[v['id'] for v in waits],True)
+            await asyncio.wait_for(job,5)
+        self.assertEqual(counts,{'selector':2,'main':1});self.assertEqual(self.engine.get(turn['id'])['status'],'completed')
 
 
 for name in dir(fixture.SelectorTests):

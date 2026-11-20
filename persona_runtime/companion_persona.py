@@ -40,7 +40,6 @@ HARD_FIELDS = frozenset(('age.years', 'age.birthday', 'appearance.height_cm',
                          'appearance.weight_kg', 'appearance.blood_type',
                          'identity.species', 'identity.gender'))
 UNITS = {'cm': '厘米', 'kg': '千克', 'years': '岁'}
-UNCERTAINTY = '对资料缺乏明确支持的年龄、生日等具体身份信息，回答保留不确定性。'
 
 
 def render(spec, parts):
@@ -123,8 +122,6 @@ def render(spec, parts):
         else:
             raise RuntimeErrorBase('companion_persona_kind_unknown')
 
-    if missing_hard:
-        sections['conduct'].append(UNCERTAINTY + '\n')
     text = ''
     section_rows = []
     for key, title, purpose in SECTIONS:

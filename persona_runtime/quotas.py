@@ -1,6 +1,5 @@
 """Editable local call limits and explicit, recoverable acceptance overrides."""
 from contextlib import contextmanager
-import json
 import time
 
 from .config import atomic_json
@@ -12,14 +11,14 @@ from .models import RuntimeErrorBase, timestamp
 FIELDS = ('project_hourly', 'background_hourly', 'background_daily', 'selector_hourly', 'selector_daily')
 
 
-def reserve_organization(conn,config,task,now):
+def reserve_organization(conn,config,task,now,*,waived=False):
     """Same transaction as the attempt: no second quota authority or fake turn."""
     from .memory_policy import project_capacity_used
     from .models import identifier
     cfg=config.load();limits=cfg['organization']
     conn.execute("UPDATE organization_reservations SET state='released' WHERE state='active' AND expires_epoch<=?",(now,))
     from .generation_retry import automatic_organization
-    automatic=automatic_organization(task)
+    automatic=automatic_organization(task) and not waived
     reserved=conn.execute("SELECT count(*) FROM organization_reservations r JOIN organization_tasks t ON t.id=r.task_id WHERE r.state='active' AND t.automatic!=0 AND coalesce(json_extract(t.payload_json,'$.manual_quota_request'),0)!=1").fetchone()[0]
     windows=((3600,limits['hourly_limit']),(86400,limits['daily_limit']))
     waits=[]
@@ -43,7 +42,7 @@ class QuotaService:
         self.journal = config.paths.home / 'runtime/acceptance-quotas.json'
 
     def _record(self):
-        return json.loads(self.journal.read_text(encoding='utf-8')) if self.journal.exists() else {}
+        return self.config.quota_override()
 
     def _limits(self):
         cfg = self.config.load()
@@ -55,10 +54,13 @@ class QuotaService:
                             'character_selector': {'hourly_limit':limits['selector_hourly'],'daily_limit':limits['selector_daily']}})
 
     def current(self):
-        limits = self._limits(); record = self._record(); used = None
+        limits = self._limits(); record = self._record(); used = None;waits=[]
         try:
             with self.store.connection() as conn:
                 now = time.time()
+                if conn.execute("SELECT 1 FROM sqlite_master WHERE name='model_call_waits'").fetchone():
+                    from .call_limits import pending
+                    waits=pending(conn)
                 from .memory_policy import automatic_calls
                 used = {'project_hourly': automatic_calls(conn, now-3600),
                         'all_hourly':project_calls(conn,now-3600),
@@ -74,13 +76,17 @@ class QuotaService:
                         'reserved':conn.execute("SELECT count(*) FROM quota_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0]+conn.execute("SELECT count(*) FROM organization_reservations WHERE state='active' AND expires_epoch>?",(now,)).fetchone()[0],
                         'background_unknown':conn.execute("SELECT count(*) FROM organization_attempts WHERE usage_json IS NULL AND status='interrupted'").fetchone()[0],
                         'primary_hourly':call_count(conn,'attempts',now-3600)}
+                if conn.execute("SELECT 1 FROM sqlite_master WHERE name='model_call_meter'").fetchone():
+                    used['global_hourly'],used['global_daily']=conn.execute("""SELECT count(*) FILTER(WHERE started>?),
+                        count(*) FROM model_call_meter WHERE started>?""",(now-3600,now-86400)).fetchone()
         except RuntimeErrorBase:
             pass  # Settings remain editable before storage is initialized/upgraded.
         active = record.get('status') == 'active'
-        return {'limits': limits, 'used': used, 'acceptance_active': active,
+        policy=self.config.load()['call_limits']
+        return {'limits': limits, 'used': used, 'acceptance_active': active,'call_limits':policy,'waiting_workflows':waits,
                 'development_unlimited':active and record.get('purpose')=='development',
                 'override_purpose':record.get('purpose','acceptance') if active else None,
-                'manual_unlimited':True,'quota_scope':'automatic_calls_only',
+                'manual_unlimited':active or not policy['enabled'],'quota_scope':'all_model_calls' if policy['enabled'] else 'automatic_calls_only',
                 'restore_limits': (limits | record.get('restore_limits',{})) if active else None,
                 'acceptance_started_at': record.get('started_at') if active else None}
 
@@ -104,6 +110,36 @@ class QuotaService:
         finally:
             lock.close()
         return self.current()
+
+    def desktop_settings(self):
+        policy=self.config.load()['call_limits']
+        automatic=self._limits()
+        record=self._record()
+        if record.get('status')=='active':automatic.update(record.get('restore_limits',{}))
+        enabled=policy['enabled'] or any(automatic.values())
+        return {'enabled':enabled,'hourly':policy['hourly'],'daily':policy['daily'],'temporary_unlimited':record.get('status')=='active',
+                'automatic':automatic if enabled else automatic|policy.get('saved_automatic',{})}
+
+    def configure(self,enabled,hourly,daily,automatic):
+        if (type(enabled) is not bool or not isinstance(automatic,dict) or set(automatic)!=set(FIELDS)
+                or any(type(v) is not int or not 0<=v<=10000 for v in automatic.values())
+                or any(type(v) is not int or not 0<=v<=1000000 for v in (hourly,daily))
+                or enabled and not any([hourly,daily,*automatic.values()])):
+            raise RuntimeErrorBase('invalid_call_limits')
+        policy={'enabled':enabled and bool(hourly or daily),'hourly':hourly,'daily':daily,'saved_automatic':automatic}
+        limits=automatic if enabled else dict.fromkeys(FIELDS,0)
+        lock=InstanceLock(self.config.paths.home/'runtime/quota-settings.lock')
+        try:
+            record=self._record()
+            if record.get('status')=='active':
+                record['restore_limits']=limits
+                atomic_json(self.journal,record)
+                limits=dict.fromkeys(FIELDS,0)
+            self.config.update({'call_limits':policy,'model':{'hourly_limit':limits['project_hourly']},
+                'organization':{'hourly_limit':limits['background_hourly'],'daily_limit':limits['background_daily']},
+                'character_selector':{'hourly_limit':limits['selector_hourly'],'daily_limit':limits['selector_daily']}})
+        finally:lock.close()
+        return self.desktop_settings()
 
     def begin_acceptance(self):
         return self._begin_unlimited('acceptance')

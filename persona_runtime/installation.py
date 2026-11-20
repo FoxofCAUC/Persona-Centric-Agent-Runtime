@@ -23,12 +23,8 @@ def read_json(path):
 
 
 def atomic_json(path,value):
-    path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
-    temporary=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
-    try:
-        temporary.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-        os.replace(temporary,path)
-    finally:temporary.unlink(missing_ok=True)
+    from .config import atomic_json as save
+    save(Path(path),value,durable=True)
 
 
 def resolve_home(explicit=None,*,source_root=None,environ=None,required=True):
@@ -100,52 +96,184 @@ def provisioning_environment(paths):
     return env
 
 
-def ensure_existing_webview(paths, source, interpreter):
+def _frontend_probe(interpreter,packages,site=None):
+    script=Path(__file__).with_name('workbench_dependency_probe.py')
+    try:code=subprocess.run([str(interpreter),'-I','-B',str(script),json.dumps(packages),str(site) if site else ''],
+                            capture_output=True,creationflags=NO_WINDOW,timeout=30).returncode
+    except (OSError,subprocess.TimeoutExpired):return False
+    if code==2:raise ValueError('Python 窗口组件已通过校验，请检查 Windows 的 WebView2 和 .NET 运行环境。')
+    return code==0
+
+
+def _run_install_step(command,source,env,log,timeout):
+    from .app_processes import AppProcesses
+    jobs=AppProcesses()
+    try:
+        args=[sys.executable,'-I','-B',str(Path(__file__).with_name('install_step.py')),str(log),*command]
+        child=jobs.start('environment',args,cwd=source,env=env)
+        return child.wait(timeout)==0
+    except subprocess.TimeoutExpired:raise ValueError('环境准备已超时，本次准备记录已保留。') from None
+    finally:jobs.close()
+
+
+def _frontend_packages(source):
     import tomllib
-
-    with (source / 'uv.lock').open('rb') as lock:
-        locked = tomllib.load(lock)['package']
-    packages = {item['name']: item for item in locked}
-    expected = packages['pywebview']['version']
-    probe = [str(interpreter), '-I', '-B', '-c',
-             'import sys, webview; from importlib.metadata import version; sys.exit(version("pywebview") != sys.argv[1])',
-             expected]
-    if subprocess.run(probe, capture_output=True, creationflags=NO_WINDOW).returncode == 0:
-        return
-    if interpreter.resolve() != (paths.home / '.venv/Scripts/python.exe').resolve():
-        raise ValueError('自定义解释器缺少新版窗口依赖，请清除 PCAR_PYTHON 后用新版入口打开所选实例，或在自定义环境安装 pywebview==' + expected + '。')
-    uv = shutil.which('uv')
-    if not uv:
-        raise ValueError('旧实例需要补装新版工作台依赖，请安装 uv 后重新双击新版入口。')
-    env = provisioning_environment(paths)
-    frontend_packages = {'pywebview'}
-    pending = ['pywebview']
+    with (source/'uv.lock').open('rb') as stream:
+        packages={item['name']:item for item in tomllib.load(stream)['package']}
+    pending=['pywebview'];frontend={}
     while pending:
-        for dependency in packages[pending.pop()].get('dependencies', ()):
-            name = dependency['name']
-            if name not in frontend_packages:
-                frontend_packages.add(name)
-                pending.append(name)
-    command = [uv, 'sync', '--frozen', '--inexact', '--no-dev', '--no-install-project', '--no-managed-python',
-               '--python', str(interpreter), '--extra', 'workbench-webview']
-    for name in sorted(packages.keys() - frontend_packages):
-        command.extend(['--no-install-package', name])
-    log = paths.home / 'logs/environment-prepare.log'
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open('a', encoding='utf-8') as output:
-        for step in (command, probe):
-            result = subprocess.run(step, cwd=source, env=env, stdout=output, stderr=subprocess.STDOUT,
-                                    creationflags=NO_WINDOW)
-            if result.returncode:
-                raise ValueError('新版工作台依赖准备失败，请查看 ' + str(log) + ' 后重试新版入口。')
+        name=pending.pop()
+        if name in frontend:continue
+        frontend[name]=packages[name]['version']
+        pending.extend(item['name'] for item in packages[name].get('dependencies',()))
+    return packages,frontend
 
 
-def register_existing(paths,*,source_root=None,frontend='tk'):
+@contextmanager
+def _install_lock(paths):
+    import time
+    from .character_embedding import safe_path
+    from .instance import InstanceLock
+    from .models import RuntimeErrorBase
+    until=time.monotonic()+90
+    while True:
+        try:lock=InstanceLock(safe_path(paths.home,paths.home/'runtime/webview-install.lock'));break
+        except RuntimeErrorBase as error:
+            if getattr(error.__context__,'filename',None):
+                raise ValueError('无法写入实例的环境准备锁，请检查数据目录权限。') from None
+            if time.monotonic()>=until:raise ValueError('当前实例仍在准备环境，请在准备完成后重新打开。') from None
+            time.sleep(.2)
+    try:yield
+    finally:lock.close()
+
+
+def _frontend_pointer(generation):
+    if str(uuid.UUID(generation))!=generation:raise ValueError('窗口依赖版本目录无效。')
+    return ("# PCAR workbench-webview "+generation+"\n"
+            "import os,sys; sys.path.insert(0,os.path.join(sys.prefix,'pcar-webview','"+generation+"','environment','Lib','site-packages'))\n")
+
+
+def _write_pointer(path,value):
+    temp=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
+    try:
+        with temp.open('xb') as out:
+            out.write(value.encode('ascii'));out.flush();os.fsync(out.fileno())
+        from .config import replace_closed
+        replace_closed(temp,path)
+    finally:temp.unlink(missing_ok=True)
+
+
+def _remove_generation(root,generation,instance):
+    import time
+    from .character_embedding import safe_path
+    _frontend_pointer(generation)
+    folder=safe_path(root,root/generation)
+    if folder.is_dir() and folder.resolve().parent==root.resolve():
+        marker=safe_path(folder,folder/'owner.json')
+        if marker.is_file() and read_json(marker)=={'generation':generation,'instance':instance}:
+            environment=safe_path(folder,folder/'environment')
+            if environment.is_dir() and environment.resolve().parent==folder.resolve():
+                for delay in (0,.1,.3,.6,1):
+                    if delay:time.sleep(delay)
+                    try:shutil.rmtree(environment);break
+                    except PermissionError:
+                        if delay==1:raise ValueError('旧的窗口准备文件仍被占用，请保留当前环境。') from None
+            if all(member==marker for member in folder.iterdir()):
+                marker.unlink();folder.rmdir()
+        elif not any(folder.iterdir()):folder.rmdir()
+
+
+def ensure_existing_webview(paths, source, interpreter):
+    from .character_embedding import safe_path
+    from .migration import _offline
+    from .models import RuntimeErrorBase
+
+    packages,frontend=_frontend_packages(source)
+    managed=paths.home/'.venv'
+    journal=paths.home/'runtime/webview-install.json'
+    if not journal.exists() and _frontend_probe(interpreter,frontend):return
+    if interpreter.absolute()!=(managed/'Scripts/python.exe').absolute():
+        if journal.exists() and _frontend_probe(interpreter,frontend):return
+        raise ValueError('自定义解释器缺少新版窗口依赖，请为 PCAR_PYTHON 指定的环境安装锁定版本。')
+    safe_path(paths.home,interpreter)
+    # A second launcher rechecks the winner's published environment under the same lock.
+    with _install_lock(paths):
+        if not journal.exists() and _frontend_probe(interpreter,frontend):return
+        from contextlib import ExitStack
+        with ExitStack() as guards:
+            try:guards.enter_context(_offline(paths))
+            except RuntimeErrorBase:
+                raise ValueError('实例正在运行，已保留原环境。请正常退出后再补装新版窗口依赖。') from None
+            root=safe_path(paths.home,managed/'pcar-webview')
+            site=safe_path(paths.home,managed/'Lib/site-packages')
+            pointer=safe_path(paths.home,site/'pcar-managed-webview.pth')
+            journal=safe_path(paths.home,journal)
+            instance=read_json(paths.home/'config/workbench.json')['instance_id']
+            def installed():
+                if not pointer.exists():return None
+                line=pointer.read_text(encoding='ascii')
+                generation=line.partition('\n')[0].removeprefix('# PCAR workbench-webview ')
+                try:matches=line==_frontend_pointer(generation)
+                except ValueError:matches=False
+                if not matches:raise ValueError('窗口依赖登记无法核验，已保留原环境。')
+                return generation
+            previous=installed()
+            def restore_pointer(generation):
+                if generation:_write_pointer(pointer,_frontend_pointer(generation))
+                else:pointer.unlink(missing_ok=True)
+            if journal.exists():
+                saved=read_json(journal);generation=saved['generation'];_frontend_pointer(generation)
+                if saved.get('version')!=1 or saved.get('instance')!=instance or previous not in (generation,saved['previous']):
+                    raise ValueError('窗口依赖准备记录与当前实例不一致。')
+                if previous==generation:
+                    previous=saved['previous']
+                    try:ready=_frontend_probe(interpreter,frontend)
+                    except ValueError:
+                        restore_pointer(previous)
+                        raise
+                    if ready:
+                        journal.unlink();return
+                    restore_pointer(previous)
+                _remove_generation(root,generation,instance);journal.unlink()
+            uv=shutil.which('uv')
+            if not uv:raise ValueError('旧实例需要补装新版工作台依赖，请安装 uv 后重新打开。')
+            root.mkdir(exist_ok=True);site.mkdir(parents=True,exist_ok=True)
+            generation=str(uuid.uuid4());folder=safe_path(root,root/generation)
+            if folder.exists():raise ValueError('窗口依赖临时目录已存在。')
+            atomic_json(journal,{'version':1,'instance':instance,'generation':generation,'previous':previous})
+            folder.mkdir()
+            atomic_json(folder/'owner.json',{'generation':generation,'instance':instance})
+            command=[uv,'sync','--frozen','--inexact','--no-dev','--no-install-project','--no-managed-python',
+                     '--python',str(interpreter),'--extra','workbench-webview','--link-mode','copy']
+            for name in sorted(packages.keys()-frontend.keys()):command+=['--no-install-package',name]
+            log=paths.home/'logs/environment-prepare.log'
+            log.parent.mkdir(parents=True,exist_ok=True)
+            overlay=folder/'environment/Lib/site-packages'
+            for offline in (True,False):
+                env=child_environment(paths) if offline else provisioning_environment(paths)
+                env['UV_PROJECT_ENVIRONMENT']=str(folder/'environment')
+                flags=['--offline'] if offline else ['--refresh','--reinstall']
+                if _run_install_step(command+flags,source,env,log,120 if offline else 240) and overlay.is_dir() and _frontend_probe(interpreter,frontend,overlay):break
+            else:raise ValueError('新版窗口依赖准备失败，请查看实例的环境准备日志。')
+            _write_pointer(pointer,_frontend_pointer(generation))
+            try:
+                if not _frontend_probe(interpreter,frontend):
+                    raise ValueError('新版窗口依赖复验失败，已恢复原环境。')
+            except ValueError:
+                restore_pointer(previous)
+                raise
+            journal.unlink()
+
+
+def register_existing(paths,*,source_root=None,frontend='tk',wake_existing=False):
     source=Path(source_root or SOURCE_ROOT).resolve();validate_home(paths.home,source_root=source)
     file=paths.home/'config/workbench.json'
     if not file.is_file():raise ValueError('该目录没有可识别的PCAR实例，未登记。')
     data=read_json(file)
     if data.get('version')!=3 or not data.get('instance_id'):raise ValueError('实例配置不兼容，未登记。')
+    if wake_existing:
+        from .workbench_instance import wake_active
+        if wake_active(paths):return {'woke_existing':True,'runtime_home':str(paths.home)}
     interpreter = runtime_python(paths)
     if frontend == 'webview':
         ensure_existing_webview(paths, source, interpreter)
@@ -184,17 +312,29 @@ def prepare_model(paths,*,local_source=None,source_root=None):
 
 
 def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics=False,source_root=None,register=True,frontend='tk'):
-    from .paths import RuntimePaths
     source=Path(source_root or SOURCE_ROOT).resolve();home=validate_home(paths.home,source_root=source)
     if home.exists() and any(home.iterdir()) and not (home/'config/workbench.json').exists() and not (home/'runtime/install-progress.json').exists():
-        raise ValueError('目标目录非空且不是已识别实例，请选择新的专用目录。')
+        runtime=home/'runtime'
+        if (not runtime.is_dir() or {p.name for p in home.iterdir()}!={'runtime'} or
+                any(p.name!='webview-install.lock' for p in runtime.iterdir())):
+            raise ValueError('目标目录非空且不是已识别实例，请选择新的专用目录。')
     if (home/'config/workbench.json').exists():
         # Existing production environments require explicit registration, not an
         # implicit uv sync that could change the environment beneath a live app.
         raise ValueError('该目录已存在实例。保留原环境可使用 --register-existing；新部署请选择空目录。')
+    from .migration import _offline
+    with _install_lock(paths):
+        if (home/'config/workbench.json').is_file():
+            return {'prepared':True,'reused':True,'runtime_home':str(home),'paid_calls':0}
+        atomic_json(home/'runtime/install-progress.json',{'version':1,'state':'preparing'})
+        with _offline(paths):
+            return _prepare_desktop(paths,source,base_python,local_model_source,diagnostics,register,frontend)
+
+
+def _prepare_desktop(paths,source,base_python,local_model_source,diagnostics,register,frontend):
+    home=paths.home
     from .character_embedding import private_directory
     paths.initialize();private_directory(home,home)
-    atomic_json(home/'runtime/install-progress.json',{'version':1,'state':'preparing'})
     env=provisioning_environment(paths);uv=shutil.which('uv')
     if not uv:raise ValueError('缺少uv，请先按部署说明安装uv。')
     python=Path(base_python) if base_python else Path(sys.base_prefix)/'python.exe'
@@ -212,19 +352,18 @@ def prepare_desktop(paths,*,base_python=None,local_model_source=None,diagnostics
     sync += ['--group', 'dev'] if diagnostics else ['--no-dev']
     commands.append(sync)
     log=home/'logs/environment-prepare.log'
-    with log.open('a',encoding='utf-8') as output:
-        for command in commands:
-            result=subprocess.run(command,cwd=source,env=env,stdout=output,stderr=subprocess.STDOUT,creationflags=NO_WINDOW)
-            if result.returncode:raise ValueError('依赖准备未完成，日志位于 '+str(log))
+    for command in commands:
+        if not _run_install_step(command,source,env,log,600):raise ValueError('依赖准备未完成，日志位于 '+str(log))
     interpreter=venv/'Scripts/python.exe'
     arguments=[str(interpreter),'-B','-m','persona_runtime','--home',str(home),'prepare-model']
     if local_model_source:arguments+=['--local-source',str(Path(local_model_source).absolute())]
-    with log.open('a',encoding='utf-8') as output:
-        result=subprocess.run(arguments,cwd=source,env=env,stdout=output,stderr=subprocess.STDOUT,creationflags=NO_WINDOW)
-    if result.returncode:raise ValueError('模型准备未完成，日志位于 '+str(log))
+    if not _run_install_step(arguments,source,env,log,None):
+        raise ValueError('模型准备未完成，日志位于 '+str(log))
     # Creating the new blank configuration is the last step. Failed downloads
     # leave a resumable installation marker and never modify business data.
     from .config import ConfigStore
+    if frontend=='webview' and not _frontend_probe(interpreter,_frontend_packages(source)[1]):
+        raise ValueError('新版工作台依赖校验失败，准备记录已保留。')
     ConfigStore(paths).initialize()
     atomic_json(home/'runtime/installation.json',{'version':1,'state':'ready','source_root':str(source),'runtime_home':str(home),'python':'3.12','desktop_only':True})
     (home/'runtime/install-progress.json').unlink(missing_ok=True)

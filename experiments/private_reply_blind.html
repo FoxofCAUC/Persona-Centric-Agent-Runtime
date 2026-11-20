@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PCAR 私聊回复盲审</title>
+<style>
+  :root{color-scheme:light dark}
+  body{max-width:74rem;margin:2rem auto;padding:0 1rem;font:16px/1.55 system-ui,sans-serif}
+  article{margin:1.25rem 0;padding:1rem;border:1px solid GrayText;border-radius:.65rem}
+  .options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem}
+  .bubble{white-space:pre-wrap;overflow-wrap:anywhere;margin:.35rem 0;padding:.45rem .65rem;
+    border-radius:.45rem;background:color-mix(in srgb,CanvasText 8%,Canvas)}
+  fieldset{min-width:0;border:1px solid GrayText;border-radius:.45rem}
+  label{display:block;margin:.35rem 0}
+  button,select,input{font:inherit} button{padding:.45rem .8rem}
+  @media(max-width:56rem){.options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<main>
+  <h1>PCAR 私聊回复盲审</h1>
+  <p id="status"></p>
+  <form id="review"></form>
+</main>
+<script type="application/json" id="data">@@DATA@@</script>
+<script>
+  const packet = JSON.parse(document.getElementById("data").textContent);
+  const form = document.getElementById("review");
+  const ready = Boolean(packet.results_sha256);
+  const kind = {fixed:"固定位置", continuous:"连续私聊", research:"同一份资料的查后回复"};
+  const state = {wait:"等待下一条消息", interrupted:"本轮中断，以下为已确认显示的内容"};
+  const labels = ["甲","乙","丙","丁"];
+  const make = (parent, tag, text, cls) => {
+    const node = document.createElement(tag);
+    if (text != null) node.textContent = text;
+    if (cls) node.className = cls;
+    parent.append(node);
+    return node;
+  };
+  document.getElementById("status").textContent = ready
+    ? "比较同组对话中的四种回复。读完整组后给每一列打分，并标记看到的问题。"
+    : "样本位置和匿名顺序已冻结。收到四路实际回复及显示回执后，评分页才会生成。";
+  for (const episode of packet.episodes) {
+    const block = make(form,"article");
+    make(block,"h2",kind[episode.kind] + " · " + episode.id);
+    if (!ready) { make(block,"p",episode.count + " 个位置"); continue; }
+    for (const turn of episode.turns) {
+      make(block,"h3","第 " + turn.number + " 轮");
+      for (const input of turn.inputs) make(block,"p",input,"bubble");
+      const grid = make(block,"div",null,"options");
+      for (const option of turn.options) {
+        const column = make(grid,"section");
+        make(column,"h4",option.label);
+        if (state[option.state]) make(column,"p",state[option.state]);
+        for (const bubble of option.bubbles) make(column,"p",bubble.text,"bubble");
+      }
+    }
+    const ratings = make(block,"div",null,"options");
+    for (const label of labels) {
+      const column = make(ratings,"fieldset");
+      make(column,"legend",label);
+      const select = make(make(column,"label","真人感 "), "select");
+      select.name = episode.id + "." + label;
+      select.required = true;
+      for (const [value,text] of [["","请选择"],["1","1 明显像助手"],["2","2"],["3","3"],["4","4"],["5","5 自然"]])
+        select.add(new Option(text,value));
+      for (const issue of packet.issues) {
+        const check = make(make(column,"label",issue),"input");
+        check.type = "checkbox";
+        check.value = issue;
+        check.name = select.name + ".issues";
+      }
+    }
+  }
+  if (ready) {
+    make(form,"button","下载评分记录").type = "submit";
+    form.onsubmit = event => {
+      event.preventDefault();
+      const data = new FormData(form), episodes = {};
+      for (const {id} of packet.episodes) {
+        episodes[id] = {};
+        for (const label of labels) {
+          const key = id + "." + label;
+          episodes[id][label] = {naturalness:Number(data.get(key)),issues:data.getAll(key + ".issues")};
+        }
+      }
+      const score = {study_sha256:packet.study_sha256,results_sha256:packet.results_sha256,episodes};
+      const url = URL.createObjectURL(new Blob([JSON.stringify(score,null,2)],{type:"application/json"}));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "PCAR-阶段5-盲审评分.json";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url),1000);
+    };
+  }
+</script>
+</html>

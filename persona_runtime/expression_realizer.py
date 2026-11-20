@@ -10,7 +10,7 @@ TEXT_PROTOCOL = 'expression-text-local-v1'
 PROTOCOLS = (JSON_PROTOCOL, TEXT_PROTOCOL)
 
 CONTENT_TASK = '''把主稿里要说的内容接到眼前的私聊里，用人物此刻的语气表达。
-保留当前任务、必要条件与否定、明确承诺、资料已取得或未取得的状态。保护片段逐字保留。
+保留当前任务、必要条件与否定、明确承诺。保护片段逐字保留。
 已经说过的内容是交流前提，本次接着说；表达习惯只提供说法参考，其中没有新增的人物经历或用户事实。'''
 
 JSON_TASK = '''响应是一个有效JSON对象，字段为body、segments、selected_expression_ids。

@@ -41,9 +41,13 @@ class JevTransport:
                 record.dispatched = asyncio.get_running_loop().time()
                 record.on_dispatch(record.dispatched)
 
+        async def headers_sent(_session, ctx, _params):
+            ctx.trace_request_ctx.headers_sent = True
+
         trace.on_connection_create_start.append(connect_begin)
         trace.on_connection_create_end.append(connect_end)
         trace.on_connection_reuseconn.append(reuse)
+        trace.on_request_headers_sent.append(headers_sent)
         trace.on_request_chunk_sent.append(body_sent)
         return trace
 
@@ -52,7 +56,7 @@ class JevTransport:
         start = loop.time()
         proxy = outbound_proxy(self.url)
         trace = SimpleNamespace(connection_start=None, connection_end=None, reused=False,
-                                dispatched=None, on_dispatch=on_dispatch)
+                                dispatched=None, on_dispatch=on_dispatch, headers_sent=False)
         headers_at = receipt_at = status = None
         response_headers = {}
         try:
@@ -80,7 +84,10 @@ class JevTransport:
                 on_receipt(receipt_at)
                 return status,raw.decode('utf-8',errors='replace').replace(key,'[REDACTED]')
         except (TimeoutError,aiohttp.ClientError):
-            raise ModelError('jev_transport_unconfirmed') from None
+            sent = trace.headers_sent or trace.dispatched is not None or status is not None
+            raise ModelError('jev_transport_unconfirmed' if sent else 'provider_network_error',
+                             diagnostics={'request_headers_sent':sent,'http_status':status,
+                                          'response_headers_received':status is not None,'effect_unknown':sent}) from None
         finally:
             diagnostics({
                 'profile':TIMING_PROFILE,'http':status,'total_ms':ms(start,receipt_at or loop.time()),

@@ -30,7 +30,7 @@ from .desktop_links import open_browser
 from .desktop_knowledge import KnowledgeUI
 
 LABELS = {"service": "人格服务", "astrbot": "消息服务", "napcat": "QQ 连接"}
-APP_EXIT_TIMEOUT = 45
+APP_EXIT_TIMEOUT = 60
 DISPLAY_ERRORS = {
     'provider_connection_timeout': '连接模型接口超时（DNS/TCP/TLS阶段）；请在请求详情核对原生重试记录。',
     'chat_display_message_limit': '回复分条超过安全上限，整批未发送；原生成记录保留。',
@@ -270,6 +270,9 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             self.after(500,self.check_wakeup)
 
     def run_task(self, name, resources, action, success=None, quiet=False, urgent=False, failure=None, error_current=None):
+        if getattr(self,'_repair_window',None) is not None and not urgent:
+            if not quiet:self.notice.set('工作台正在核对本机状态，完成后可继续操作。')
+            return None
         if quiet and getattr(self,'tray_hidden',False):return None
         if self.closed and self.managed_lifecycle:
             return None
@@ -969,8 +972,13 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             else:
                 self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
             spoken=turn.get('search_notice')
+            notice_plan=next((p for p in turn.get('desktop_publications',())
+                              if p['phase']=='search_notice' and p.get('kind')=='speech'), None)
             pending=getattr(self,'pending_notice_view',None)
-            if spoken:
+            if notice_plan:
+                for part in notice_plan['visible']:
+                    self.transcript.insert('end','人格：'+part['text']+'\n\n')
+            elif spoken:
                 self.transcript.insert('end','人格：'+spoken['text']+'\n\n')
             elif (pending and (self.persona_id,self.session_id,turn['id'])==
                     (pending['persona_id'],pending['session_id'],pending['turn_id']) and turn['status']=='queued' and not turn.get('cancelled_at')):
@@ -982,6 +990,9 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                 displayed=turn.get('display_messages')
                 if scene_speech:
                     pass
+                elif turn.get('display_bubbles'):
+                    for part in turn['display_bubbles']:
+                        self.transcript.insert('end', '人格：'+part+'\n\n')
                 elif displayed:
                     for message in displayed:self.transcript.insert("end", "人格："+message['text']+"\n\n")
                     findings=[str(i) for i,m in enumerate(displayed,1) if m.get('diagnostics',{}).get('quality_findings')]
@@ -1023,7 +1034,8 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             if batch['id'] in linked_batches:continue
             if batch['session_id']!=self.session_id or batch['persona_id']!=self.persona_id:continue
             for member in batch['members']:self.transcript.insert('end','你：'+member['text']+'\n')
-            self.transcript.insert('end','['+BATCH_LABELS.get(batch['status'],batch['status'])+f" · {batch['remaining_ms']/1000:.1f} 秒]\n\n")
+            remaining=f" · {batch['remaining_ms']/1000:.1f} 秒" if batch['state']=='collecting' else ""
+            self.transcript.insert('end','['+BATCH_LABELS.get(batch['status'],batch['status'])+remaining+"]\n\n")
         self.transcript.configure(state="disabled")
         if at_bottom:
             self.transcript.see("end")
@@ -1460,6 +1472,10 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         self.notice.set("已请求取消后续启动步骤；当前安全操作会完成。")
 
     def tick(self):
+        runtime=getattr(self,'runtime',None)
+        if runtime and not self.shutdown_started and time.monotonic()>=getattr(self,'_repair_poll_at',0):
+            self._repair_poll_at=time.monotonic()+.5
+            self.render_repair(runtime.repair.status())
         if self.closed:
             return
         for operation, kind, value, callback, quiet in self.hub.drain():
@@ -1485,6 +1501,23 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             self.progress.stop()
         self.after(100, self.tick)
 
+    def render_repair(self,record):
+        from .local_repair import ACTIVE
+        window=getattr(self,'_repair_window',None)
+        if not record or record['phase'] not in ACTIVE:
+            if window is not None:window.grab_release();window.destroy();self._repair_window=None
+            return
+        if window is None:
+            window=tk.Toplevel(self);window.transient(self);window.protocol('WM_DELETE_WINDOW',lambda:None)
+            self._repair_label=ttk.Label(window,padding=16,wraplength=360)
+            self._repair_label.pack()
+            ttk.Button(window,text='安全退出工作台',command=self.close_window).pack(padx=16,pady=10)
+            self._repair_window=window;window.grab_set()
+        window.title('工作台暂时只读' if record['phase']=='read_only' else '修复中')
+        self._repair_label.configure(text='本机状态暂时无法核验，将自动复查。' if record['phase']=='read_only' else
+                                    '正在核对修复结果。' if record['phase']=='verifying' else
+                                    '正在恢复本机聊天服务。' if record['action']=='restart_service' else '正在检查数据目录能否写入。')
+
     def close_window(self):
         if self.shutdown_started:
             return
@@ -1494,7 +1527,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             self.closed = True
             watchdog=getattr(self,'_process_exit_watchdog',None)
             if watchdog:watchdog()
-            self.notice.set('正在退出：结算执行、关闭QQ连接并释放所属组件，最多约 45 秒。')
+            self.notice.set('正在退出，核对已受理的工作并释放所属组件。')
             for button, _ in self.buttons:
                 if button.winfo_exists():button.configure(state='disabled')
             for operation in self.hub.active.values():
@@ -1508,8 +1541,10 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                     report=self.controller.shutdown()
                     self.shutdown_result = (bool(report['processes_released']), report)
                 except Exception as exc:
-                    self.shutdown_result = (False, str(exc))
+                    self.shutdown_result = (False,{'retry_after':5,'blocker':'component_ownership_or_release_unconfirmed',
+                                                   'error_type':type(exc).__name__})
             threading.Thread(target=stop, name='console-shutdown', daemon=True).start()
+            self._retry_shutdown=stop
             self.after(100, self.finish_console_shutdown)
             return
         self.destroy_console()
@@ -1517,7 +1552,7 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
     def finish_console_shutdown(self):
         progress=getattr(self.controller,'shutdown_progress',None)
         if isinstance(progress,dict):
-            phase=progress['phase'];labels={'draining':'结算已知执行','logout':'关闭QQ连接','releasing':'释放所属组件'}
+            phase=progress['phase'];labels={'stop_admission':'停止接收新消息','draining':'结算已知执行','checkpoint':'核对已受理消息和回执','logout':'关闭QQ连接','releasing':'释放所属组件'}
             if phase!=getattr(self,'_exit_phase_ui',None):
                 self._exit_phase_ui=phase;self.notice.set('正在退出：'+labels.get(phase,phase))
                 if self.tray:self.tray.set_tip('PCAR · 正在退出：'+labels.get(phase,phase))
@@ -1527,11 +1562,16 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         success, result = self.shutdown_result
         if success:
             self.destroy_console()
+        elif isinstance(result,dict) and result.get('retry_after'):
+            self.shutdown_result=None
+            self.notice.set('组件归属或退出状态尚未确认，将自动复查。' if result.get('blocker') else '仍在等待所属组件退出，将自动核对。')
+            self.after(int(1000*result['retry_after']),lambda:threading.Thread(target=self._retry_shutdown,name='console-shutdown',daemon=True).start())
+            self.after(100,self.finish_console_shutdown)
         else:
             self.shutdown_started = False
             self.closed=False
             self.after(100,self.tick)
-            self.notice.set('全部服务尚未停止，控制台保留。请再次关闭以重试。' +
+            self.notice.set('已自动核对并重试释放，仍有组件的归属或退出状态无法确认。' +
                             (str(result.get('report_file', '')) if isinstance(result, dict) else str(result)))
 
     def destroy_console(self):
@@ -1552,16 +1592,14 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
         if not self.character_can_leave():return
         self.tray_hidden=True;self.withdraw()
         if self.controller.console_lease:
-            self.controller.console_lease['display_state']='tray'
-            atomic_json(self.paths.home/'runtime/console.json',self.controller.console_lease)
+            self.controller.update_console(display_state='tray')
 
     def show_from_tray(self,*,activate=True):
         if self.closed:return
         self.tray_hidden=False;self.deiconify()
         if activate:self.lift();self.focus_force()
         if self.controller.console_lease:
-            self.controller.console_lease['display_state']='visible'
-            atomic_json(self.paths.home/'runtime/console.json',self.controller.console_lease)
+            self.controller.update_console(display_state='visible')
 
     def check_wakeup(self):
         if self.closed:return

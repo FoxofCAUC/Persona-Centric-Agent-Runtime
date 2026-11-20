@@ -16,7 +16,7 @@ TEMPLATES = {
     'support': '先简短回应用户的倾诉并表达支持，避免诊断、说教或无必要追问。',
     'explain': '优先清楚解释依据和可行步骤，保留必要答案与细节。',
     'challenge': '按用户明确要求检验或批评观点，给出理由，尊重对方。',
-    'defer': '如实说明当前暂不能处理及已知限制，不承诺后台处理或主动联系。',
+    'defer': '不承诺后台处理或主动联系。',
     'set_boundary': '说明已有授权来源支持的边界，保持尊重，不扩大权限或编造限制。',
 }
 
@@ -29,7 +29,6 @@ VOICE_TEMPLATES={
     'support':'站在对方这边陪这一刻，说你对这件具体事情的反应。支持可以是心疼、替他不值、一起吐槽或安静接话，不用复述情绪，不急着修理处境。',
     'explain':'把自己的思路和为什么这样想说清楚，让对方能跟上。日常建议像交换想法，技术任务保留完整步骤。',
     'challenge':'对方希望听到质疑，坦率指出站不住的地方并说出依据。',
-    'defer':'如实说清这次做不了的地方。',
     'set_boundary':'把有来源的那条界限说清楚，语气自然。',
 }
 
@@ -161,7 +160,8 @@ def capsule(prepared):
         raise RuntimeErrorBase('capsule_invalid_action')
     from .dialogue_voice import SUPPORTED_VERSIONS
     if prepared.get('_voice_version') in SUPPORTED_VERSIONS:
-        return '\n这一轮更在意：'+VOICE_TEMPLATES[action]+'\n这是交流重心，不是句式或固定顺序。'
+        guidance = VOICE_TEMPLATES.get(action)
+        return '\n这一轮更在意：'+guidance+'\n这是交流重心，不是句式或固定顺序。' if guidance else ''
     text = '\n当轮交流方式要求（不得覆盖权限、事实、核心边界、当前合法任务或回复协议）：\n' + encoded({
         'schema_version': VERSION, 'action': action, 'requirements': [TEMPLATES[action],
         '完整完成当前合法任务；不得把设定或策略当作真实经历，不增加工具、后台任务或主动联系权限。']})

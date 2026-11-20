@@ -149,7 +149,11 @@ class DeliveryService:
         if not latest:
             last_seq = conn.execute("SELECT max(e.seq) FROM events e WHERE e.id=? OR e.id IN (SELECT event_id FROM input_batch_members WHERE batch_id=?)",
                                     (turn['user_event_id'],turn.get('input_batch_id'))).fetchone()[0]
-            row = conn.execute("SELECT e.id FROM events e JOIN raw_events r ON r.event_id=e.id WHERE e.session_id=? AND e.persona_id=? AND e.user_id=? AND e.seq>? AND r.channel=? AND r.bot=? AND r.peer=? ORDER BY e.seq DESC LIMIT 1",
+            row = conn.execute("""SELECT e.id FROM events e JOIN raw_events r ON r.event_id=e.id
+                               WHERE e.session_id=? AND e.persona_id=? AND e.user_id=? AND e.seq>? AND r.channel=? AND r.bot=? AND r.peer=?
+                               AND NOT EXISTS(SELECT 1 FROM input_batch_members m JOIN input_batches b ON b.id=m.batch_id
+                                   WHERE m.event_id=e.id AND b.sealed_at IS NULL AND json_extract(b.policy_json,'$.manual_confirmation')=1)
+                               ORDER BY e.seq DESC LIMIT 1""",
                                (turn['session_id'],turn['persona_id'],LOCAL_USER_ID,last_seq,turn['channel'],origin.get('bot',''),origin.get('sender',''))).fetchone()
             latest = row[0] if row else None
         if latest:
@@ -176,11 +180,11 @@ class DeliveryService:
         return cancelled
 
     def new_input(self,conn,event_id,persona_id,session_id,channel,origin,exclude_batch=None,exclude_turn=None):
-        rows=conn.execute("SELECT * FROM turns WHERE persona_id=? AND session_id=? AND channel=? AND id!=? AND (input_batch_id IS NULL OR input_batch_id!=?)",
+        rows=conn.execute("""SELECT id,origin_json FROM turns WHERE persona_id=? AND session_id=? AND channel=?
+                          AND reply_mode_snapshot='natural_structured' AND id!=? AND (input_batch_id IS NULL OR input_batch_id!=?)""",
                           (persona_id,session_id,channel,exclude_turn or '',exclude_batch or '')).fetchall()
         for row in rows:
             if channel=='qq' and json.loads(row['origin_json'] or '{}')!=origin:continue
-            if row['reply_mode_snapshot']!='natural_structured':continue
             conn.execute('UPDATE turns SET new_input_event_id=? WHERE id=?',(event_id,row['id']))
             for batch in conn.execute('SELECT id FROM reply_batches WHERE turn_id=?',(row['id'],)).fetchall():
                 self._cancel(conn,batch[0],'new_input',event_id)

@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
 import re
 import tomllib
@@ -10,7 +11,7 @@ import zipfile
 
 SOURCE=Path(__file__).resolve().parents[1]
 SCRIPTS=('Start-Workbench.ps1','Prepare-Desktop.ps1','pcar-location.ps1','Manage-Migration.ps1',
-         'verify_m8d_migration.py','verify_m761_migration.py','dev.ps1','test.ps1','force_stop_services.py','force_stop_qq.py','build_desktop_bundle.py','pcar_acceptance_check.py','pcar_upgrade_check.py','pcar_recall_rollback.py','pcar_recall_preflight.py','pcar_scene_voice.py')
+         'verify_m8d_migration.py','verify_m761_migration.py','dev.ps1','test.ps1','force_stop_services.py','force_stop_qq.py','build_desktop_bundle.py','pcar_acceptance_check.py','pcar_desktop_turn_evidence.py','pcar_upgrade_check.py','pcar_recall_rollback.py','pcar_recall_preflight.py','pcar_scene_voice.py','pcar_local_knowledge.py')
 ROOT_FILES=('启动PCAR.bat','README.md','AGENTS.md','AGENT_INSTALL.md','LICENSE','pyproject.toml','uv.lock','model-assets.json','source-delivery.json')
 WEBVIEW_FILES = (
     '启动PCAR-新版.bat', 'persona_runtime/workbench_web/index.html',
@@ -19,23 +20,60 @@ WEBVIEW_FILES = (
 SCENE_DOCS=('docs/user/历史聊天接续.md','docs/acceptance/LT-13-外部历史接续验收.md','docs/user/双人聊天生成角色卡.md','docs/acceptance/LT-13-双人成卡与场景启用.md','docs/acceptance/LT-13-v2-双人画像证据与建角验收.md','docs/acceptance/工作台双人私聊导入与历史接续.md','docs/expression/E.N6-场景发言接入与回退.md','docs/模型输入与提示词写作总则.md',
             'docs/第三方角色Embedding依赖与许可.md','docs/M9R.5-本机验收与候选交付.md')
 SCENE_TESTS=('test_portable_history.py','test_history_continuation.py','test_import_history_service.py','test_import_history_memory.py','test_m8d.py','test_import_prompts.py','test_import_card_fields.py','test_import_card_job.py','test_import_card_publish.py','test_import_analysis_v2.py','test_import_plan.py','test_import_profile_workflow.py','test_import_personas.py','test_scene_voice_delivery.py','test_tk_notice.py','test_m9r_native_retrieval.py',
-             'test_m9r0_native_contract.py','test_general_retrieval.py','test_m4.py')
+             'test_m9r0_native_contract.py','test_general_retrieval.py','test_m4.py',
+             'test_desktop_recovery.py','test_dialogue_schema_migration.py','test_private_reply_output.py',
+             'test_private_reply_stage1.py','test_private_reply_stage2.py','test_private_reply_stage3.py','test_private_reply_stage4.py',
+             'test_knowledge_coverage.py','test_knowledge_revisions.py','test_knowledge_study.py','test_local_knowledge.py',
+             'test_semantic_knowledge.py','test_workbench_call_limits.py','test_workbench_continuity.py',
+             'test_workbench_operations.py','test_workbench_startup.py','test_workbench_webview.py')
 PUBLIC_FIXTURE_SHA256={
     'v0.1':'6badfaccfed2a25626260e760f76a91b852ac7a99b2943cf4a6005e4fcbfa249',
     'v0.2':'93f4faae190d1874f7b59ee08d444705fd1e1979451859363ab0aa4a17777ec1',
+    'v0.3':'f8cbebf494d6dec3e5d5cf9ccd6e68682b3a9795cb08c2c751690b329533acc3',
 }
 README_ASSETS=('ATTRIBUTION.md','provenance.json','superfish-vision.webp','superfish-vision.png',
                'superfish-vision.prompt.md','daily-life-vision.webp','daily-life-vision.png',
                'daily-life-vision.prompt.md','continuity-concept.png','continuity-concept.svg')
 
 
-def build(destination,model=None,*,release_tag=None,source_revision=None,artificial_fixture=None,candidate_base_revision=None,profile='standard'):
+def verify_prepared_sources(tree, base, files):
+    """Prepared kits use canonical Git archive bytes; public external inputs are pinned separately."""
+    def git(*args):
+        return subprocess.check_output(['git', *args], cwd=SOURCE, stderr=subprocess.DEVNULL)
+
+    try:
+        if git('cat-file', '-t', tree).strip() != b'tree' or git('cat-file', '-t', base).strip() != b'commit':
+            raise ValueError('冻结源码树与基线提交的对象类型不符。')
+        blobs = {}
+        for member in git('ls-tree', '-rz', tree).split(b'\0'):
+            if member:
+                description, name = member.split(b'\t', 1)
+                blobs[name.decode('utf-8')] = description.split()[-1].decode('ascii')
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError('找不到已冻结的 Git 源码树和基线提交。') from error
+    for name, path in files.items():
+        if name.startswith(('public-model/', 'samples/')):
+            continue
+        relative = path.relative_to(SOURCE).as_posix()
+        data = path.read_bytes()
+        header = b'blob ' + str(len(data)).encode('ascii') + b'\0'
+        if blobs.get(relative) != hashlib.sha1(header + data).hexdigest():
+            raise ValueError('待发布文件与冻结源码树不符：' + relative)
+
+
+def build(destination,model=None,*,release_tag=None,source_revision=None,artificial_fixture=None,candidate_base_revision=None,
+          prepared_tag=None,prepared_tree=None,profile='standard'):
     if profile not in ('standard','scene-desktop'):raise ValueError('安装包配置无效。')
     destination=Path(destination).absolute()
     if destination.is_relative_to(SOURCE):raise ValueError('安装包必须保存在源码目录以外。')
     if source_revision is not None and not re.fullmatch('[0-9a-f]{40}',source_revision):raise ValueError('无效源码提交编号。')
     if candidate_base_revision is not None and not re.fullmatch('[0-9a-f]{40}',candidate_base_revision):raise ValueError('无效候选基线编号。')
     if release_tag and not (source_revision and model and artificial_fixture):raise ValueError('发行包需要提交编号、公开模型和人工演练资料。')
+    if prepared_tag or prepared_tree:
+        if (release_tag or source_revision or not candidate_base_revision or not model or not artificial_fixture
+                or not prepared_tag or not re.fullmatch('[0-9a-f]{40}',prepared_tree or '')):
+            raise ValueError('待发布包需要冻结源码树、基线提交、公开模型和对应版本的人工演练资料。')
+    target_tag=release_tag or prepared_tag
     from persona_runtime.import_prompts import BUNDLE_PATH, BUNDLE_SHA256, VERSION as PROMPT_VERSION
     if hashlib.sha256(BUNDLE_PATH.read_bytes()).hexdigest() != BUNDLE_SHA256:
         raise ValueError('双人角色卡发布提示词与冻结版本不符。')
@@ -43,29 +81,34 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
     roots=('persona_runtime',) if profile=='scene-desktop' else ('persona_runtime','tests')
     files={p.relative_to(SOURCE).as_posix():p for folder in roots for p in (SOURCE/folder).rglob('*') if p.is_file() and p.suffix in ('.py','.txt','.json') and '__pycache__' not in p.parts}
     policy=json.loads((SOURCE/'source-delivery.json').read_text(encoding='utf-8'))
+    if prepared_tag and prepared_tag!=policy['release_tag']:
+        raise ValueError('待发布包标签与交付清单不符。')
     for name in policy['excluded_modules']:files.pop(name,None)
     files[prompt_file] = BUNDLE_PATH
+    files['templates/persona.generic.json'] = SOURCE/'templates/persona.generic.json'
     files.update({n:SOURCE/n for n in ROOT_FILES})
     files.update({n: SOURCE / n for n in WEBVIEW_FILES})
     files.update({'scripts/'+n:SOURCE/'scripts'/n for n in SCRIPTS})
+    if profile=='standard':
+        files['scripts/private_copy_workbench.py']=SOURCE/'scripts/private_copy_workbench.py'
     for name in ('__init__.py','import_card_request_review.py','import_card_result_review.py','import_card_readmit.py','import_profile_request_review.py','import_profile_quality.py','import_profile_evidence.py','import_style_supplement.py','m9r_comparison.py','m9r_comparison_materials.py','m9r_native_probe.py','m9r_fatigue_materials.py','recall_preparation.py','recall_continuity.py'):
         path=SOURCE/'experiments'/name
         if path.is_file():files['experiments/'+name]=path
     if profile=='scene-desktop':
         files.update({name:SOURCE/name for name in SCENE_DOCS if (SOURCE/name).is_file()})
         files.update({'tests/'+name:SOURCE/'tests'/name for name in SCENE_TESTS})
-        documentation=SOURCE/'docs' if source_revision else SOURCE/'docs/licenses'
+        documentation=SOURCE/'docs' if source_revision or candidate_base_revision else SOURCE/'docs/licenses'
     else:
         documentation=SOURCE/'docs'
     files.update({p.relative_to(SOURCE).as_posix():p for p in documentation.rglob('*')
                   if p.is_file() and p.suffix.lower() in ('.md','.docx','.txt')})
-    if source_revision:
+    if source_revision or candidate_base_revision:
         files.update({n:SOURCE/n for n in ('CHANGELOG.md','CONTRIBUTING.md')})
         files.update({'assets/readme/'+n:SOURCE/'assets/readme'/n for n in README_ASSETS})
     if artificial_fixture:
         fixture=Path(artificial_fixture)
         with fixture.open('rb') as stream:actual=hashlib.file_digest(stream,'sha256').hexdigest()
-        allowed={PUBLIC_FIXTURE_SHA256.get(release_tag)} if release_tag else set(PUBLIC_FIXTURE_SHA256.values())
+        allowed={PUBLIC_FIXTURE_SHA256.get(target_tag)} if target_tag else set(PUBLIC_FIXTURE_SHA256.values())
         if actual not in allowed:raise ValueError('只允许本版本核准的公开人工迁移包，不能发布用户业务包。')
         files['samples/artificial-business.pcar-migration.zip']=fixture
     if model:
@@ -75,8 +118,17 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
             with p.open('rb') as stream:actual=hashlib.file_digest(stream,'sha256').hexdigest()
             if actual!=expected:raise ValueError('公开模型文件不完整：'+name)
             files['public-model/'+name]=p
+    runtime_version=tomllib.loads((SOURCE/'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
+    if target_tag:
+        from persona_runtime import __version__
+        from persona_runtime.storage import SCHEMA_VERSION
+        if (target_tag!=policy['release_tag'] or __version__!=runtime_version or runtime_version!=policy['release']
+                or policy['schema_version']!=SCHEMA_VERSION):
+            raise ValueError('发行标签、运行版本或数据库结构与交付清单不符。')
+    if prepared_tag:
+        verify_prepared_sources(prepared_tree, candidate_base_revision, files)
     manifest={'format':'pcar-desktop-kit-v1','business_data_included':False,'credentials_included':False,
-              'runtime_version':tomllib.loads((SOURCE/'pyproject.toml').read_text(encoding='utf-8'))['project']['version'],
+              'runtime_version':runtime_version,
               'release_tag':release_tag,'source_revision':source_revision,'schema_version':policy['schema_version'],
               'deployment_mode':'agent-assisted',
               'profile':profile,'public_model_included':bool(model),'artificial_fixture_included':bool(artificial_fixture),
@@ -86,6 +138,8 @@ def build(destination,model=None,*,release_tag=None,source_revision=None,artific
     if candidate_base_revision:
         manifest['candidate_source']={'kind':'working_tree','base_revision':candidate_base_revision,
             'published':False,'commit_identity_claimed':False}
+        if prepared_tag:
+            manifest['candidate_source'].update(kind='git_tree',git_tree=prepared_tree,target_release_tag=prepared_tag)
     destination.parent.mkdir(parents=True,exist_ok=True)
     # Exclusive creation prevents accidentally replacing another delivery.
     with zipfile.ZipFile(destination,'x',zipfile.ZIP_DEFLATED) as archive:
@@ -99,5 +153,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--public-model',type=Path)
     parser.add_argument('--release-tag');parser.add_argument('--source-revision');parser.add_argument('--artificial-fixture',type=Path)
     parser.add_argument('--candidate-base-revision')
+    parser.add_argument('--prepared-tag',help='Target tag for a local release preparation from a frozen Git tree.')
+    parser.add_argument('--prepared-tree',help='Object ID of the Git tree used to prepare the desktop source kit.')
     parser.add_argument('--profile',choices=('standard','scene-desktop'),default='standard')
-    args=parser.parse_args();print(json.dumps(build(args.output,args.public_model,release_tag=args.release_tag,source_revision=args.source_revision,artificial_fixture=args.artificial_fixture,candidate_base_revision=args.candidate_base_revision,profile=args.profile),ensure_ascii=False,indent=2))
+    args=parser.parse_args();print(json.dumps(build(args.output,args.public_model,release_tag=args.release_tag,source_revision=args.source_revision,artificial_fixture=args.artificial_fixture,candidate_base_revision=args.candidate_base_revision,prepared_tag=args.prepared_tag,prepared_tree=args.prepared_tree,profile=args.profile),ensure_ascii=False,indent=2))

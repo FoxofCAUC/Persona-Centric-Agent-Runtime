@@ -122,6 +122,10 @@ class SearchNotice:
             if value['task_id'] != task['id'] or value['response_hash'] != fingerprint(response):
                 raise RuntimeErrorBase('search_notice_receipt_conflict')
             return {'event_id': value['event_id'], 'published': True}
+        if root['channel'] == 'desktop' and presented is None:
+            from .bubble_limits import DETAIL_REQUIRED, MAX_BUBBLE_CHARS
+            if len(text) > MAX_BUBBLE_CHARS:
+                raise RuntimeErrorBase(DETAIL_REQUIRED)
         from . import tk_notice
         if presented is None and tk_notice.required(db,root):
             return tk_notice.prepare(db,root,task['id'],response)

@@ -3,12 +3,30 @@ from urllib.parse import urlsplit
 from .provider_compat import CURRENT_DEEPSEEK
 
 
-def require_generation_provider(model, *, allow_loopback_fixture=False, allow_reply_decision_tool=False):
+PRIVATE_COMPATIBLE_WRITER = ('https://e-flowcode.cc/v1', 'gemini-4-hydrogen')
+DEEPSEEK_TEXT_RELAY = 'https://e-flowcode.cc/v1'
+
+
+def is_deepseek_text_relay(model):
+    return (model.get('base_url') == DEEPSEEK_TEXT_RELAY
+            and model.get('name') in ('deepseek-v4-pro', 'deepseek-flash'))
+
+
+def is_private_compatible_writer(model):
+    return (model.get('base_url'), model.get('name')) == PRIVATE_COMPATIBLE_WRITER
+
+
+def require_generation_provider(model, *, allow_loopback_fixture=False, allow_reply_decision_tool=False,
+                                allow_private_compatible_writer=False):
     try:
         if '_reply_decision_tool' in model:
             if not allow_reply_decision_tool:raise ValueError()
             from .deepseek_reply_decision import model_profile
             model_profile(model)
+            return
+        if allow_private_compatible_writer and is_private_compatible_writer(model):
+            return
+        if is_deepseek_text_relay(model) and '_native_web_profile' not in model:
             return
         raw=model['base_url'];url=urlsplit(raw)
         if (allow_loopback_fixture and url.hostname in ('127.0.0.1','localhost','::1')

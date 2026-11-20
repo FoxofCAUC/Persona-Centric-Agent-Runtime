@@ -102,8 +102,11 @@ class NativeTextDispatch(unittest.IsolatedAsyncioTestCase):
         client = ChatCompletionsClient(allow_loopback_fixture=True, )
         with patch('persona_runtime.chat.aiohttp.ClientSession',
                    side_effect=AssertionError('must not connect')) as session:
+            model=native_model() | {'_reply_mode':'natural_structured'}
+            with self.assertRaisesRegex(ModelError, '^provider_official_deepseek_required$'):
+                await client.complete(model, MESSAGES)
             with self.assertRaisesRegex(ModelError, '^native_text_profile_conflict$'):
-                await client.complete(native_model() | {'_reply_mode': 'natural_structured'}, MESSAGES)
+                await client.complete(model | {'base_url':'http://127.0.0.1/v1'}, MESSAGES)
         session.assert_not_called()
 
     async def test_native_audit_hash_matches_actual_wire_and_keeps_plain_answer(self):

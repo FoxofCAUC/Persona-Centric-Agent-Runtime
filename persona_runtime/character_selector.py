@@ -1,4 +1,5 @@
 """Audited cloud selection with at most three retries, never a canon writer."""
+from .call_limits import resume_on_limit, workflow
 import asyncio
 import json
 import sqlite3
@@ -66,12 +67,17 @@ class SelectorService:
             prepare(conn,dict(current))
             old=conn.execute('SELECT id FROM character_selection_attempts WHERE turn_id=? AND execution_revision=?',(turn['id'],turn['execution_revision'])).fetchone()
             if old:raise SemanticFailure('selector_already_attempted')
-        if turn and limit and project_capacity_used(conn,now-3600)+1>limit:raise SemanticFailure('selector_project_quota')
+        from .call_limits import gate,granted,turn_scope as quota_turn,CallLimitPending
+        scope=quota_turn(turn) if turn else 'selector/'+str(operation_id)
+        bypass=granted(conn,scope)
+        if turn and not bypass and limit and project_capacity_used(conn,now-3600)+1>limit:
+            raise CallLimitPending(scope,'selector_project',now+1)
         for field,period in ((('hourly_limit',3600),('daily_limit',86400)) if turn else ()):
             cap=cfg['character_selector'][field]
             from .generation_retry import call_count
             count=sum(call_count(conn,t,now-period,automatic_only=True) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
-            if cap and count>=cap:raise SemanticFailure('selector_quota')
+            if cap and not bypass and count>=cap:raise CallLimitPending(scope,'selector',now+1)
+        gate(conn,self.store,'selector',scope)
         aid=identifier();tid=turn['id'] if turn else None;revision=turn['execution_revision'] if turn else None
         from .archive import turn_scope
         scope=turn_scope(conn,turn) if turn else {'persona_id':persona_id,'user_id':LOCAL_USER_ID,'channel':'test'}
@@ -94,6 +100,8 @@ class SelectorService:
             conn.execute('INSERT INTO quota_reservations VALUES(?,?,?,?,?,\'active\',?,?)',(identifier(),tid,revision,persona_id,LOCAL_USER_ID,now,now+min(SELECTOR_TIMEOUT_MAX,model['timeout'])+60))
         return aid
 
+    @workflow
+    @resume_on_limit
     async def _call(self,persona_id,turn,model,payload,pool,limit,operation_id=None,*,prompt_version=PROMPT_VERSION):
         from .generation_retry import audited_complete, call_count
         if self.busy:raise SemanticFailure('selector_busy')
@@ -127,13 +135,14 @@ class SelectorService:
                         members=[m['text'] for m in load_turn_input(conn,current)]
                         if messages(pool,members,refs,limit,model['max_input_chars'],prompt_version=prompt_version)!=payload:
                             raise RuntimeErrorBase('selector_retry_sources_changed')
-                    if state['attempts'] and turn:
+                    from .call_limits import granted,turn_scope as quota_turn,CallLimitPending
+                    if state['attempts'] and turn and not granted(conn,quota_turn(turn)):
                         now=time.time();cfg=self.config.load();cap=cfg['model']['hourly_limit']
-                        if cap and project_capacity_used(conn,now-3600)+1>cap:raise SemanticFailure('selector_project_quota')
+                        if cap and project_capacity_used(conn,now-3600)+1>cap:raise CallLimitPending(quota_turn(turn),'selector_project',now+1)
                         for field,period in (('hourly_limit',3600),('daily_limit',86400)):
                             cap=cfg['character_selector'][field]
                             count=sum(call_count(conn,t,now-period,automatic_only=True) for t in ('character_selection_attempts','disposition_compile_attempts','situation_observation_attempts'))
-                            if cap and count+1>cap:raise SemanticFailure('selector_quota')
+                            if cap and count+1>cap:raise CallLimitPending(quota_turn(turn),'selector',now+1)
                     if turn:
                         conn.execute("UPDATE quota_reservations SET expires_epoch=? WHERE turn_id=? AND execution_revision=? AND state='active'",(time.time()+min(SELECTOR_TIMEOUT_MAX,model['timeout'])+60,turn['id'],turn['execution_revision']))
             try:
@@ -197,7 +206,18 @@ class SelectorService:
             if not any(pool['payload']['roots'].values()):raise SemanticFailure('no_candidates')
             prompt_version=policy['selector_contract']['prompt']
             payload=messages(pool,members,references,limit,model['max_input_chars'],prompt_version=prompt_version)
-            answer,error,aid=await self._call(turn['persona_id'],turn,model,payload,pool,limit,prompt_version=prompt_version)
+            with self.store.connection() as conn:
+                previous=conn.execute("""SELECT * FROM character_selection_attempts WHERE turn_id=?
+                                         AND execution_revision=? AND status='completed'""",
+                                      (turn_id,turn['execution_revision'])).fetchone()
+            if previous:
+                if previous['candidate_hash'] != pool['fingerprint'] or previous['input_hash'] != digest(payload):
+                    raise RuntimeErrorBase('character_source_changed')
+                from .private_personas import guard_cloud_dispatch
+                guard_cloud_dispatch(self.store, turn['persona_id'], 'selector', model)
+                answer, error, aid = json.loads(previous['selected_json']), None, previous['id']
+            else:
+                answer,error,aid=await self._call(turn['persona_id'],turn,model,payload,pool,limit,prompt_version=prompt_version)
             if error:raise SemanticFailure(error)
             with self.store.connection() as conn:
                 current=dict(conn.execute('SELECT * FROM turns WHERE id=?',(turn_id,)).fetchone())

@@ -65,14 +65,21 @@ class InstallationTests(unittest.TestCase):
         python.parent.mkdir(parents=True)
         python.touch()
         shutil.copyfile(Path(__file__).resolve().parents[1] / 'uv.lock', self.source / 'uv.lock')
-        results = [subprocess.CompletedProcess([], code) for code in (1, 0, 0, 0)]
-        with patch('persona_runtime.installation.subprocess.run', side_effect=results) as run, \
+        def probe(_python,_expected,site=None):
+            return bool(site and site.is_dir() or (self.paths.home/'.venv/Lib/site-packages/pcar-managed-webview.pth').is_file())
+        def sync_packages(command,source,env,log,timeout):
+            (Path(env['UV_PROJECT_ENVIRONMENT'])/'Lib/site-packages').mkdir(parents=True)
+            return True
+        with patch.dict(os.environ,{'PCAR_PYTHON':str(python)}), \
+             patch('persona_runtime.installation._frontend_probe',side_effect=probe), \
+             patch('persona_runtime.installation._run_install_step', side_effect=sync_packages) as run, \
              patch('persona_runtime.installation.provisioning_environment', return_value={}) as env, \
              patch('persona_runtime.installation.shutil.which', return_value='uv'):
             register_existing(self.paths, source_root=self.source, frontend='webview')
             register_existing(self.paths, source_root=self.source, frontend='webview')
-        env.assert_called_once_with(self.paths)
-        sync = run.call_args_list[1].args[0]
+        env.assert_not_called()
+        sync = run.call_args_list[0].args[0]
+        self.assertIn('--offline',sync);self.assertEqual(run.call_count,1)
         self.assertEqual(sync[:2], ['uv', 'sync'])
         self.assertIn('--frozen', sync)
         self.assertIn('--inexact', sync)
@@ -81,6 +88,38 @@ class InstallationTests(unittest.TestCase):
         self.assertTrue({'aiohttp', 'certifi', 'onnxruntime', 'fastembed'} <= skipped)
         self.assertTrue({'pywebview', 'pythonnet', 'clr-loader', 'cffi'}.isdisjoint(skipped))
         self.assertEqual(cfg.file.read_bytes(), before)
+
+    def test_unavailable_renderer_restores_pointer_on_publish_and_reopen(self):
+        from persona_runtime import installation
+        cfg=ConfigStore(self.paths);cfg.initialize()
+        python=self.paths.home/'.venv/Scripts/python.exe'
+        python.parent.mkdir(parents=True);python.touch()
+        shutil.copyfile(Path(__file__).resolve().parents[1]/'uv.lock',self.source/'uv.lock')
+        site=self.paths.home/'.venv/Lib/site-packages';site.mkdir(parents=True)
+        pointer=site/'pcar-managed-webview.pth'
+        original=installation._frontend_pointer('00000000-0000-4000-8000-000000000001')
+        installation._write_pointer(pointer,original)
+        def probe(interpreter,packages,overlay=None):
+            if overlay:return True
+            if pointer.read_text(encoding='ascii')==original:return False
+            raise ValueError('WebView2')
+        def sync(command,source,env,log,timeout):
+            (Path(env['UV_PROJECT_ENVIRONMENT'])/'Lib/site-packages').mkdir(parents=True)
+            return True
+        with patch.object(installation,'_frontend_probe',side_effect=probe), \
+                patch.object(installation,'_run_install_step',side_effect=sync) as installer, \
+                patch.object(installation.shutil,'which',return_value='uv'):
+            with self.assertRaisesRegex(ValueError,'WebView2'):
+                installation.ensure_existing_webview(self.paths,self.source,python)
+            self.assertEqual(pointer.read_text(),original)
+            journal=self.paths.home/'runtime/webview-install.json'
+            pending=json.loads(journal.read_text())
+            installation._write_pointer(pointer,installation._frontend_pointer(pending['generation']))
+            with self.assertRaisesRegex(ValueError,'WebView2'):
+                installation.ensure_existing_webview(self.paths,self.source,python)
+            self.assertEqual(pointer.read_text(),original)
+            self.assertEqual(json.loads(journal.read_text()),pending)
+            self.assertEqual(installer.call_count,1)
 
     def test_webview_registration_respects_external_interpreter(self):
         cfg = ConfigStore(self.paths)

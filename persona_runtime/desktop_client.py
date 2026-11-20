@@ -20,15 +20,37 @@ class TransportUnknown(RuntimeErrorBase):
 
 
 class LocalClient:
-    def __init__(self, config):
+    def __init__(self, config, *, bind_instance=False):
         self.config = config
+        self.bind_instance = bind_instance
+        self.instance_id = None
+        self.endpoint_check=None
+        self.write_check=None
         self.journal = SubmissionJournal(config.paths, "desktop")
+
+    def expected_instance(self,cfg):
+        if self.bind_instance:
+            if self.instance_id is None:self.instance_id=cfg["instance_id"]
+            if self.instance_id!=cfg["instance_id"]:raise LocalAPIError("desktop_instance_changed",409)
+        return cfg["instance_id"]
 
     def call(self, method, path, value=None, timeout=8):
         cfg = self.config.load()
+        instance=self.expected_instance(cfg)
+        if self.bind_instance:
+            from .local_repair import protected_request,require_open
+            if protected_request(method,path,value.get('action') if isinstance(value,dict) else None):
+                if self.write_check:self.write_check()
+                else:require_open(self.config.paths,instance)
+            if self.endpoint_check:
+                state=self.endpoint_check(cfg['service_port'])
+                if state=='disconnected':raise TransportUnknown('service_disconnected')
+                if state!='online':raise LocalAPIError('desktop_instance_changed',409)
+        headers={"Authorization": "Bearer " + self.config.token(), "Content-Type": "application/json"}
+        if self.bind_instance:headers["X-PCAR-Instance"]=instance
         request = urllib.request.Request(f"http://127.0.0.1:{cfg['service_port']}" + path,
             data=json.dumps(value,ensure_ascii=False).encode("utf-8") if value is not None else None, method=method,
-            headers={"Authorization": "Bearer " + self.config.token(), "Content-Type": "application/json"})
+            headers=headers)
         try:
             with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=timeout) as response:
                 return json.load(response)

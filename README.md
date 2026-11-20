@@ -32,12 +32,12 @@ PCAR 为人物设定和关系保留版本。你可以打开历史记录，查看
 
 ### 从私聊记录还原人物 · 把旧聊天接回来
 
-假如挑相册封面的那段对话发生在别处，你也可以把自己参与的双人私聊带进 **新版 Windows 工作台候选**。选中受支持的 Markdown 记录，确认自己是哪一方、另一方对应哪个角色，再选出要带入的消息。
+假如挑相册封面的那段对话发生在别处，你也可以把自己参与的双人私聊带进 **v0.3 Windows 工作台**。选中受支持的 Markdown 记录，确认自己是哪一方、另一方对应哪个角色，再选出要带入的消息。
 
 - **已经有大肥鱼的角色。** 选择「导入历史并接着聊」，把旧对话接到她名下。打开接续会话后，从最后一条消息继续，也可以翻出当时挑封面的那句原话，引用它再聊。导入时可以单独决定是否整理长期记忆。[历史聊天接续指南](docs/user/历史聊天接续.md)
 - **第一次把大肥鱼带进 PCAR。** 选择「从聊天记录生成」，PCAR 会根据消息预填角色设定和说话习惯。对照原话核对并修改，保存需要的角色。选择「带历史开始」，就能把旧聊天接到新建的角色上。[从聊天记录生成角色卡](docs/user/双人聊天生成角色卡.md)
 
-从当前仓库或历史接续候选包运行 `启动PCAR-新版.bat` 即可体验。
+从 v0.3 桌面包运行 `启动PCAR-新版.bat` 即可体验。
 
 ### 换个会话，真的接得上吗？
 
@@ -48,21 +48,20 @@ PCAR 为人物设定和关系保留版本。你可以打开历史记录，查看
 
 | 版本与进度 | 你可以体验什么 |
 | --- | --- |
-| v0.2 公开桌面版 | 创建和管理角色、查看版本与聊天历史、整理和找回长期记忆。开通联网服务后，可以边聊边查资料 |
-| 新版 Windows 工作台候选 | 从双人私聊建卡、还原会话并接着聊 |
+| v0.3 公开桌面版 | 创建角色、整理和找回长期记忆，从双人私聊建卡或接续历史。支持输入缓冲、主题、重开恢复和会话授权。已审私聊装配可优先查本地知识，并接续查后回答 |
 | 场景发言 | 已审角色可按场景选择说话方式。工作台逐条显示发言，重开后接续已显示的内容 |
 
-以上状态截至 2026-11-19。场景发言使用经过审阅的人物材料和已授权的模型。后台任务随工作台运行。QQ 接入处于暂停状态。
+以上状态截至 2026-11-21。场景发言使用经过审阅的人物材料和已授权的模型。后台任务随工作台运行。QQ 接入处于暂停状态。
 
-近期重点是重制工作台、完善运行与恢复，并打磨人物的语气、反应和聊天节奏。[场景发言接入说明](docs/expression/E.N6-场景发言接入与回退.md) · [当前研发进度](docs/STATUS.md)
+新版工作台已接入持久受理和逐泡恢复。G-Auto 的连续消息部分已签收，跨夜接续与自动记忆独立复核沿原观察记录推进。[场景发言接入说明](docs/expression/E.N6-场景发言接入与回退.md) · [当前研发进度](docs/STATUS.md)
 
 ## 从这里开始
 
-**v0.2 公开桌面版**已在 Windows 11 x64 上验证，支持从 v0.1 原机升级。
+**v0.3 Windows 桌面包**适用于 Windows 11 x64，可从 v0.2 原机升级。
 
-1. 在 [v0.2 发行页](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.2)下载 `PCAR-v0.2-Windows-x64-desktop.zip` 和校验文件。
-2. 解压为独立工作区，让 Codex、DSH 等 Agent 阅读包内 `AGENTS.md` 与 `AGENT_INSTALL.md`，完成环境和实例配置。
-3. 通过 `启动PCAR.bat` 打开工作台，选择角色并配置官方 DeepSeek 模型，在“聊天”中开始交流。
+1. 下载 Windows x64 桌面包和校验文件，再核对 SHA-256。[v0.3 发行页](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.3) · [桌面 ZIP](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/download/v0.3/PCAR-v0.3-Windows-x64-desktop.zip) · [SHA256SUMS.txt](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/download/v0.3/SHA256SUMS.txt)
+2. 解压为独立工作区，让 Codex、DSH 等 Agent 阅读包内 `AGENTS.md` 与 `AGENT_INSTALL.md`，完成环境和实例配置。[v0.3 部署与升级](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/blob/v0.3/AGENT_INSTALL.md)
+3. 通过 `启动PCAR-新版.bat` 打开工作台，选择角色并配置官方 DeepSeek 模型，在“聊天”中开始交流。
 
 使用前请准备网络、有效的 Windows 手动 HTTP/HTTPS 系统代理和自己的模型服务。桌面包包含本地检索模型，Python 等依赖由 Agent 准备。[第一次使用指南](docs/user/getting-started.md)
 

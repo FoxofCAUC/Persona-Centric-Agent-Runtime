@@ -1,4 +1,5 @@
 """按授权来源学习表达提案；一个任务一次派发，发布与人物演化分开。"""
+from .call_limits import resume_on_limit, gate, CallLimitPending, granted, flow, workflow
 import asyncio
 import json
 import time
@@ -168,6 +169,8 @@ class ExpressionLearning:
             db.execute('UPDATE expression_learning_jobs SET state=\'completed\',result_json=? WHERE id=?', (json.dumps(result, ensure_ascii=False), job_id))
             return {'id': job_id, 'state': 'completed', 'result': result}
 
+    @workflow
+    @resume_on_limit
     async def run(self, job_id, model):
         require_generation_provider(model)
         with self.store.connection() as db:
@@ -198,9 +201,17 @@ class ExpressionLearning:
                            (str(error), json.dumps({'status': 'source_or_policy_changed', 'proposals': []}), job_id))
                 return {'id': job_id, 'state': 'stale', 'new_call': False}
             configured = policy(db, row['persona_id'])['data']
+            from .config import ConfigStore
+            settings=ConfigStore(self.store.paths).load()
+            limit_settings=settings['call_limits']
+            unchecked=('saved_automatic' in limit_settings and not limit_settings['enabled']
+                       and not any(settings[g][k] for g,k in (('model','hourly_limit'),('organization','hourly_limit'),
+                           ('organization','daily_limit'),('character_selector','hourly_limit'),('character_selector','daily_limit'))))
             for period, field in ((3600, 'learning_hourly_limit'), (86400, 'learning_daily_limit')):
                 used = db.execute('SELECT count(*) FROM expression_learning_jobs WHERE persona_id=? AND started_epoch>?', (row['persona_id'], now - period)).fetchone()[0]
-                if used >= configured[field]:raise ExpressionAssetError('expression_learning_budget_reached')
+                if not unchecked and configured[field] and used >= configured[field] and not granted(db,flow.get() or 'learning/'+job_id):
+                    raise CallLimitPending(flow.get() or 'learning/'+job_id,'learning',now+1)
+            gate(db,self.store,'learning','learning/'+job_id)
             attempt = identifier()
             db.execute('UPDATE expression_learning_jobs SET state=\'dispatched\',attempt_id=?,started_epoch=? WHERE id=?', (attempt, now, job_id))
 
@@ -269,13 +280,18 @@ class ExpressionLearning:
             if not limits['learning_enabled']:return None
             sessions = list(limits['learning_sessions'])
         from .archive import scope as make_scope, find_turn
+        from .ingress import manual_pending
         selected = make_scope(persona_id, 'desktop')
         for sid in sessions:
             with self.store.connection() as db:
                 cursor = db.execute('SELECT last_seq FROM expression_learning_scan WHERE persona_id=? AND session_id=?', (persona_id, sid)).fetchone()
                 after = cursor[0] if cursor else 0
-                events = [dict(r) for r in db.execute('SELECT * FROM events WHERE persona_id=? AND session_id=? AND role=\'user\' AND seq>? ORDER BY seq LIMIT ?',
-                                                     (persona_id, sid, after, limits['learning_max_sources']))]
+                held = manual_pending(db, persona_id, sid)
+                events = [dict(r) for r in db.execute("""SELECT * FROM events WHERE persona_id=? AND session_id=?
+                    AND role='user' AND seq>? AND seq<coalesce(
+                        (SELECT min(e.seq) FROM input_batch_members m JOIN events e ON e.id=m.event_id
+                         WHERE m.batch_id=?),9223372036854775807) ORDER BY seq LIMIT ?""",
+                    (persona_id, sid, after, held['id'] if held else None, limits['learning_max_sources']))]
             sources, last = [], after
             for event in events:
                 with self.store.connection() as db:

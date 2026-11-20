@@ -265,11 +265,22 @@ class Learning(AssetFixture, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(self.learning.get(self.job['id'])['usage_json'])['completion_tokens'], 50)
 
     async def test_budget_reservation_blocks_second_job_before_call(self):
-        self.setup_learning()
+        from persona_runtime.call_limits import pending,decide
+        self.setup_learning(learning_hourly_limit=1,learning_daily_limit=4)
+        configured=self.assets.policy(self.pid)['data']
+        self.assertEqual((configured['learning_hourly_limit'],configured['learning_daily_limit']),(1,4))
         await self.learning.run(self.job['id'], MODEL)
         next_job = self.learning.prepare(self.pid, self.selected, [self.original['id']], MODEL, identifier())
-        with self.assertRaisesRegex(ExpressionAssetError, 'budget_reached'):await self.learning.run(next_job['id'], MODEL)
-        self.assertEqual(self.client.calls, 1)
+        task=asyncio.create_task(self.learning.run(next_job['id'],MODEL))
+        async with asyncio.timeout(4):
+            while True:
+                with self.store.connection() as db:waits=pending(db)
+                if waits:break
+                await asyncio.sleep(.04)
+        self.assertEqual(self.client.calls,1)
+        decide(self.store,[row['id'] for row in waits],True)
+        result=await asyncio.wait_for(task,4)
+        self.assertEqual((result['state'],self.client.calls),('completed',2))
 
     async def test_concurrent_owners_send_only_once(self):
         self.setup_learning();self.client.release = asyncio.Event()

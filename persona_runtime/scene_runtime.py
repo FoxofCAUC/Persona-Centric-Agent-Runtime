@@ -1,4 +1,5 @@
 """Select one approved scene before the main reply or search preface is assembled."""
+from .call_limits import resume_on_limit, gate, turn_scope as quota_turn
 import asyncio
 import json
 import threading
@@ -197,12 +198,14 @@ class SceneRuntime:
             value.update(changes)
             scene_policy.save(db,ROUTE+tid,value)
 
+    @resume_on_limit
     async def resolve(self, tid, token, wire, model):
         with self.store.connection(write=True) as db:
             old = scene_policy.read(db,ROUTE+tid)
             if old:
                 require(old['scope']==token and old['reason'] is not None,'decision_conflict')
                 return
+            if wire is not None:gate(db,self.store,'scene',quota_turn(self.root(db,tid)))
             scene_policy.save(db,ROUTE+tid,{'scope':token,'request_sha256':fingerprint(wire),
                 'started':None,'scene':None,'reason':None,'usage':None})
         if wire is None:

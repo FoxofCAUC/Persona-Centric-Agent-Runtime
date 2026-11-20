@@ -43,6 +43,30 @@ class ScenePublication:
                        expression_speech_visible WHERE utterance_id=? ORDER BY ordinal""",(row['utterance_id'],))],
         }
 
+    @staticmethod
+    def desktop_plans(db, turn):
+        plans = []
+        for row in db.execute("""SELECT u.id utterance_id,u.phase,p.id publication_id,p.revision,p.state,
+                    json_extract(v.plan_json,'$.bubble_limit') bubble_limit
+                FROM expression_speech_units u JOIN expression_speech_publications p ON p.utterance_id=u.id
+                JOIN expression_speech_versions v ON v.publication_id=p.id AND v.revision=p.revision
+                WHERE u.turn_id=? ORDER BY u.rowid""", (turn['id'],)):
+            items = db.execute("""SELECT ordinal,state,delay_ms FROM expression_speech_items
+                WHERE publication_id=? AND revision=? ORDER BY ordinal""",(row["publication_id"],row["revision"]))
+            visible = db.execute("""SELECT fragment_id id,ordinal,text,presented_at FROM expression_speech_visible
+                WHERE publication_id=? ORDER BY ordinal""",(row["publication_id"],))
+            plans.append(dict(row,kind="speech",items=list(map(dict,items)),visible=list(map(dict,visible))))
+        if not any(plan["phase"]=="main" for plan in plans):
+            row = db.execute("SELECT id publication_id,revision,state FROM expression_publications WHERE turn_id=?",(turn['id'],)).fetchone()
+            if row:
+                items=db.execute("""SELECT ordinal,state,delay_ms FROM expression_presentation_items
+                    WHERE publication_id=? AND revision=? ORDER BY ordinal""",(row["publication_id"],row["revision"]))
+                visible=db.execute("SELECT id,ordinal,text,presented_at FROM expression_utterances WHERE publication_id=? ORDER BY ordinal",
+                                   (row["publication_id"],))
+                plans.append(dict(row,kind="legacy",phase="main",turn_id=turn["id"],
+                                  items=list(map(dict,items)),visible=list(map(dict,visible))))
+        return plans
+
     def issue(self, db, turn, source):
         context = json.loads(source['context_json'])
         from .history_context import validate as validate_history
@@ -57,7 +81,10 @@ class ScenePublication:
         else:
             selected = self.engine.scene.selected(db,turn)
             require(selected and context['details']['scene_voice']['card_sha256']==fingerprint(selected[1]),'source_changed')
-            body = batch_view(speech(source['raw_text'],selected[0]))[0]
+            from .knowledge_handoff import VERSION as HANDOFF
+            translation=(context['details'].get('knowledge') or {}).get('translation') or {}
+            body = batch_view(speech(source['raw_text'],selected[0],
+                                     post_search_answer=translation.get('handoff_version')==HANDOFF))[0]
         require(body and body.strip(),'empty_reply')
         unit = self.outlet._register(db,turn,'main',SOURCE,source['id'],source['raw_hash'],body,
                                     native_policy(turn),{},context)
@@ -109,6 +136,11 @@ class ScenePublication:
         if migration_pending(self.store.paths):
             return
         with self.store.connection(write=True) as db:
+            db.execute("""DELETE FROM knowledge_control WHERE key GLOB 'scene.route.*'
+                          AND json_extract(value,'$.started') IS NULL AND json_extract(value,'$.reason') IS NULL
+                          AND EXISTS(SELECT 1 FROM turns t JOIN knowledge_control k ON k.key='desktop.recovery.'||t.id
+                                     WHERE knowledge_control.key='scene.route.'||t.id AND t.status='queued'
+                                     AND json_extract(k.value,'$.recovered')=1)""")
             db.execute("""UPDATE knowledge_control SET value=json_set(value,'$.reason',
                   CASE WHEN json_extract(value,'$.started') IS NULL THEN 'restart_before_dispatch' ELSE 'restart_unknown' END,
                   '$.scene','fallback') WHERE key LIKE 'scene.route.%' AND json_extract(value,'$.reason') IS NULL""")
@@ -117,7 +149,9 @@ class ScenePublication:
             for row in open_items:
                 unit = self.outlet.unit(db,row['id'])
                 pub = db.execute('SELECT * FROM expression_speech_publications WHERE utterance_id=?',(row['id'],)).fetchone()
-                if pub['state']=='unknown':
+                durable_presenter = db.execute("""SELECT 1 FROM expression_speech_items WHERE publication_id=?
+                    AND state='unknown' AND presenter_id LIKE 'webview-v2.%'""",(pub['id'],)).fetchone()
+                if pub['state']=='unknown' and not durable_presenter:
                     self.publisher._close(db,unit,pub,'scene_presentation_unknown')
                 elif unit['cancelled_at']:
                     self.publisher._stop(db,unit,pub,'cancelled_by_user')
@@ -125,7 +159,7 @@ class ScenePublication:
                     db.execute("""UPDATE turns SET status='running',error_code=NULL WHERE id=? AND cancelled_at IS NULL
                                AND status='interrupted' AND error_code='service_restarted'""",(unit['turn_id'],))
             receipts = db.execute("""SELECT r.* FROM expression_main_receipts r JOIN turns t ON t.id=r.turn_id
-                WHERE r.valid=1 AND t.status='interrupted' AND t.error_code='service_restarted' AND t.cancelled_at IS NULL
+                WHERE r.valid=1 AND r.execution_revision=t.execution_revision AND t.status='interrupted' AND t.error_code='service_restarted' AND t.cancelled_at IS NULL
                 AND (json_extract(t.context_policy_snapshot,'$.scene_voice') IS NOT NULL
                      OR json_extract(t.context_policy_snapshot,'$.import_style') IS NOT NULL
                      OR json_extract(t.origin_json,'$.history_presentation')=1)

@@ -60,8 +60,13 @@ def history_allowed(db, session_id, purpose, providers=None):
         return not db.execute("SELECT 1 FROM events WHERE session_id=? AND id LIKE 'imported.%' LIMIT 1",
                               (session_id,)).fetchone()
     if (not isinstance(meta,dict) or meta.get("version") != 2 or meta.get("withdrawn") is not False
-            or meta.get("migration_requires_review") or {meta.get("self_role"), meta.get("role")} != {"A","B"}
+            or {meta.get("self_role"), meta.get("role")} != {"A","B"}
             or not isinstance(meta.get("providers"),dict)):
+        return False
+    from .ordinary_materials import session_access
+    if session_access(db,session_id) and purpose in ("dialogue","jev","memory","evidence"):
+        return True
+    if meta.get("migration_requires_review"):
         return False
     if purpose == "evidence":
         return True
@@ -207,23 +212,26 @@ def conversation_messages(group):
     return [{"role":"user" if e["role"]=="user" else "assistant","content":e["text"]} for e in chronological(group)]
 
 
-def page(store,persona_id,session_id,before=None,limit=80,query=None):
-    from .service import RuntimeService
+def page(store,persona_id,session_id,before=None,limit=80,query=None,after=None):
     if type(limit) is not int or not 1<=limit<=200 or before is not None and (type(before) is not int or not 0<before<2**63):
         raise ValueError("invalid_page_size")
     if query is not None and (not isinstance(query,str) or len(query)>256):
         raise ValueError("invalid_query")
+    if after is not None and (type(after) is not int or not 0<after<2**63 or before is not None or query is not None):
+        raise ValueError("invalid_page_size")
     with store.connection() as db:
-        RuntimeService._owned(db,"sessions",session_id,persona_id)
+        from .workbench_timeline import require_session
+        require_session(db,persona_id,session_id)
         meta=read(db,META+session_id)
         if not meta:
             return {"rows":[],"before":None}
         can_use = history_allowed(db,session_id,"dialogue")
         cap = max(limit, 1000) if query else limit
+        direction="seq>? ORDER BY seq ASC" if after is not None else "seq<? ORDER BY seq DESC"
         rows = db.execute("""SELECT id,seq,role,text,created_at,EXISTS(
             SELECT 1 FROM source_exclusions x WHERE x.event_id=e.id) AS excluded FROM events e WHERE session_id=?
-            AND id LIKE 'imported.%' AND seq<? ORDER BY seq DESC LIMIT ?""",
-            (session_id,before or 2**63-1,cap+1)).fetchall()
+            AND id LIKE 'imported.%' AND """+direction+" LIMIT ?",
+            (session_id,after or before or 2**63-1,cap+1)).fetchall()
         origins = {}
         out = []
         cursor = None
@@ -245,4 +253,6 @@ def page(store,persona_id,session_id,before=None,limit=80,query=None):
             if len(out)==limit or idx==cap-1:
                 cursor=event["seq"] if idx+1<len(rows) else None
                 break
+        if after is not None:
+            return {"rows":out,"after":cursor,"before":out[0]["seq"] if out else None}
         return {"rows":list(reversed(out)),"before":cursor}

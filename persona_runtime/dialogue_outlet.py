@@ -1,5 +1,4 @@
 """Connect a frozen direct reply to the existing receipt-based character outlet."""
-import asyncio
 from contextlib import nullcontext
 import json
 
@@ -181,24 +180,11 @@ class DirectReplies:
         if not uid:
             raise RuntimeErrorBase('dialogue_notice_unit_missing')
         speech_id = prior[0] if prior else self.publish(uid)
-        loop=asyncio.get_running_loop()
-        next_source_check=loop.time()
-        while True:
-            with self.store.connection() as db:
-                unit = self.expression.outlet.unit(db, speech_id)
-                pub = db.execute('SELECT state FROM expression_speech_publications WHERE utterance_id=?',(speech_id,)).fetchone()
-                if pub and pub[0]=='complete':
-                    return
-                if unit['cancelled_at'] or unit['closed_at'] or not pub or pub[0]=='closed':
-                    raise RuntimeErrorBase('speech_notice_not_fully_presented')
-                stale = False
-                if loop.time() >= next_source_check:
-                    try:
-                        self.validate_publication(db, unit)
-                    except (OSError, ValueError):
-                        stale = True
-                    next_source_check=loop.time()+2
-            if stale:
-                self.publication.cancel(speech_id,'source_or_permission_changed')
-                raise RuntimeErrorBase('speech_notice_source_changed')
-            await asyncio.sleep(.05)
+        with self.store.connection() as db:
+            unit = self.expression.outlet.unit(db,speech_id)
+            pub = db.execute("SELECT state FROM expression_speech_publications WHERE utterance_id=?", (speech_id,)).fetchone()
+            if pub and pub[0]=='complete':
+                return
+            if not pub or unit['cancelled_at'] or unit['closed_at'] or pub[0]=='closed':
+                raise RuntimeErrorBase('speech_notice_not_fully_presented')
+        return speech_id

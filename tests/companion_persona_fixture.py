@@ -1,16 +1,34 @@
 """Small artificial inputs for the frozen pre-v4 companion requests."""
 from copy import deepcopy
+from dataclasses import replace
 import json
 from unittest.mock import patch
 
 from persona_runtime.archive import fingerprint
+from persona_runtime.models import generic_persona
 from persona_runtime.provider_compat import build_request
 from tests.test_companion_chat_contract import Runtime
 
 
+def legacy_generic_persona():
+    spec = generic_persona()
+    return replace(spec, values_and_boundaries=[*spec.values_and_boundaries, '区分已知事实与不确定信息'])
+
+
+def without_retracted_identity_notice(requests):
+    notice = '对资料缺乏明确支持的年龄、生日等具体身份信息，回答保留不确定性。\n'
+    expected = deepcopy(requests)
+    for request in expected.values():
+        for messages in (request['messages'], request['wire']['messages']):
+            messages[0]['content'] = messages[0]['content'].replace(notice, '')
+        request['message_hash'] = fingerprint(request['messages'])
+    return expected
+
+
 async def legacy_requests(modes=('minimal', 'minimal_structural', 'minimal_chat')):
     case = Runtime('test_normal_admission_final_manifest_and_single_generation')
-    case.setUp()
+    with patch('tests.test_m72.generic_persona', side_effect=legacy_generic_persona):
+        case.setUp()
     try:
         data = deepcopy(case.data)
         data['identity']['gender'] = '女'
@@ -21,7 +39,8 @@ async def legacy_requests(modes=('minimal', 'minimal_structural', 'minimal_chat'
             case.enable(mode)
             for query in ('今天风很舒服', '你多大了', '你喜欢什么，书店怎么样'):
                 turn = await case.turn(query)
-                with patch.object(case.rt, '_hybrid', side_effect=case.hybrid):
+                with patch.object(case.rt, '_hybrid', side_effect=case.hybrid), \
+                        patch('persona_runtime.context_m4.model_persona_data', side_effect=lambda data: data):
                     prepared = case.engine.cognitive.prepare(turn['id'])
                 model = json.loads(case.raw(turn['id'])['model_snapshot'])
                 messages = prepared['messages']

@@ -100,7 +100,9 @@ class DesktopHistory(unittest.IsolatedAsyncioTestCase):
 
     async def test_reference_and_late_completion_after_withdrawal(self):
         pid = self.new_role()
-        sid = self.restore(pid,b"## X\n301\n## Y\n401\n## Y\n402\n> 909\n## X\n302\n")
+        # Distinguish message contents from the UUIDs in the reference manifest.
+        visible, quoted = "402"*12, "909"*12
+        sid = self.restore(pid,("## X\n301\n## Y\n401\n## Y\n"+visible+"\n> "+quoted+"\n## X\n302\n").encode())
         with self.store.connection() as db:
             eid = db.execute("SELECT id FROM events WHERE session_id=? AND role='persona' ORDER BY seq DESC LIMIT 1",(sid,)).fetchone()[0]
             group = read_exact(db,scope(pid,"desktop"),{"kind":"event","id":eid})
@@ -110,8 +112,8 @@ class DesktopHistory(unittest.IsolatedAsyncioTestCase):
             "desktop_presentation":CONTRACT,"request_id":identifier(),"reference":{"kind":"event","id":eid}})["turn_id"]
         await asyncio.wait_for(self.client.entered.wait(),8)
         wire = self.client.calls[-1]
-        self.assertTrue(any("402" in m["content"] for m in wire))
-        self.assertFalse(any("909" in m["content"] for m in wire))
+        self.assertTrue(any(visible in m["content"] for m in wire))
+        self.assertFalse(any(quoted in m["content"] for m in wire))
         status = self.imports.history.status(pid,sid)
         self.imports.history.update(pid,sid,status["revision"],"withdraw",True)
         self.client.resume.set()
@@ -120,7 +122,7 @@ class DesktopHistory(unittest.IsolatedAsyncioTestCase):
         with self.store.connection() as db:
             self.assertNotEqual(read_exact(db,scope(pid,"desktop"),{"kind":"event","id":eid})["status"],"found")
         next_wire = await self.exchange(pid,sid,702)
-        self.assertFalse(any("402" in body for _,body in next_wire))
+        self.assertFalse(any(visible in body for _,body in next_wire))
 
     async def test_unpresented_history_based_reply_is_stopped_after_withdrawal(self):
         pid = self.new_role()

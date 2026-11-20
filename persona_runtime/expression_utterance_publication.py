@@ -3,6 +3,7 @@ import json
 from contextlib import ExitStack
 
 from .archive import fingerprint
+from .bubble_limits import LIMIT_VIOLATION, MAX_BUBBLE_CHARS, limit_ranges
 from .expression_assets import ExpressionAssetError,text
 from .expression_contract import text_hash
 from .expression_utterance import encoded
@@ -15,16 +16,22 @@ def project_notice(db,unit,body,complete):
     db.execute("INSERT INTO events(id,session_id,persona_id,user_id,role,text,created_at) VALUES(?,?,?,?,'persona',?,?)",
         (event,unit['session_id'],unit['persona_id'],LOCAL_USER_ID,body,timestamp()))
     context=json.loads(unit['context_json'])
-    if unit['source_kind'] in ('dialogue_reply','scene_reply') and unit['phase']=='main':
+    if unit['source_kind'] in ('dialogue_reply','scene_reply','maibot_private_reply') and unit['phase']=='main':
         root=dict(db.execute('SELECT * FROM turns WHERE id=?',(unit['turn_id'],)).fetchone())
-        db.execute("UPDATE turns SET reply_event_id=?,status='completed',cancelled_at=NULL,updated_at=? WHERE id=?",(event,timestamp(),root['id']))
+        db.execute("""UPDATE turns SET reply_event_id=?,status='completed',
+            cancelled_at=CASE WHEN ?='maibot_private_reply' THEN cancelled_at ELSE NULL END,updated_at=? WHERE id=?""",
+            (event,unit['source_kind'],timestamp(),root['id']))
         from .recall_runtime import queue_feedback
         queue_feedback(db,root,context['logical_attempt_id'],'main',context['details'].get('recall_support'))
     if unit['phase']=='search_notice':
-        task=db.execute('SELECT payload_json FROM organization_tasks WHERE id=?',(unit['task_id'],)).fetchone()
-        payload=json.loads(task[0]);root=dict(db.execute('SELECT * FROM turns WHERE id=?',(unit['turn_id'],)).fetchone())
+        root=dict(db.execute('SELECT * FROM turns WHERE id=?',(unit['turn_id'],)).fetchone())
+        if unit['source_kind']=='maibot_private_reply':
+            version='maibot-private-notice-v1'
+        else:
+            task=db.execute('SELECT payload_json FROM organization_tasks WHERE id=?',(unit['task_id'],)).fetchone()
+            version=json.loads(task[0])['knowledge_processing']['input']['notice_profile']
         value={'event_id':event,'task_id':unit['task_id'],'channel':root['channel'],
-            'version':payload['knowledge_processing']['input']['notice_profile'],'response_hash':context.get('notice_response_hash',unit['source_hash']),
+            'version':version,'response_hash':context.get('notice_response_hash',unit['source_hash']),
             'utterance_id':unit['id'],'final_body_hash':text_hash(body),'fully_presented':complete}
         db.execute('INSERT INTO knowledge_control VALUES(?,?)',('knowledge.search_notice.turn.'+unit['turn_id'],encoded({'revision':0,'data':value})))
         from .recall_runtime import queue_feedback
@@ -63,24 +70,34 @@ class SpeechPublication:
                 'source_usage':json.loads(source_usage[0]) if source_usage and source_usage[0] is not None else None,
                 'run':dict(run) if run else None,'publication':self.plan(persona_id,session_id,utterance_id)}
 
-    def publish(self,db,unit,kind,body,segments,reason,*,replace_unoffered=False):
+    def publish(self,db,unit,kind,body,segments,reason,*,replace_unoffered=False,enforce_bubble_limit=True):
+        if unit['source_kind']=='maibot_private_reply' and (kind!=unit['source_kind'] or body!=unit['body'] or replace_unoffered):
+            raise ExpressionAssetError('private_reply_unreviewed')
+        if not enforce_bubble_limit and unit['source_kind']!='maibot_private_reply':
+            raise ExpressionAssetError(LIMIT_VIOLATION)
+        if unit['closed_at'] or unit['cancelled_at']:
+            raise ExpressionAssetError('speech_utterance_closed')
         old=db.execute('SELECT * FROM expression_speech_publications WHERE utterance_id=?',(unit['id'],)).fetchone()
         if old:
             if not replace_unoffered:return dict(old)
             if old['state'] in ('closed','complete') or db.execute('SELECT 1 FROM expression_speech_items WHERE publication_id=? AND lease_id IS NOT NULL',(old['id'],)).fetchone():
                 raise ExpressionAssetError('speech_publication_already_started')
         self.outlet.validate(db,unit)
-        # 从原文连续切片，失败时整块呈现，禁止重新生成正文或拼接其他稿件。
+        # 校验原文切片，缺失或错误的计划按原文重新分片。
         cursor=0;pieces=[]
         from .expression_sources import protected
         spans=protected(body)
         try:
             for s in segments:
+                if type(s['start']) is not int or type(s['end']) is not int:
+                    raise ValueError()
                 if s['start']!=cursor or s['end']<=cursor or s['end']>len(body):raise ValueError()
                 if any(p['start']<s['end']<p['end'] for p in spans):raise ValueError()
                 pieces.append(s);cursor=s['end']
             if cursor!=len(body):raise ValueError()
         except (ValueError,KeyError,TypeError):pieces=[{'start':0,'end':len(body),'kind':'chat','required':True,'delay_ms':0}]
+        if enforce_bubble_limit:
+            pieces = limit_ranges(body, pieces)
         pid=old['id'] if old else identifier();revision=old['revision']+1 if old else 1
         if old:
             db.execute("UPDATE expression_speech_items SET state='cancelled' WHERE publication_id=? AND state='pending'",(pid,))
@@ -88,7 +105,10 @@ class SpeechPublication:
                 (revision,kind,body,text_hash(body),reason,pid))
         else:db.execute('INSERT INTO expression_speech_publications VALUES(?,?,?,?,?,?,?,?,?,?)',
             (pid,unit['id'],revision,kind,body,text_hash(body),'pending',reason,None,timestamp()))
-        plan={'utterance_id':unit['id'],'body_hash':text_hash(body),'bubbles':pieces}
+        from .progress import record
+        record(db,unit['turn_id'],'desktop_publication_changed')
+        plan={'utterance_id':unit['id'],'body_hash':text_hash(body),'bubbles':pieces,
+              'bubble_limit':MAX_BUBBLE_CHARS if enforce_bubble_limit else None}
         db.execute('INSERT INTO expression_speech_versions VALUES(?,?,?)',(pid,revision,encoded(plan)))
         for i,s in enumerate(pieces):
             part=body[s['start']:s['end']]
@@ -101,6 +121,8 @@ class SpeechPublication:
         try:
             with self.store.connection(write=True) as db:
                 unit=self.outlet.unit(db,utterance_id)
+                if unit['source_kind']=='maibot_private_reply':
+                    return {'state':'blocked','reason':'private_reply_unreviewed','new_call':False}
                 old=db.execute('SELECT state FROM expression_speech_publications WHERE utterance_id=?',(utterance_id,)).fetchone()
                 if old:return {'state':old[0],'new_call':False}
                 pub=self.publish(db,unit,'draft',unit['body'],[{'start':0,'end':len(unit['body']),'required':True}],reason)
@@ -155,6 +177,12 @@ class SpeechPublication:
             item=db.execute('SELECT * FROM expression_speech_items WHERE publication_id=? AND revision=? AND ordinal=?',(publication_id,revision,ordinal)).fetchone()
             if not item:raise ExpressionAssetError('speech_fragment_missing')
             if item['state']!='pending':return {'id':item['id'],'state':item['state'],'new_offer':False}
+            if len(item['text']) > MAX_BUBBLE_CHARS:
+                plan=db.execute("SELECT json_type(plan_json,'$.bubble_limit') FROM expression_speech_versions "
+                                "WHERE publication_id=? AND revision=?",(publication_id,revision)).fetchone()
+                if unit['source_kind']!='maibot_private_reply' or not plan or plan[0]!='null':
+                    self._stop(db, unit, pub, LIMIT_VIOLATION)
+                    return {'state':'stopped','reason':LIMIT_VIOLATION,'new_offer':False}
             if db.execute("SELECT 1 FROM expression_speech_items WHERE publication_id=? AND revision=? AND ordinal<? AND state!='presented'",(publication_id,revision,ordinal)).fetchone():
                 raise ExpressionAssetError('speech_presentation_order_gap')
             lease=identifier()
@@ -162,23 +190,42 @@ class SpeechPublication:
             return {'id':item['id'],'lease_id':lease,'body':item['text'],'body_hash':item['body_hash'],'state':'offered',
                     'kind':item['kind'],'required':bool(item['required']),'delay_ms':item['delay_ms']}
 
-    def acknowledge(self,persona_id,session_id,utterance_id,fragment_id,lease_id,presenter_id,receipt_id,body_hash,state='presented'):
+    def acknowledge(self,persona_id,session_id,utterance_id,fragment_id,lease_id,presenter_id,receipt_id,body_hash,state='presented',
+                    *,webview=False,publication_id=None,revision=None,ordinal=None):
         text(receipt_id,'receipt_id',200)
         if state not in ('presented','not_presented','unknown'):raise ExpressionAssetError('speech_receipt_state_invalid')
+        if webview and presenter_id!="webview-v2."+receipt_id:
+            raise ExpressionAssetError('speech_receipt_identity_mismatch')
         with self.store.connection() as db:unit=self._owner(db,persona_id,session_id,utterance_id)
         if unit['source_kind']=='main_receipt':return self._legacy().acknowledge(persona_id,session_id,unit['turn_id'],fragment_id,lease_id,presenter_id,receipt_id,body_hash,state)
         with self.store.connection(write=True) as db:
             previous=db.execute('SELECT * FROM expression_speech_receipts WHERE id=?',(receipt_id,)).fetchone()
             if previous:
-                belongs=db.execute('''SELECT 1 FROM expression_speech_items i JOIN expression_speech_publications p
+                belongs=db.execute('''SELECT i.publication_id,i.revision,i.ordinal FROM expression_speech_items i JOIN expression_speech_publications p
                     ON p.id=i.publication_id WHERE i.id=? AND p.utterance_id=?''',(fragment_id,utterance_id)).fetchone()
-                if not belongs:raise ExpressionAssetError('speech_receipt_identity_mismatch')
+                if not belongs or webview and tuple(belongs)!=(publication_id,revision,ordinal):
+                    raise ExpressionAssetError('speech_receipt_identity_mismatch')
                 if tuple(previous)[1:6]!=(fragment_id,lease_id,presenter_id,body_hash,state):raise ExpressionAssetError('speech_receipt_conflict')
                 return {'state':state,'already_applied':True}
             item=db.execute('''SELECT i.* FROM expression_speech_items i JOIN expression_speech_publications p ON p.id=i.publication_id
                 WHERE i.id=? AND p.utterance_id=?''',(fragment_id,utterance_id)).fetchone()
             if not item or (item['lease_id'],item['presenter_id'],item['body_hash'])!=(lease_id,presenter_id,body_hash):raise ExpressionAssetError('speech_receipt_identity_mismatch')
             pub=db.execute('SELECT * FROM expression_speech_publications WHERE id=?',(item['publication_id'],)).fetchone()
+            if webview and (publication_id,revision,ordinal)!=(pub['id'],pub['revision'],item['ordinal']):
+                raise ExpressionAssetError('speech_receipt_identity_mismatch')
+            unit = self._owner(db,persona_id,session_id,utterance_id)
+            if webview and state=="presented" and pub["state"] not in ("closed","complete"):
+                try:
+                    if unit["phase"]=="search_notice" and unit['source_kind']!='maibot_private_reply':
+                        from .tk_notice import check_root
+                        root=dict(db.execute("SELECT * FROM turns WHERE id=?", (unit["turn_id"],)).fetchone())
+                        check_root(db,root)
+                    self.outlet.validate(db,unit)
+                except RuntimeErrorBase:
+                    self._stop(db,unit,pub,"source_or_permission_changed")
+                    if db.execute("SELECT state FROM expression_speech_publications WHERE id=?", (pub["id"],)).fetchone()[0]=="unknown":
+                        self._close(db,unit,pub,"desktop_presentation_unknown")
+                    return {"state":"closed","already_applied":False}
             if pub['state'] in ('closed','complete'):raise ExpressionAssetError('speech_publication_closed')
             if item['state'] not in ('offered','unknown'):raise ExpressionAssetError('speech_receipt_conflict')
             now=timestamp()
@@ -190,8 +237,19 @@ class SpeechPublication:
                     from .progress import record
                     record(db,unit['turn_id'],'first_output' if item['ordinal']==0 else 'scene_bubble_presented',
                            json.loads(unit['context_json'])['logical_attempt_id'])
+                elif unit['source_kind']=='maibot_private_reply':
+                    from .progress import record
+                    record(db,unit['turn_id'],'first_output' if item['ordinal']==0 else 'scene_bubble_presented')
             remaining=db.execute("SELECT state FROM expression_speech_items WHERE publication_id=? AND revision=? AND state IN ('pending','offered','unknown')",(pub['id'],pub['revision'])).fetchall()
-            if state=='not_presented':
+            if webview and state=='not_presented' and not unit['cancelled_at']:
+                db.execute("""UPDATE expression_speech_items SET state='pending',lease_id=NULL,presenter_id=NULL,
+                              receipt_id=NULL,offered_at=NULL WHERE id=?""",(fragment_id,))
+                db.execute("UPDATE expression_speech_publications SET state=? WHERE id=?",
+                           ('partial' if item['ordinal'] else 'pending',pub['id']))
+            elif webview and state=='unknown':
+                self._stop(db,unit,pub,'desktop_presentation_unknown')
+                self._close(db,unit,pub,'desktop_presentation_unknown')
+            elif state=='not_presented':
                 self._stop(db,unit,pub,'fragment_not_presented')
             elif remaining:db.execute('UPDATE expression_speech_publications SET state=? WHERE id=?',('unknown' if any(r[0]=='unknown' for r in remaining) else 'partial',pub['id']))
             else:self._close(db,unit,pub,'complete' if not unit['cancelled_at'] else 'cancelled_by_user')
@@ -212,14 +270,25 @@ class SpeechPublication:
             event=project_notice(db,unit,body,complete)
         db.execute('UPDATE expression_speech_publications SET state=?,reason=?,canonical_event_id=? WHERE id=?',
             ('complete' if complete else 'closed',reason,event,pub['id']))
-        if unit['source_kind'] in ('dialogue_reply','scene_reply') and unit['phase']=='main':
+        if unit['source_kind'] in ('dialogue_reply','scene_reply','maibot_private_reply') and unit['phase']=='main':
             db.execute('UPDATE turns SET status=?,error_code=?,updated_at=? WHERE id=?',
                 ('completed' if event else 'interrupted',None if complete else reason,timestamp(),unit['turn_id']))
         db.execute('UPDATE expression_speech_units SET closed_at=? WHERE id=?',(timestamp(),unit['id']))
+        if unit['source_kind']=='maibot_private_reply' and unit['phase']=='search_notice':
+            db.execute("""UPDATE turns SET status=?,error_code=?,updated_at=? WHERE id=? AND cancelled_at IS NULL""",
+                       ('queued' if complete else 'interrupted',None if complete else 'search_notice_not_fully_presented',
+                        timestamp(),unit['turn_id']))
         if unit['source_kind']=='scene_reply':
             from .progress import record
             record(db,unit['turn_id'],'persisted' if event else 'interrupted',
                    json.loads(unit['context_json'])['logical_attempt_id'])
+        elif unit['source_kind']=='maibot_private_reply':
+            from .progress import record
+            record(db,unit['turn_id'],'persisted' if event else 'interrupted')
+            if unit['phase']=='main':
+                from .call_limits import finish,turn_scope
+                root=db.execute("SELECT id,execution_revision FROM turns WHERE id=?",(unit['turn_id'],)).fetchone()
+                finish(db,turn_scope(root))
 
     def _stop(self,db,unit,pub,reason):
         db.execute('UPDATE expression_speech_units SET cancelled_at=COALESCE(cancelled_at,?) WHERE id=?',(timestamp(),unit['id']))

@@ -108,6 +108,92 @@ class RollingTests(unittest.IsolatedAsyncioTestCase):
         self.now=9.999;c=self.accept('c');self.assertNotEqual(a['batch_id'],c['batch_id'])
         self.seal(c);await self.engine.wait();self.assertEqual(len(self.fake.messages),2)
 
+    def set_buffer(self, quiet_ms, manual, mode='natural_batch'):
+        current = self.ingress.current_policy(self.pid, 'desktop')
+        return self.ingress.update_policy(self.pid, 'desktop', mode, current['id'], identifier(),
+                                          buffer_quiet_ms=quiet_ms, manual_confirmation=manual)
+
+    async def test_custom_buffer_resets_after_last_input(self):
+        policy = self.set_buffer(12000, False)
+        first = self.accept('8101', expected_input_policy=policy['id'])
+        self.now = 6
+        self.ingress.tick()
+        self.assertFalse(self.fake.messages)
+        second = self.accept('8102', expected_input_policy=policy['id'])
+        self.assertEqual(first['batch_id'], second['batch_id'])
+        self.now = 17.999
+        self.ingress.tick()
+        self.assertFalse(self.fake.messages)
+        self.now = 18
+        self.ingress.tick()
+        await self.engine.wait()
+        self.assertEqual(len(self.fake.messages), 1)
+        self.assertEqual([m['text'] for m in self.batch(first)['members']], ['8101','8102'])
+
+    async def test_manual_confirmation_survives_restart_and_is_idempotent(self):
+        from persona_runtime.desktop_recovery import lookup_intent
+        from persona_runtime.ingress import IngressService
+        from persona_runtime.recall_sources import material
+        from persona_runtime.workbench_timeline import page
+
+        policy = self.set_buffer(12000, True)
+        first = self.accept('8201', rid='8201', expected_input_policy=policy['id'])
+        sid = first['session_id']
+        self.now = 70000
+        self.ingress = IngressService(self.engine, lambda:self.now, lambda:self.epoch+self.now)
+        self.ingress.recover()
+        self.ingress.tick()
+        with self.store.connection() as db:
+            receipt = lookup_intent(db, {'persona_id':self.pid,'session_id':sid,'text':'8201',
+                                         'request_id':'8201','expected_input_policy':policy['id']})
+            self.assertEqual(receipt['status'], 'awaiting_confirmation')
+            self.assertIsNone(material(db, 'dialogue', {'id':first['event_id']}, now=self.epoch+self.now))
+        self.accept('8202', session_id=sid, expected_input_policy=policy['id'])
+        held = page(self.store,self.pid,sid,version=0)['input_buffer']['batch']
+        self.assertEqual([m['text'] for m in held['members']], ['8201','8202'])
+        with self.assertRaisesRegex(RuntimeErrorBase, 'manual_confirmation_required'):
+            self.ingress.action(held['id'],'resume',held['revision'],identifier(),self.pid)
+        with self.assertRaisesRegex(RuntimeErrorBase, 'manual_buffer_pending'):
+            self.set_buffer(12000,False)
+        with self.assertRaisesRegex(RuntimeErrorBase, 'session_conflict'):
+            self.ingress.action(held['id'],'confirm',held['revision'],identifier(),self.pid,'8203')
+        with self.assertRaisesRegex(RuntimeErrorBase, 'version_conflict'):
+            self.ingress.action(held['id'],'confirm',held['revision']-1,identifier(),self.pid,sid)
+        self.assertFalse(self.fake.messages)
+        operation = identifier()
+        sent = self.ingress.action(held['id'],'confirm',held['revision'],operation,self.pid,sid)
+        self.assertEqual(self.ingress.action(held['id'],'confirm',held['revision'],operation,self.pid,sid), sent)
+        await self.engine.wait()
+        self.assertEqual(len(self.fake.messages), 1)
+        self.assertEqual([m['text'] for m in sent['members']], ['8201','8202'])
+        self.assertIsNone(page(self.store,self.pid,sid)['input_buffer']['batch'])
+
+    async def test_manual_capacity_and_policy_changes_cannot_auto_send(self):
+        original = self.ingress.current_policy(self.pid,'desktop')
+        manual = self.set_buffer(18000, True)
+        with self.assertRaisesRegex(RuntimeErrorBase, 'input_buffer_policy_changed'):
+            self.accept('8300', expected_input_policy=original['id'])
+        rows = [self.accept(str(8310+i),expected_input_policy=manual['id']) for i in range(20)]
+        first = rows[0]
+        with self.assertRaisesRegex(RuntimeErrorBase, 'manual_buffer_full'):
+            self.accept('8399')
+        self.now = 18000
+        self.ingress.tick()
+        held = self.batch(first)
+        self.assertEqual(held['status'], 'awaiting_confirmation')
+        self.assertEqual(len(held['members']), 20)
+        self.config.update({'model':{'name':'8398'}})
+        with self.assertRaisesRegex(RuntimeErrorBase, 'manual_buffer_scope_changed'):
+            self.ingress.action(held['id'],'confirm',held['revision'],identifier(),self.pid,first['session_id'])
+        self.ingress.action(held['id'],'cancel',held['revision'],identifier(),self.pid,first['session_id'])
+        self.assertFalse(self.fake.messages)
+        timed = self.set_buffer(manual['buffer_policy']['quiet_ms'], False)
+        self.assertEqual(timed['buffer_policy']['quiet_ms'], 18000)
+        with self.assertRaisesRegex(RuntimeErrorBase, 'input_buffer_policy_changed'):
+            self.accept('8399',expected_input_policy=manual['id'])
+        with self.store.connection() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM ingress_receipts').fetchone()[0], 20)
+
     async def test_upgrade_same_mode_requires_resolution_and_new_version(self):
         p=self.ingress.current_policy(self.pid,'desktop')
         with self.store.connection(write=True) as conn:

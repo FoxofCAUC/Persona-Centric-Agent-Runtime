@@ -12,7 +12,7 @@ BUSINESS_TABLES=('personas','sessions','events','raw_events','input_batches','in
     'profile_versions','character_versions','source_exclusions','summaries','memory_decisions','knowledge_pages',
     'knowledge_documents','knowledge_notes','knowledge_claims','context_uses','context_manifests',
     'attempts','organization_attempts','organization_receipts')
-BUSINESS_KEYS=('knowledge.conversation.record.','knowledge.processing.result.','knowledge.native.receipt.',
+BUSINESS_KEYS=('private.study.','knowledge.conversation.record.','knowledge.processing.result.','knowledge.native.receipt.',
     'knowledge.native.source_state.','knowledge.native.imported.','scene.route.')
 # Keep the read-only checker standalone, including when an old runtime cannot import.
 BUSINESS_TABLES+=('recall_support_policies','recall_support_clock','recall_support_units',
@@ -32,6 +32,14 @@ SPEECH_TABLES=('expression_speech_contexts','expression_speech_units','expressio
 DIALOGUE_TABLES=('dialogue_source_bundles','dialogue_corpus_supports','dialogue_generation_policies',
     'dialogue_generation_turns','dialogue_generation_units','dialogue_generation_stages')
 BUSINESS_TABLES+=SPEECH_TABLES+DIALOGUE_TABLES
+PRIVATE_REPLY_TABLES=('session_privacy_events','private_reply_instances','private_reply_turns',
+                      'private_reply_decisions','private_reply_attempts','private_reply_reviews')
+BUSINESS_TABLES+=PRIVATE_REPLY_TABLES
+LOCAL_KNOWLEDGE_TABLES=('local_knowledge_documents','local_knowledge_facts','local_knowledge_reads')
+BUSINESS_TABLES+=LOCAL_KNOWLEDGE_TABLES+('knowledge_evidence',)
+STUDY_TABLES=('knowledge_study_commits','knowledge_study_reads')
+BUSINESS_TABLES+=STUDY_TABLES
+BUSINESS_TABLES+=('private_reply_nodes','private_reply_source_sets','private_lookup_intents','private_lookup_calls','private_lookup_records')
 
 
 def digest(value):
@@ -76,6 +84,15 @@ def snapshot(home):
         if 'expression_runs' in tables:
             for root,attempt in db.execute('SELECT turn_id,attempt_id FROM expression_runs WHERE attempt_id IS NOT NULL'):
                 result['attempts_by_root'].setdefault(digest(root),[]).append(digest(['expression',attempt]))
+        if 'private_reply_attempts' in tables:
+            for root,attempt in db.execute('SELECT turn_id,id FROM private_reply_attempts'):
+                result['attempts_by_root'].setdefault(digest(root),[]).append(digest(['private_reply',attempt]))
+        if 'private_reply_nodes' in tables:
+            for root,attempt in db.execute("SELECT turn_id,attempt_id FROM private_reply_nodes WHERE node!='handoff'"):
+                result['attempts_by_root'].setdefault(digest(root),[]).append(digest(['private_decision',attempt]))
+        if 'private_lookup_calls' in tables:
+            for root,attempt in db.execute("SELECT turn_id,attempt_id FROM private_lookup_calls"):
+                result['attempts_by_root'].setdefault(digest(root),[]).append(digest(['private_lookup',attempt]))
     for values in result['attempts_by_root'].values():values.sort()
     return result
 
@@ -92,7 +109,10 @@ def compare(before,after,*,allow_schema_upgrade=False):
         if after['schema_version']>=31:expected.update(EXPRESSION_RUNTIME_TABLES)
         if after['schema_version']>=32:expected.update(SPEECH_TABLES)
         if after['schema_version']>=33:expected.update(DIALOGUE_TABLES)
-        if not (allow_schema_upgrade and 27<=before['schema_version']<after['schema_version']<=33
+        if after['schema_version']>=34:expected.update(PRIVATE_REPLY_TABLES)
+        if after['schema_version']>=35:expected.update(LOCAL_KNOWLEDGE_TABLES)
+        if after['schema_version']>=36:expected.update(STUDY_TABLES)
+        if not (allow_schema_upgrade and 27<=before['schema_version']<after['schema_version']<=36
                 and expected.issubset(after['tables'])):failures.append({'check':'schema_changed'})
     for table,rows in before['tables'].items():
         new=after['tables'].get(table,{})
@@ -110,7 +130,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='action',required=True)
     take=sub.add_parser('snapshot');take.add_argument('--home',type=Path,required=True);take.add_argument('--out',type=Path,required=True)
     check=sub.add_parser('compare');check.add_argument('before',type=Path);check.add_argument('after',type=Path)
-    check.add_argument('--allow-schema-upgrade',action='store_true',help='Allow declared additive upgrades from 27 through 33; existing rows still must match.')
+    check.add_argument('--allow-schema-upgrade',action='store_true',help='Allow declared additive upgrades from 27 through 36; existing rows still must match.')
     args=parser.parse_args()
     if args.action=='snapshot':
         value=snapshot(args.home);args.out.parent.mkdir(parents=True,exist_ok=True)

@@ -56,6 +56,85 @@ class DisplayGate(unittest.IsolatedAsyncioTestCase):
                                                      ensure_ascii=False,default=str))
         self.assertFalse(self.chat.history_snapshot(turn['session_id']).get('pending_notices'))
 
+    async def test_parked_notice_releases_lock_and_survives_role_browsing(self):
+        turn,args=await self.start()
+        async with asyncio.timeout(5):
+            while self.chat.locks[turn["persona_id"]].locked() or self.chat.preparations:
+                await asyncio.sleep(.03)
+        with self.store.connection() as db:
+            saved=db.execute("SELECT value FROM knowledge_control WHERE key=?",("desktop.wait."+turn["id"],)).fetchone()
+            self.assertEqual(json.loads(saved[0])["kind"],"notice")
+        from persona_runtime.models import PersonaSpec
+        other=self.chat.service.create_persona(PersonaSpec(1,"201","201",["201"],"201",["201"],"201"))
+        self.chat.service.use_persona(other["id"])
+        await asyncio.sleep(.4)
+        self.assertEqual(self.chat.get(turn["id"])["status"],"queued")
+        self.assertFalse(self.provider.calls)
+        with self.assertRaises(RuntimeErrorBase):
+            tk_notice.display(self.org.processing.search_notice,**args)
+        self.chat.service.use_persona(turn["persona_id"])
+        tk_notice.display(self.org.processing.search_notice,**args,acknowledge=True)
+        await asyncio.wait_for(self.chat.wait(),12)
+        self.assertEqual((len(self.provider.calls),len(self.main.notice_calls)),(1,1))
+
+    async def test_unknown_notice_closes_only_original_root(self):
+        turn,args=await self.start()
+        tk_notice.isolate(self.store,**args)
+        with self.assertRaises(RuntimeErrorBase):
+            tk_notice.display(self.org.processing.search_notice,**args,acknowledge=True)
+        await asyncio.wait_for(self.chat.wait(),5)
+        self.assertFalse(self.provider.calls)
+        self.assertFalse(self.chat.get(turn["id"])["search_notice"])
+
+    async def test_durable_preview_prevents_second_presenter_and_only_owner_can_release(self):
+        turn,args=await self.start()
+        notice=self.org.processing.search_notice
+        self.assertTrue(tk_notice.display(notice,**args,presentation_id="821")["text"])
+        for ack in (False,True):
+            with self.assertRaisesRegex(RuntimeErrorBase,"already_offered"):
+                tk_notice.display(notice,**args,acknowledge=ack)
+        with self.assertRaisesRegex(RuntimeErrorBase,"already_offered"):
+            tk_notice.isolate(self.store,**args,presentation_id="822",release=True)
+        tk_notice.isolate(self.store,**args,presentation_id="821",release=True)
+        tk_notice.display(notice,**args,presentation_id="822")
+        self.assertFalse(self.provider.calls)
+        tk_notice.display(notice,**args,acknowledge=True,presentation_id="822")
+        await asyncio.wait_for(self.chat.wait(),12)
+        self.assertEqual((len(self.main.notice_calls),len(self.provider.calls)),(1,1))
+
+    async def test_service_reopen_uses_parked_preface_without_another_notice(self):
+        from persona_runtime.chat import ChatEngine
+        from persona_runtime.organization import OrganizationEngine
+        turn,args=await self.start()
+        async with asyncio.timeout(6):
+            while True:
+                with self.store.connection() as db:
+                    if db.execute("SELECT 1 FROM knowledge_control WHERE key=?",("desktop.wait."+turn["id"],)).fetchone():
+                        break
+                await asyncio.sleep(.03)
+        self.chat.draining=True
+        self.chat.knowledge.close()
+        await self.chat.wait()
+        self.org.draining=True
+        self.worker.cancel()
+        await asyncio.gather(self.worker,return_exceptions=True)
+        await self.org.drain()
+        self.chat=ChatEngine(self.store,self.cfg,self.main)
+        self.org=OrganizationEngine(self.store,self.cfg,self.provider,self.chat)
+        self.org.processing.tools.transport=self.transport
+        self.org.routing.transport=self.decision_transport
+        self.chat.recover()
+        self.org.recover()
+        self.ingress=IngressService(self.chat)
+        self.ingress.recover()
+        self.worker=asyncio.create_task(self.org.worker())
+        self.ingress.tick()
+        self.assertFalse(self.provider.calls)
+        self.assertTrue(tk_notice.display(self.org.processing.search_notice,**args,acknowledge=True)["published"])
+        await asyncio.wait_for(self.chat.wait(),12)
+        self.assertEqual(self.chat.get(turn["id"])["status"],"completed")
+        self.assertEqual((len(self.main.notice_calls),len(self.provider.calls)),(1,1))
+
     async def test_superseding_input_retires_the_unseen_notice(self):
         turn,args=await self.start()
         self.need_web=False

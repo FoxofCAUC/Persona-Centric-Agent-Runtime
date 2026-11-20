@@ -50,7 +50,13 @@ class SearchNoticeTests(unittest.IsolatedAsyncioTestCase):
         final=self.chat.get(turn['id'])
         self.assertEqual(final['status'],'completed',final['error_code'])
         self.assertEqual(final['search_notice'],spoken)
-        self.assertIn(spoken['text'],self.main.calls[0][0]['content'])
+        # The completed-search assembly retains the visible notice in history and supplies the returned notes to the writer.
+        with self.store.connection() as db:
+            raw=db.execute("SELECT value FROM knowledge_control WHERE key=?",('knowledge.conversation.record.'+turn['id'],)).fetchone()[0]
+        notes=json.loads(raw)['data']['organized']['notes']
+        self.assertTrue(notes)
+        self.assertIn(notes,self.main.calls[0][0]['content'])
+        self.assertNotIn(spoken['text'],self.main.calls[0][0]['content'])
         self.assertEqual(len(self.main.notice_calls),1)
         from persona_runtime.provider_compat import build_request
         body,_=build_request(*self.provider.calls[0])
@@ -95,8 +101,10 @@ class SearchNoticeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(self.persona['spec']['name'],messages[0]['content'])
         self.assertNotIn('_json_output',model)
         self.assertNotIn('稍等，我查一下',messages[0]['content'])
-        self.assertIn('搜索尚未开始',messages[0]['content'])
-        self.assertIn('目前还没有检索结果',messages[-1]['content'])
+        self.assertIn('让对方知道你准备去查',messages[0]['content'])
+        self.assertIn('让对方知道你准备去查',messages[-1]['content'])
+        self.assertNotIn('搜索尚未开始',messages[0]['content'])
+        self.assertNotIn('目前还没有检索结果',messages[-1]['content'])
         self.assertIn('帮我查公开游戏攻略',messages[-1]['content'])
         from persona_runtime.provider_compat import build_request
         body,_=build_request(model,messages)

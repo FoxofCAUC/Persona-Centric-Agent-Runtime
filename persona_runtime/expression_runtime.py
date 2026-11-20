@@ -1,4 +1,6 @@
 """独立表达用途：完整主稿、一次表达请求、单一发布权和已呈现投影。"""
+from .call_limits import resume_on_limit, gate, turn_scope as quota_turn, CallLimitPending
+from .local_repair import RepairInProgress
 import asyncio
 from dataclasses import asdict
 import hashlib
@@ -77,15 +79,21 @@ class ExpressionRuntime:
             if previous:
                 if previous['raw_hash'] != text_hash(raw):raise ExpressionAssetError('expression_main_receipt_conflict')
                 return previous['id']
+            from .knowledge_handoff import repeated_notice,reject_echo
+            echo=repeated_notice(db,turn,body,(context or {}).get('details',{}))
             ident = identifier()
             db.execute('INSERT INTO expression_main_receipts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                       (ident, turn['id'], turn['execution_revision'], logical_attempt_id, physical['id'], int(batch is not None),
+                       (ident, turn['id'], turn['execution_revision'], logical_attempt_id, physical['id'], int(batch is not None and not echo),
                         raw, text_hash(raw), body, text_hash(body) if body is not None else None,
                         json.dumps(asdict(batch), ensure_ascii=False) if batch else None,
                         json.dumps(context, ensure_ascii=False), json.dumps(audit) if audit is not None else None, timestamp()))
             changed = db.execute('UPDATE attempts SET status=\'completed\',usage_json=? WHERE id=? AND turn_id=?',
                                  (json.dumps(audit), logical_attempt_id, turn['id'])).rowcount
             if changed != 1:raise ExpressionAssetError('expression_main_attempt_missing')
+            if echo:
+                reject_echo(db,turn,logical_attempt_id,audit)
+                db.execute('UPDATE expression_runtime_turns SET closed_at=coalesce(closed_at,?) WHERE turn_id=?',(timestamp(),turn['id']))
+                return ident
             from .scene_publication import native_policy
             if native_policy(turn):
                 db.execute('UPDATE expression_runtime_turns SET closed_at=coalesce(closed_at,?) WHERE turn_id=?',
@@ -193,6 +201,7 @@ class ExpressionRuntime:
                 return
             db.execute('UPDATE expression_runs SET raw_response=?,raw_response_hash=? WHERE id=?',(raw,digest,run_id))
 
+    @resume_on_limit
     async def execute(self, turn_id, model):
         from .expression_publication import ExpressionPublication
         publisher = ExpressionPublication(self)
@@ -222,8 +231,10 @@ class ExpressionRuntime:
                 chosen = json.loads(run['policy_json'])
                 if not current or current['revision']!=chosen['revision'] or not json.loads(current['data_json'])['enabled']:
                     raise ExpressionAssetError('expression_runtime_policy_changed')
+                gate(db,self.store,'expression',quota_turn(turn))
                 attempt = identifier()
                 db.execute('UPDATE expression_runs SET state=\'dispatched\',attempt_id=?,started_epoch=? WHERE id=?',(attempt,time.time(),run['id']))
+        except (CallLimitPending,RepairInProgress):raise
         except RuntimeErrorBase as error:return publisher.fallback(turn_id,str(error))
         try:
             request = json.loads(run['request_json'])
@@ -311,23 +322,111 @@ class ExpressionRuntime:
             pub=db.execute('SELECT id,revision,state,producer_kind,reason FROM expression_publications WHERE turn_id=?',(turn_id,)).fetchone()
             return {'draft':dict(receipt) if receipt else None,'run':dict(run) if run else None,'publication':dict(pub) if pub else None}
 
-    async def wait_prior(self, turn):
-        while True:
-            with self.store.connection() as db:
-                row=db.execute("""SELECT d.id FROM expression_main_receipts d JOIN turns t ON t.id=d.turn_id
-                  JOIN expression_runtime_turns m ON m.turn_id=t.id LEFT JOIN expression_publications p ON p.turn_id=t.id
-                  WHERE t.persona_id=? AND t.session_id=? AND t.rowid<(SELECT rowid FROM turns WHERE id=?) AND d.valid=1
-                  AND json_extract(m.policy_json,'$.data.enabled')=1
-                  AND ((p.id IS NOT NULL AND p.state NOT IN ('closed','complete')) OR
-                       (p.id IS NULL AND m.cancelled_at IS NULL AND m.closed_at IS NULL)) LIMIT 1""",
-                  (turn['persona_id'],turn['session_id'],turn['id'])).fetchone()
-            if not row:
+    def settle_prior(self, turn):
+        from .tk_notice import required
+        from .expression_publication import ExpressionPublication
+        from .expression_utterance_publication import SpeechPublication
+        reason = "desktop_reply_superseded"
+        with self.store.connection(write=True) as db:
+            if not required(db,turn):
+                return
+            roots = db.execute("""SELECT t.id FROM turns t JOIN expression_runtime_turns m ON m.turn_id=t.id
+                JOIN expression_main_receipts r ON r.turn_id=t.id AND r.execution_revision=t.execution_revision
+                LEFT JOIN expression_publications p ON p.turn_id=t.id WHERE t.persona_id=? AND t.session_id=?
+                AND t.rowid<(SELECT rowid FROM turns WHERE id=?) AND r.valid=1
+                AND json_extract(m.policy_json,'$.data.enabled')=1
+                AND ((p.id IS NULL AND m.closed_at IS NULL AND m.cancelled_at IS NULL)
+                     OR p.state NOT IN ('complete','closed'))""",
+                (turn["persona_id"],turn["session_id"],turn["id"])).fetchall()
+            publisher = ExpressionPublication(self)
+            for row in roots:
+                tid = row["id"]
+                db.execute("UPDATE expression_runtime_turns SET closed_at=?,cancelled_at=coalesce(cancelled_at,?) WHERE turn_id=?",
+                           (timestamp(),timestamp(),tid))
+                db.execute("""UPDATE expression_runs SET state='cancelled',error_code=? WHERE turn_id=?
+                              AND state IN ('prepared','dispatched')""",(reason,tid))
+                pub = db.execute("SELECT * FROM expression_publications WHERE turn_id=?", (tid,)).fetchone()
+                if pub:
+                    publisher._cancel_pending(db,pub,reason)
+                    if db.execute("SELECT state FROM expression_publications WHERE id=?", (pub["id"],)).fetchone()[0]=="unknown":
+                        publisher._close(db,pub,"desktop_presentation_unknown")
+                else:
+                    db.execute("UPDATE turns SET status='interrupted',error_code=?,updated_at=? WHERE id=?",
+                               (reason,timestamp(),tid))
+            units = db.execute("""SELECT u.* FROM expression_speech_units u JOIN turns t ON t.id=u.turn_id
+                WHERE u.persona_id=? AND u.session_id=? AND u.closed_at IS NULL
+                AND (u.phase!='main' OR u.source_kind='dialogue_reply')
+                AND t.rowid<(SELECT rowid FROM turns WHERE id=?)""",
+                (turn["persona_id"],turn["session_id"],turn["id"])).fetchall()
+            publisher = SpeechPublication(self.outlet)
+            for unit in units:
+                pub = db.execute("SELECT * FROM expression_speech_publications WHERE utterance_id=?", (unit["id"],)).fetchone()
+                if pub:
+                    publisher._stop(db,dict(unit),pub,reason)
+                    if db.execute("SELECT state FROM expression_speech_publications WHERE id=?", (pub["id"],)).fetchone()[0]=="unknown":
+                        publisher._close(db,dict(unit),pub,"desktop_presentation_unknown")
+                else:
+                    db.execute("UPDATE expression_speech_units SET cancelled_at=?,closed_at=? WHERE id=?",
+                               (timestamp(),timestamp(),unit["id"]))
+
+    async def wait_prior(self, turn, engine):
+        from .scene_policy import save
+        key = "desktop.wait."+turn["id"]
+        dependency = None
+        try:
+            while not engine.draining and not engine.knowledge.closed.is_set():
                 with self.store.connection() as db:
-                    pending=db.execute('''SELECT 1 FROM expression_speech_units u JOIN turns t ON t.id=u.turn_id
-                      WHERE u.persona_id=? AND u.session_id=? AND t.rowid<(SELECT rowid FROM turns WHERE id=?)
-                      AND (u.phase!='main' OR u.source_kind='dialogue_reply') AND u.closed_at IS NULL LIMIT 1''',(turn['persona_id'],turn['session_id'],turn['id'])).fetchone()
-                if not pending:return
-            await asyncio.sleep(.05)
+                    row=db.execute("""SELECT t.id FROM expression_main_receipts d JOIN turns t ON t.id=d.turn_id
+                        JOIN expression_runtime_turns m ON m.turn_id=t.id LEFT JOIN expression_publications p ON p.turn_id=t.id
+                        WHERE t.persona_id=? AND t.session_id=? AND t.rowid<(SELECT rowid FROM turns WHERE id=?) AND d.valid=1
+                        AND json_extract(m.policy_json,'$.data.enabled')=1
+                        AND ((p.id IS NOT NULL AND p.state NOT IN ('closed','complete')) OR
+                             (p.id IS NULL AND m.cancelled_at IS NULL AND m.closed_at IS NULL)) LIMIT 1""",
+                        (turn['persona_id'],turn['session_id'],turn['id'])).fetchone()
+                    if not row:
+                        row=db.execute("""SELECT u.turn_id FROM expression_speech_units u JOIN turns t ON t.id=u.turn_id
+                            WHERE u.persona_id=? AND u.session_id=? AND t.rowid<(SELECT rowid FROM turns WHERE id=?)
+                            AND (u.phase!='main' OR u.source_kind='dialogue_reply') AND u.closed_at IS NULL LIMIT 1""",
+                            (turn['persona_id'],turn['session_id'],turn['id'])).fetchone()
+                if not row:return True
+                if dependency != row[0]:
+                    dependency=row[0]
+                    with self.store.connection(write=True) as db:
+                        save(db,key,{"kind":"prior","turn":dependency,"revision":turn["execution_revision"]})
+                await engine.presentation_wakeup.wait()
+            return False
+        finally:
+            if dependency:
+                with self.store.connection(write=True) as db:
+                    db.execute("DELETE FROM knowledge_control WHERE key=?",(key,))
+
+    def recover_desktop_publications(self):
+        from .expression_publication import ExpressionPublication
+        from .scene_publication import native_policy
+        from .tk_notice import required
+        with self.store.connection() as db:
+            rows=db.execute("""SELECT t.* FROM turns t JOIN expression_runtime_turns m ON m.turn_id=t.id
+                JOIN expression_main_receipts d ON d.turn_id=t.id AND d.execution_revision=t.execution_revision
+                LEFT JOIN expression_runs r ON r.draft_id=d.id
+                WHERE t.channel='desktop' AND t.cancelled_at IS NULL AND t.input_batch_id IS NOT NULL
+                AND d.valid=1 AND m.closed_at IS NULL AND m.cancelled_at IS NULL
+                AND coalesce(t.error_code,'')!='migration_requires_review'
+                AND NOT EXISTS(SELECT 1 FROM dialogue_generation_units g WHERE g.turn_id=t.id AND g.phase='main')
+                AND json_extract(m.policy_json,'$.data.enabled')=1
+                AND (r.id IS NULL OR (r.state='prepared' AND r.attempt_id IS NULL AND r.raw_response IS NULL))
+                AND NOT EXISTS(SELECT 1 FROM expression_publications p WHERE p.turn_id=t.id)""").fetchall()
+            candidates=[row["id"] for row in rows if required(db,dict(row)) and not native_policy(dict(row))]
+        publisher=ExpressionPublication(self)
+        for tid in candidates:
+            try:
+                result=publisher.fallback(tid,"desktop_saved_reply_recovered")
+            except RuntimeErrorBase as error:
+                result={"state":"blocked","reason":str(error)}
+            if result["state"]=="blocked":
+                with self.store.connection(write=True) as db:
+                    db.execute("UPDATE expression_runtime_turns SET closed_at=coalesce(closed_at,?) WHERE turn_id=?",(timestamp(),tid))
+                    db.execute("""UPDATE turns SET status='interrupted',error_code='desktop_receipt_requires_review',
+                        updated_at=? WHERE id=? AND reply_event_id IS NULL AND cancelled_at IS NULL""",(timestamp(),tid))
 
     def recover(self):
         """只恢复本地回执／状态；准备中表达由显式resume继续，不重跑主模型。"""
@@ -335,7 +434,8 @@ class ExpressionRuntime:
         if migration_pending(self.store.paths):return {'paused':True}
         self.outlet.recover()
         with self.store.connection(write=True) as db:
-            for receipt in db.execute('SELECT * FROM expression_main_receipts WHERE valid=1').fetchall():
+            for receipt in db.execute("""SELECT r.* FROM expression_main_receipts r JOIN expression_runtime_turns m
+                                         ON m.turn_id=r.turn_id WHERE r.valid=1 AND json_extract(m.policy_json,'$.data.enabled')=1""").fetchall():
                 turn=dict(db.execute('SELECT * FROM turns WHERE id=?',(receipt['turn_id'],)).fetchone())
                 self.outlet.register_main(db,turn,dict(receipt))
             db.execute("UPDATE expression_runs SET state='unknown',error_code='service_restarted' WHERE state='dispatched' AND raw_response IS NULL")

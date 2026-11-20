@@ -16,7 +16,7 @@ def is_waiting(store, turn):
     with store.connection() as db:
         row = db.execute('SELECT event FROM request_activity WHERE turn_id=? ORDER BY seq DESC LIMIT 1',
                          (turn['id'],)).fetchone()
-    return bool(row and row[0] in ('knowledge_search_notice','search_notice_published','knowledge_search', 'knowledge_refresh', 'knowledge_waiting_quota','knowledge_routing','knowledge_web_plan','knowledge_search_web','knowledge_fetch_web','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review'))
+    return bool(row and row[0] in ('knowledge_search_notice','desktop_publication_changed','search_notice_published','knowledge_search', 'knowledge_refresh', 'knowledge_waiting_quota','knowledge_routing','knowledge_web_plan','knowledge_search_web','knowledge_fetch_web','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review'))
 
 
 def check(service, turn):
@@ -118,9 +118,9 @@ def refresh_turn(service, turn, refresh):
         raise RuntimeErrorBase('knowledge_retrieval_failed') from error
 
 
-def required_tasks(db):
+def required_tasks(db,*,with_roots=False):
     """Only dependencies bound to a current, waiting turn bypass chat priority."""
-    tasks = set()
+    tasks = {}
     for turn in db.execute("SELECT id,execution_revision FROM turns WHERE status='queued' AND cancelled_at IS NULL"):
         event = db.execute('SELECT event FROM request_activity WHERE turn_id=? ORDER BY seq DESC LIMIT 1', (turn['id'],)).fetchone()
         if not event or event[0] not in ('knowledge_refresh', 'knowledge_waiting_quota'):
@@ -133,14 +133,16 @@ def required_tasks(db):
             for row in db.execute('SELECT b.extract_task_id,b.review_task_id FROM knowledge_batches b '
                     'JOIN knowledge_fetch_jobs j ON j.document_id=b.document_id '
                     'WHERE j.id=? AND b.owner_persona=j.owner_persona', (job_id,)):
-                tasks.update(task for task in row if task)
+                for task in row:
+                    if task:tasks[task]=turn
     for turn in db.execute("SELECT id,persona_id,execution_revision FROM turns WHERE status='queued' AND cancelled_at IS NULL"):
         event=db.execute('SELECT event FROM request_activity WHERE turn_id=? ORDER BY seq DESC LIMIT 1',(turn['id'],)).fetchone()
-        if not event or event[0] not in ('knowledge_search_notice','search_notice_published','knowledge_routing','knowledge_web_plan','knowledge_search_web','knowledge_fetch_web','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review','knowledge_waiting_quota'):continue
+        if not event or event[0] not in ('knowledge_search_notice','desktop_publication_changed','search_notice_published','knowledge_routing','knowledge_web_plan','knowledge_search_web','knowledge_fetch_web','knowledge_goal','knowledge_selection','knowledge_translation','knowledge_review','knowledge_waiting_quota'):continue
         saved=db.execute('SELECT value FROM knowledge_control WHERE key=?',('knowledge.processing.wait.'+turn['id'],)).fetchone()
         value=json.loads(saved[0])['data'] if saved else {}
         if value.get('execution_revision')!=turn['execution_revision']:continue
         for task_id in value.get('task_ids',[]):
             task=db.execute('SELECT persona_id,payload_json FROM organization_tasks WHERE id=?',(task_id,)).fetchone()
-            if task and task['persona_id']==turn['persona_id'] and json.loads(task['payload_json']).get('knowledge_processing',{}).get('root_turn_id')==turn['id']:tasks.add(task_id)
-    return tasks
+            if task and task['persona_id']==turn['persona_id'] and json.loads(task['payload_json']).get('knowledge_processing',{}).get('root_turn_id')==turn['id']:
+                tasks[task_id]=turn
+    return tasks if with_roots else set(tasks)

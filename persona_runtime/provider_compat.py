@@ -137,6 +137,11 @@ def build_request(model,messages):
     if generation_profile(model):
         payload={'model':model['name'],'messages':messages,'stream':True,'stream_options':{'include_usage':True}}
     else:payload={'model':model['name'],'messages':messages,'max_tokens':model['max_tokens'],'stream':False}
+    if model.get('_private_writer_stream') is True:
+        from .provider_policy import is_private_compatible_writer
+        if not is_private_compatible_writer(model) or generation_profile(model):
+            raise ValueError('private_writer_stream_invalid')
+        payload['stream']=True
     if fmt:payload['response_format']=fmt
     if contract['thinking'] in ('disabled','enabled'):payload['thinking']={'type':contract['thinking']}
     if contract.get('reasoning_effort') in ('low','high'):payload['reasoning_effort']=contract['reasoning_effort']

@@ -11,8 +11,14 @@ STAGES={'conversation_web_decision','conversation_search','conversation_fetch','
 RETIRED_STAGES={'conversation_search_plan','conversation_organize'}
 OUTPUT_PROFILE='native-two-stage-output-v1'
 
-def processing_model(model,data):
+def processing_model(model,data,*,config=None):
     stage=data.get('stage')
+    if config is not None and stage in ('conversation_native','conversation_search','conversation_fetch'):
+        from .provider_policy import is_deepseek_text_relay
+        if is_deepseek_text_relay(model):
+            settings=config.load()
+            if settings.get('private_research_account')=='native_web':
+                model=settings['native_web_model']
     if stage in RETIRED_STAGES:raise RuntimeErrorBase('legacy_retrieval_frozen')
     if stage=='conversation_search_notice':
         from .knowledge_search_notice import request_model
@@ -74,7 +80,8 @@ class IndependentWebTools:
         if getattr(self,'transport',None):return await self.transport(stage,values,model)
         if urlsplit(model['base_url']).hostname!='api.deepseek.com':raise RuntimeErrorBase('search_provider_configuration_required')
         return await request(stage,values,model)
-    def accept(self,payload,raw):
+    @staticmethod
+    def accept(payload,raw):
         stage=payload['knowledge_processing']['stage'];data=_json(raw)
         if stage=='conversation_web_decision':
             from .knowledge_web_decision import parse
@@ -97,11 +104,25 @@ class IndependentWebTools:
 
 def attach(messages,details,result,turn):
     from copy import deepcopy
+    from .knowledge_handoff import completed_blocks,VERSION as HANDOFF
+    from .prompt_assembly import PromptBlock,assemble
     details=deepcopy(details)
     remaining=json.loads(turn['model_snapshot'])['max_input_chars']-sum(len(m['content']) for m in messages)
+    blocks=completed_blocks(messages,details,result,turn)
+    if blocks is not None:
+        remaining+=len(messages[0]['content'])-sum(len(b.content) for b in blocks)
     from .knowledge_translation import context
-    body,sources,translation=context(result,remaining,scene_voice=bool(details.get('scene_voice')))
-    if body:
+    body,sources,translation=context(result,remaining,scene_voice=bool(details.get('scene_voice')),completed_handoff=blocks is not None)
+    if blocks is not None and body and translation['notes_characters']>0:
+        position=next((i for i,b in enumerate(blocks) if b.name=='history_recorded_at'),len(blocks))
+        blocks.insert(position,PromptBlock('retrieved_material',body,'knowledge_translation',HANDOFF))
+        messages,layout=assemble(blocks,messages[1:-1],messages[-1])
+        details['prompt_assembly'].update(layout)
+        details['input_characters']=layout['input_characters']
+        if details['prompt_assembly'].get('character_consumption'):
+            details['prompt_assembly']['character_consumption']['final_input_hash']=layout['input_snapshot_hash']
+        translation['handoff_version']=HANDOFF
+    elif body:
         messages=[dict(m) for m in messages]
         system = messages[0]['content']
         time_meta = next((b for b in (details.get('prompt_assembly') or {}).get('blocks', [])

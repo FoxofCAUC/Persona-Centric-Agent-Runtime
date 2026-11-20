@@ -1,4 +1,5 @@
 """Frozen requests, first physical receipts and cancellation for the direct character reply."""
+from .call_limits import resume_on_limit, gate, turn_scope as quota_turn
 import asyncio
 from contextlib import contextmanager, nullcontext
 import json
@@ -200,6 +201,7 @@ class DialogueGeneration:
                 'unit_id': row['unit_id'], 'body': result.get('body') if row['state'] == 'completed' else None,
                 'error_code': row['error_code']}
 
+    @resume_on_limit
     async def _stage(self, unit_id, stage, credential_model, assembly, thought, ids, dependencies):
         window = getattr(assembly, 'authority_window', nullcontext)
         with window(), self.store.connection(write=True) as db:
@@ -227,6 +229,7 @@ class DialogueGeneration:
                     preflight(live, wire)
                 except (ValueError, OSError, KeyError) as error:
                     raise RuntimeErrorBase('dialogue_transport_preflight_blocked') from error
+            gate(db,self.store,'dialogue',quota_turn(turn))
             sid, attempt = identifier(), identifier()
             db.execute("""INSERT INTO dialogue_generation_stages
               (id,unit_id,stage,state,model_json,request_json,request_hash,dependencies_json,attempt_id,started_at)

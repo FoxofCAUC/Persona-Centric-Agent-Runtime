@@ -50,5 +50,11 @@ async def request(stage,args,model):
                     'amount_is_estimate':True,'elapsed_ms':round((time.monotonic()-started)*1000,3)}
                 return ModelCompletion(body,usage,{'request_headers_sent':sent,'http_status':200,'read_only_tool':True,'network_route':'system_proxy'})
     except ModelError:raise
-    except (aiohttp.ClientError,TimeoutError,ValueError,UnicodeError):
+    except (aiohttp.ClientError,TimeoutError):
+        if not sent and status is None:
+            raise ModelError('provider_network_error',diagnostics={'request_headers_sent':False,
+                             'response_headers_received':False,'network_route':'system_proxy'}) from None
+        raise ModelError('web_transport_unconfirmed',diagnostics={'request_headers_sent':sent,'http_status':status,
+                         'read_only_tool':True,'network_route':'system_proxy'}) from None
+    except (ValueError,UnicodeError):
         raise ModelError('web_transport_unconfirmed',diagnostics={'request_headers_sent':sent,'http_status':status,'read_only_tool':True,'network_route':'system_proxy'}) from None

@@ -39,7 +39,7 @@ class QuotaTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_zero_is_valid_but_negative_bool_and_unknown_fields_are_rejected(self):
         unlimited=dict(project_hourly=0,background_hourly=0,background_daily=0)
-        self.assertEqual(self.quotas.update(unlimited)['limits'],unlimited | {'selector_hourly':300,'selector_daily':2000})
+        self.assertEqual(self.quotas.update(unlimited)['limits'],unlimited | {'selector_hourly':0,'selector_daily':0})
         for bad in (-1,True,10001,'0'):
             with self.assertRaises(RuntimeErrorBase):self.quotas.update(dict(unlimited,project_hourly=bad))
         with self.assertRaises(RuntimeErrorBase):self.quotas.update(dict(unlimited,other=1))

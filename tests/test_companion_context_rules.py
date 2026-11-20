@@ -15,7 +15,7 @@ from experiments import companion_context_rules as run
 from experiments import companion_c2 as replay
 from tests import test_companion_chat_contract as runtime_fixture
 from tests import test_companion_c2 as replay_fixture
-from tests.companion_persona_fixture import legacy_requests
+from tests.companion_persona_fixture import legacy_requests, without_retracted_identity_notice
 prepare_original = replay.prepare
 
 
@@ -109,8 +109,9 @@ class NormalRuntime(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn('Artificial specific rule',after[0]['content'])
 
     async def test_old_v4_requests_match_frozen_before_implementation(self):
-        self.assertEqual(await legacy_requests(('minimal_persona',)),
-                         json.loads((Path(__file__).parent/'fixtures/companion-pre-v5.json').read_text(encoding='utf-8'))['requests'])
+        fixture=Path(__file__).parent/'fixtures/companion-pre-v5.json'
+        baseline=json.loads(fixture.read_text(encoding='utf-8'))['requests']
+        self.assertEqual(await legacy_requests(('minimal_persona',)),without_retracted_identity_notice(baseline))
 
     async def test_final_source_recheck_rebuilds_consumer_diagnostic(self):
         from persona_runtime.profile import append_version

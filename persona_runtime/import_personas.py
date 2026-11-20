@@ -34,22 +34,32 @@ class PersonaImports:
                 "需要确认本次导入的成卡用途。")
         if plan_id is None:
             return self.analysis.start(ident, revision, confirmed, cached_only=cached_only)
-        result = self.profiles.start(ident, revision, plan_id, confirmed, cached_only=cached_only)
-        if compose_card:
+        if not compose_card:return self.profiles.start(ident,revision,plan_id,confirmed,cached_only=cached_only)
+        from .call_limits import flow
+        from .models import identifier
+        scope='job/'+identifier()
+        token=flow.set(scope)
+        try:
+            result=self.profiles.start(ident,revision,plan_id,confirmed,cached_only=cached_only)
             self._card_chains[ident] = asyncio.create_task(
-                self._after_analysis(ident, plan_id, self.profiles.tasks[ident]))
-        return result
+                self._after_analysis(ident, plan_id, self.profiles.tasks[ident],scope))
+            return result
+        finally:flow.reset(token)
 
-    async def _after_analysis(self, ident, plan_id, analysis_task):
+    async def _after_analysis(self, ident, plan_id, analysis_task,scope):
         try:
             await asyncio.shield(analysis_task)
             data = self.library.status(ident)
             if data["status"] in ("ready","partial_ready") and (data["plan"] or {}).get("id") == plan_id:
                 self.cards.start(ident=ident, revision=data["revision"], plan_id=plan_id, confirmed=True)
+                task=self.cards.tasks.get(ident)
+                if task:await asyncio.shield(task)
         except (OSError, ValueError):
             # Card availability, review requirements and capacity are exposed by card_status.
             pass
         finally:
+            from .call_limits import finish
+            with self.store.connection(write=True) as db:finish(db,scope)
             if self._card_chains.get(ident) is asyncio.current_task():
                 self._card_chains.pop(ident, None)
 

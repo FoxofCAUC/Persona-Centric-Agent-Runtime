@@ -4,7 +4,7 @@ import json
 from .models import LOCAL_USER_ID
 from .turn_input import input_text, load_turn_input, render_input
 from .organization import eligible_turns
-from .profile import snapshot,head,active_state,source_blocked
+from .profile import snapshot,head,active_state,source_blocked,model_persona_data
 from .prompt_assembly import PromptBlock, assemble
 
 
@@ -12,10 +12,10 @@ def collect_context_materials(engine, conn, turn, evidence=None, *, ablated=Fals
     """Collect source material before character selection; no prompt introspection."""
     ordinal = conn.execute('SELECT rowid FROM turns WHERE id=?', (turn['id'],)).fetchone()[0]
     frozen=json.loads(turn['profile_snapshot']) if turn.get('profile_snapshot') else snapshot(conn,turn['persona_id'])
-    spec={'format_version':1,**frozen['core']['data'],'expression_style':frozen['expression']['data']['style']}
+    spec={'format_version':1,**model_persona_data(frozen['core']['data']),'expression_style':frozen['expression']['data']['style']}
     if ablated:spec['expression_style']=''
     relation_blocked=source_blocked(conn,frozen['relationship']['source_ids'])
-    relation=frozen['relationship']['data']['description'] if not relation_blocked else '关系来源已被屏蔽，当前关系设定待用户复核，不引用旧说明。'
+    relation=frozen['relationship']['data']['description'] if not relation_blocked else ''
     state=head(conn,turn['persona_id'],'state')
     state_active=active_state(state)
     text = input_text(conn, turn)
@@ -172,7 +172,7 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
     if is_minimal:expression_renderer=MINIMAL_RENDERER
     base_blocks=[PromptBlock('persona_expression',base,'companion' if is_minimal else 'context_m4' if voice_after_character else 'context_m4+dialogue_voice',
                             'persona-core-v1' if voice_after_character else expression_renderer),
-                 PromptBlock('relationship','' if is_minimal and (relation_blocked or not relation) else '\n关系说明：'+(relation or '尚未填写'),'profile','relationship-v1')]
+                 PromptBlock('relationship','' if relation_blocked or (is_minimal and not relation) else '\n关系说明：'+(relation or '尚未填写'),'profile','relationship-v1')]
     if state_active:
         base_blocks.append(PromptBlock('temporary_state',('\n当前状态：' if is_minimal else '\n用户显式临时状态（仅影响当下表达，不改写核心设定或事实）：')+state['data']['text'],'profile','state-v1'))
     limit = json.loads(turn['model_snapshot'])['max_input_chars'] - reserve_chars
@@ -248,8 +248,8 @@ def build_context(engine, conn, turn, evidence=None, character=None, capsule=Non
         if selected_times:reference+='\n记忆时间：今天、明天等相对日期以来源记录时间为准；旧日计划不能直接当成今天安排，未明确有效期不擅自推定过期。'+json.dumps(selected_times,ensure_ascii=False)
         selected_pending = [p for p in pending if set(p['conflicts']).intersection(r[3]['id'] for r in memories)]
         if selected_pending:
-            reference += '\n待确认的记忆冲突：以下新用户来源尚未经记忆审核，不要把关联旧记忆断言为当前唯一事实，也不要把候选推断当作已确认更正。必要时向用户核实。'+json.dumps(selected_pending,ensure_ascii=False)
-        if disputes:reference+='\n相关事实尚有未决证据，不能当作当前确定事实；只在本次正常交流确有需要时核实：'+json.dumps(disputes,ensure_ascii=False)
+            reference += '\n待确认的记忆冲突：'+json.dumps(selected_pending,ensure_ascii=False)
+        if disputes:reference+='\n相关事实尚有未决证据：'+json.dumps(disputes,ensure_ascii=False)
         character_body=('\n人物补充资料：\n'+'\n'.join(p['text'] for p in character_parts)) if is_minimal and character_parts else '' if is_minimal else render_parts(character_parts)
         blocks=base_blocks+[
             PromptBlock('character',character_body,'character_context','companion-character-v1' if is_minimal else 'character-render-v1')]+(

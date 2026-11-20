@@ -42,6 +42,15 @@ def official_endpoint(model):
     return base if base.endswith('/chat/completions') else base + '/chat/completions'
 
 
+def private_research_model(config):
+    cfg = config.load()
+    account = cfg.get('private_research_account')
+    if account == 'native_web':
+        return cfg['native_web_model']
+    settings = cfg['organization']['model'] if account == 'organization' else cfg['model']
+    return settings | {'name': MODEL}
+
+
 def describe(model):
     official_endpoint(model)
     profile = model.get('_native_web_profile')

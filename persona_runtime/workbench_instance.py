@@ -9,14 +9,22 @@ from .lifecycle import require_console
 from .models import RuntimeErrorBase, identifier
 
 
+def wake_active(paths):
+    try:lease=require_console(paths)
+    except RuntimeErrorBase:return False
+    atomic_json(paths.home/"runtime/wakeup.json",{"token":lease["token"],"id":identifier()})
+    return True
+
+
 def acquire_or_wake(paths):
     """Return the instance lock, or notify the workbench that already owns it."""
-    try:
-        return InstanceLock(paths.home / "runtime/desktop.lock")
-    except RuntimeErrorBase:
-        lease = require_console(paths)
-        atomic_json(paths.home / "runtime/wakeup.json", {"token": lease["token"], "id": identifier()})
-        return None
+    deadline=time.monotonic()+5
+    while True:
+        try:return InstanceLock(paths.home/"runtime/desktop.lock")
+        except RuntimeErrorBase:
+            if wake_active(paths):return None
+            if time.monotonic()>=deadline:raise RuntimeErrorBase('实例仍在启动或准备环境。') from None
+            time.sleep(.1)
 
 
 def next_wakeup(paths, token, last_id):

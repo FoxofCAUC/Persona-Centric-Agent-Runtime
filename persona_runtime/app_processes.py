@@ -44,7 +44,8 @@ class Job:
 
     def close(self):
         if getattr(self,'handle',None):
-            self.kernel.CloseHandle(self.handle);self.handle=None
+            if not self.kernel.CloseHandle(self.handle):raise ctypes.WinError(ctypes.get_last_error())
+            self.handle=None
 
 
 class Child:
@@ -79,17 +80,20 @@ class AppProcesses:
         finally:
             if th:_winapi.CloseHandle(th)
 
-    def stop(self,role):
-        owned=self.roles.pop(role,None)
+    def stop(self,role,timeout=3):
+        owned=self.roles.get(role)
         if owned:
             job,child=owned;job.close()
-            try:child.wait(timeout=3)
-            finally:child.close()
+            child.wait(timeout=timeout)
+            child.close()
+            self.roles.pop(role,None)
 
     def close(self):
         self.job.close()
         errors=[]
+        import time
+        deadline=time.monotonic()+3
         for role in list(self.roles):
-            try:self.stop(role)
+            try:self.stop(role,max(0,deadline-time.monotonic()))
             except Exception as error:errors.append(error)
         if errors:raise errors[0]

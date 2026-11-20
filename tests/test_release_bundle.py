@@ -45,9 +45,33 @@ class ReleaseBundleTests(unittest.TestCase):
                 if path and "://" not in path:
                     self.assertIn(path, manifest["files"])
 
+    def test_candidate_binds_the_tree_and_includes_the_desktop_evidence_tool(self):
+        import json
+        from zipfile import ZipFile
+        target=self.root/"candidate.zip"
+        build(target,candidate_base_revision="b"*40)
+        with ZipFile(target) as kit:
+            manifest=json.loads(kit.read("desktop-kit.json"))
+            self.assertIsNone(manifest["source_revision"])
+            self.assertFalse(manifest["candidate_source"]["published"])
+            self.assertIn("assets/readme/superfish-vision.webp",manifest["files"])
+            self.assertIn("scripts/pcar_desktop_turn_evidence.py",manifest["files"])
+            self.assertIn("scripts/private_copy_workbench.py",manifest["files"])
+
     def test_release_requires_revision_models_and_public_fixture_before_writing(self):
         target=self.root/'release.zip'
         with self.assertRaisesRegex(ValueError,'提交编号'):build(target,release_tag='v0.1')
+        self.assertFalse(target.exists())
+
+    def test_prepared_release_requires_frozen_tree_and_matching_tag(self):
+        from scripts.build_desktop_bundle import PUBLIC_FIXTURE_SHA256
+        target=self.root/'pending.zip'
+        with self.assertRaisesRegex(ValueError,'冻结源码树'):
+            build(target, prepared_tag='v0.3', candidate_base_revision='a'*40)
+        with self.assertRaisesRegex(ValueError,'标签与交付清单'):
+            build(target,self.root,prepared_tag='v0.2',prepared_tree='b'*40,
+                  candidate_base_revision='a'*40,artificial_fixture=self.root/'unused.zip')
+        self.assertNotEqual(PUBLIC_FIXTURE_SHA256['v0.2'],PUBLIC_FIXTURE_SHA256['v0.3'])
         self.assertFalse(target.exists())
 
     def test_build_refuses_a_changed_prompt_bundle_before_creating_the_zip(self):

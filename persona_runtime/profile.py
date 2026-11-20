@@ -6,6 +6,17 @@ from datetime import datetime, timezone
 from .models import LOCAL_USER_ID, PersonaSpec, RuntimeErrorBase, identifier, require_text, timestamp
 
 KINDS = ('core', 'expression', 'relationship', 'state')
+_RETIRED_DEFAULT_BOUNDARY = '区分已知事实与不确定信息'
+
+
+def model_persona_data(data):
+    """Omit the retired built-in line from model input without changing stored versions."""
+    boundaries = data.get('values_and_boundaries', [])
+    if _RETIRED_DEFAULT_BOUNDARY not in boundaries:
+        return data
+    return {**data, 'values_and_boundaries': [
+        boundary for boundary in boundaries if boundary != _RETIRED_DEFAULT_BOUNDARY
+    ]}
 
 
 def encode(value):

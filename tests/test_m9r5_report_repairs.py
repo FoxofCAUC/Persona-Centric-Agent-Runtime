@@ -66,7 +66,8 @@ class ReportRepairs(unittest.IsolatedAsyncioTestCase):
         turn=await self.ask(public={'question':'公开天气主题'})
         self.assertEqual(turn['status'],'completed',turn['error_code'])
         self.assertNotIn('资料已经返回',self.main.calls[-1][0]['content'])
-        self.assertIn('尚未取得可确认',self.main.calls[-1][0]['content'])
+        self.assertNotIn('尚未取得可确认',self.main.calls[-1][0]['content'])
+        self.assertNotIn('没有新增可用资料',self.main.calls[-1][0]['content'])
         self.assertEqual(turn['context']['knowledge']['retrieval']['search_outcome'],'unconfirmed')
 
     async def test_read_only_collector_reports_both_native_stages(self):
@@ -85,7 +86,8 @@ class ReportRepairs(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(turn['status'],'completed',turn['error_code'])
         self.assertIs(self.decisions[0][1]['state']['explicit_public_query_requested'],True)
         self.assertFalse(self.provider.calls)
-        self.assertIn('尚未实际取得',self.main.calls[-1][0]['content'])
+        self.assertNotIn('尚未实际取得',self.main.calls[-1][0]['content'])
+        self.assertNotIn('不声称读过未取得的网页',self.main.calls[-1][0]['content'])
         self.assertFalse(turn['context']['knowledge']['retrieval']['requested_link']['available'])
 
 

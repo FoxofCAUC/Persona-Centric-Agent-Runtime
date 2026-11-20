@@ -150,9 +150,95 @@ class Delivery(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('ID-PRESENTATION-SECOND',json.dumps(self.main.calls[1],ensure_ascii=False))
         self.assertIn(part['body'],json.dumps(self.choice.wires[1],ensure_ascii=False))
 
+    async def _presentation_host(self):
+        from types import SimpleNamespace
+        from persona_runtime.workbench_presentation import WorkbenchPresentation
+        self.enable()
+        turn=self.send("801")
+        plan=await self.wait_for(turn,lambda v:v.get('scene_speech'))
+        await self.chat.wait()
+        routes={"expression.v2.offer":self.pub.offer,"expression.v2.ack":self.pub.acknowledge,
+                "expression.v2.pending_receipts":self.pub.pending_receipts}
+        def manage(action,**args):
+            from persona_runtime.desktop_client import LocalAPIError, TransportUnknown
+            try:return routes[action](**args)
+            except TransportUnknown:raise
+            except RuntimeErrorBase as error:raise LocalAPIError(str(error),400) from error
+        client=SimpleNamespace(manage=manage)
+        host=WorkbenchPresentation(self.cfg,client)
+        host.attach("802")
+        args=dict(persona_id=self.pid,session_id=turn["session_id"],utterance_id=plan["utterance_id"],
+                  publication_id=plan["publication_id"],revision=plan["revision"],ordinal=0)
+        return host,args,turn["id"],client,routes
+
+    async def test_proven_unpainted_lease_reoffers_only_after_reconciliation(self):
+        from persona_runtime.desktop_client import TransportUnknown
+        host,args,tid,_,routes=await self._presentation_host()
+        original=routes["expression.v2.offer"]
+        def lose_response(**kw):
+            original(**kw)
+            raise TransportUnknown("803")
+        routes["expression.v2.offer"]=lose_response
+        with self.assertRaises(TransportUnknown):host.begin("802","804","speech",args)
+        self.assertTrue(host.reconcile())
+        routes["expression.v2.offer"]=original
+        self.assertEqual(self.chat.get(tid)["scene_speech"]["items"][0]["state"],"pending")
+        offer=host.begin("802","805","speech",args)
+        self.assertTrue(host.decide("802",offer["id"],"presented"))
+        self.assertTrue(host.reconcile())
+        self.assertEqual(len(self.chat.get(tid)["scene_speech"]["visible"]),1)
+        self.assertEqual(len(self.main.calls),1)
+
+    async def test_host_and_service_restart_reuse_durable_decision(self):
+        from persona_runtime.workbench_presentation import WorkbenchPresentation
+        from persona_runtime.desktop_client import TransportUnknown
+        host,args,tid,client,routes=await self._presentation_host()
+        offer=host.begin("802","806","speech",args)
+        self.assertTrue(host.decide("802",offer["id"],"presented"))
+        self.chat.recover()
+        reopened=WorkbenchPresentation(self.cfg,client)
+        original=routes["expression.v2.ack"]
+        def lose_ack(**kw):
+            original(**kw)
+            raise TransportUnknown("807")
+        routes["expression.v2.ack"]=lose_ack
+        self.assertFalse(reopened.reconcile())
+        routes["expression.v2.ack"]=original
+        self.assertTrue(reopened.reconcile())
+        self.assertFalse(reopened.reconcile())
+        self.assertEqual([item["text"] for item in self.chat.get(tid)["scene_speech"]["visible"]],[offer["text"]])
+        self.assertEqual(len(self.main.calls),1)
+
+    async def test_reopened_page_with_no_paint_decision_isolates_unknown(self):
+        host,args,tid,_,_=await self._presentation_host()
+        host.begin("802","808","speech",args)
+        host.attach("809")
+        self.assertFalse(host.decide("802","808","presented"))
+        self.assertTrue(host.reconcile())
+        current=self.chat.get(tid)["scene_speech"]
+        self.assertEqual((current["state"],current["visible"]),("closed",[]))
+        self.assertEqual(current["items"][0]["state"],"unknown")
+        self.assertEqual(len(self.main.calls),1)
+
+    async def test_terminal_receipt_does_not_block_another_turn(self):
+        host,args,tid,_,_=await self._presentation_host()
+        lost=host.begin("802","810","speech",args)
+        self.assertTrue(host.decide("802",lost["id"],"presented"))
+        next_turn=self.send("811",session_id=args["session_id"])
+        plan=await self.wait_for(next_turn,lambda v:v.get("scene_speech"))
+        self.assertTrue(host.reconcile())
+        self.assertEqual(self.chat.get(tid)["scene_speech"]["state"],"closed")
+        next_args=args|{"utterance_id":plan["utterance_id"],"publication_id":plan["publication_id"],"revision":plan["revision"]}
+        received=host.begin("802","812","speech",next_args)
+        self.assertTrue(host.decide("802",received["id"],"presented"))
+        self.assertTrue(host.reconcile())
+        self.assertEqual(len(self.chat.get(next_turn["id"])["scene_speech"]["visible"]),1)
+        self.assertEqual(len(self.main.calls),2)
+
     async def test_web_preface_and_main_share_card_and_native_receives_only_public_question(self):
         self.enable()
         self.need_web = True
+        self.main.output=self.main.output*4
         turn = self.send('ID-USER ID-PUBLIC',public='ID-PUBLIC')
         item = await self.wait_for(turn,lambda _:self.chat.history_snapshot(turn['session_id']).get('pending_notices'))
         notice_args = item[0] | {'persona_id':self.pid,'session_id':turn['session_id']}
@@ -162,6 +248,9 @@ class Delivery(unittest.IsolatedAsyncioTestCase):
         self.assertIn(self.cards['daily'],self.main.notices[0][0]['content'])
         self.assertTrue(tk_notice.display(self.org.processing.search_notice,**notice_args,acknowledge=True)['published'])
         await self.wait_for(turn,lambda v:v.get('scene_speech'))
+        with self.store.connection() as db:
+            actual=db.execute("SELECT body FROM expression_speech_units WHERE turn_id=? AND phase='main'",(turn['id'],)).fetchone()
+        self.assertEqual(actual[0],self.main.output)
         self.assertEqual(len(self.choice.wires),1)
         self.assertEqual(len(self.main.calls),1)
         self.assertEqual(len(self.provider.calls),1)
@@ -170,7 +259,44 @@ class Delivery(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('ID-USER',wire)
         self.assertNotIn('ID-CARD-',wire)
         self.assertIn(self.cards['daily'],self.main.calls[0][0]['content'])
-        self.assertIn('ID-NOTICE',self.main.calls[0][0]['content'])
+        self.assertNotIn(preview['text'],self.main.calls[0][0]['content'])
+        from persona_runtime.knowledge_translation import SEARCH_NOTICE
+        self.assertNotIn(SEARCH_NOTICE,self.main.calls[0][0]['content'])
+        self.assertEqual(self.main.calls[0][-1]['content'],'ID-USER ID-PUBLIC')
+        with self.store.connection() as db:
+            manifest=json.loads(db.execute("SELECT manifest_json FROM context_manifests WHERE turn_id=? AND attempt_id IS NOT NULL",
+                                           (turn['id'],)).fetchone()[0])
+        assembly=manifest['prompt_assembly']
+        self.assertEqual(assembly['input_snapshot_hash'],fingerprint(self.main.calls[0]))
+        names=[b['name'] for b in assembly['blocks']]
+        self.assertIn('retrieved_material',names)
+        self.assertNotIn('search_notice',names)
+
+    async def test_paid_preface_echo_keeps_receipt_and_material_without_republication(self):
+        from persona_runtime.workbench_timeline import retrieved_notes,page
+        self.enable();self.need_web=True
+        self.main.output='ID-NOTICE'
+        turn=self.send('801',public='801');sid=turn['session_id'];tid=turn['id']
+        items=await self.wait_for(turn,lambda _:self.chat.history_snapshot(sid).get('pending_notices'))
+        args=items[0]|{'persona_id':self.pid,'session_id':sid}
+        tk_notice.display(self.org.processing.search_notice,**args)
+        tk_notice.display(self.org.processing.search_notice,**args,acknowledge=True)
+        await self.chat.wait()
+        view=self.chat.get(tid)
+        self.assertEqual((view['status'],view['error_code'],view['reply']),('failed','knowledge_repeated_notice',None))
+        self.chat.recover();self.ingress.recover();await self.chat.wait()
+        self.assertEqual((len(self.main.calls),len(self.main.notices),len(self.provider.calls)),(1,1,1))
+        with self.store.connection() as db:
+            self.assertFalse(db.execute("SELECT 1 FROM expression_speech_units WHERE turn_id=? AND phase='main'",(tid,)).fetchone())
+            receipt=db.execute("SELECT r.raw_text,r.valid,a.status FROM expression_main_receipts r JOIN attempts a ON a.id=r.logical_attempt_id WHERE r.turn_id=?",(tid,)).fetchone()
+            self.assertEqual(tuple(receipt),('ID-NOTICE',0,'completed'))
+        card=next(v for v in page(self.store,self.pid,sid)['turns'] if v['id']==tid)
+        self.assertTrue(card['has_retrieved_notes'])
+        materials=retrieved_notes(self.store,self.pid,sid,tid)
+        self.assertTrue(materials['notes'] and materials['sources'])
+        with self.assertRaises(RuntimeErrorBase):retrieved_notes(self.store,self.pid,'802',tid)
+        self.org.processing.native.update_source(self.pid,materials['sources'][0]['id'],'withdrawn',0,identifier())
+        with self.assertRaises(RuntimeErrorBase):retrieved_notes(self.store,self.pid,sid,tid)
 
     async def test_imported_history_reaches_jev_preface_and_main_only(self):
         from persona_runtime.import_personas import PersonaImports

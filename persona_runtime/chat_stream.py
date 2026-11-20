@@ -49,6 +49,8 @@ class ChatStream:
         except (ValueError,TypeError):self.error('provider_invalid_response')
         if not isinstance(value,dict):self.error('provider_invalid_response')
         self.metadata.update(response_metadata(value,grok=is_grok47(self.model)))
+        if self.model.get('_private_writer_stream') is True and isinstance(value.get('model'),str):
+            self.metadata['requested_model_echoed']=value['model']==self.model['name']
         supplied=value.get('usage')
         if supplied is not None:
             if not isinstance(supplied,dict):self.error('provider_invalid_response')

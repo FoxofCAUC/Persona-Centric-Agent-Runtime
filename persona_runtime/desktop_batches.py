@@ -5,8 +5,17 @@ from .models import identifier
 from .desktop_context import companion_candidate
 from .companion import CHAT_VERSION
 
-BATCH_LABELS={'collecting':'收集中','sealed_waiting_capacity':'已封存，等待队列容量','interrupted_buffer':'中断，待继续或取消','cancelled':'已取消','queued':'排队中','running':'正在生成','completed':'生成完成','failed':'生成失败','interrupted':'请求中断'}
+BATCH_LABELS={'collecting':'收集中','awaiting_confirmation':'暂存，等待确认发送','sealed_waiting_capacity':'已封存，等待队列容量','interrupted_buffer':'中断，待继续或取消','cancelled':'已取消','queued':'排队中','running':'正在生成','completed':'生成完成','failed':'生成失败','interrupted':'请求中断'}
 REPLY_LABELS={'legacy_full':'兼容全文','context_full':'情境全文','context_structured':'情境结构回复','natural_structured':'自然私聊（可省略余段）'}
+
+
+def buffer_label(policy):
+    if policy['mode']=='legacy_per_message':return '逐条发送'
+    buffer=policy.get('buffer_policy',{})
+    if buffer.get('manual_confirmation'):return '无限缓冲，等待确认发送'
+    if buffer.get('schema_version') in (2,3):return f"定时缓冲 · {buffer['quiet_ms']/1000:g} 秒"
+    return '旧策略 · 五秒静默／十五秒上限'
+
 
 class BatchUI:
     def init_batch_vars(self):
@@ -14,7 +23,7 @@ class BatchUI:
         self.batch_policy_text=tk.StringVar(value='启动服务后读取入口模式。')
 
     def build_batches(self,parent):
-        self.heading(parent,'输入与缓冲','默认最后一条后五秒，无时间上限；容量及版本变化可提前封批。重启后须明确继续。')
+        self.heading(parent,'输入与缓冲','定时缓冲从最后一条起计时。无限缓冲请选中批次并确认发送。')
         bar=ttk.Frame(parent);bar.pack(fill='x',pady=5)
         self.button(bar,'刷新',self.refresh_batches,{'batch-read'})
         self.button(bar,'切换窗口模式',lambda:self.change_batch_mode('desktop'),{'batch-write'})
@@ -33,7 +42,7 @@ class BatchUI:
         self.batch_tree.bind('<<TreeviewSelect>>',lambda _:self.show_batch_members())
         self.batch_details=scrolledtext.ScrolledText(parent,height=8,wrap='word',state='disabled');self.batch_details.pack(fill='x',pady=7)
         bar=ttk.Frame(parent);bar.pack(fill='x')
-        for label,action in (('立即回复','seal'),('继续中断输入','resume'),('取消未生成批次','cancel')):
+        for label,action in (('立即回复','seal'),('确认发送本轮','confirm'),('继续中断输入','resume'),('取消未生成批次','cancel')):
             self.button(bar,label,lambda a=action:self.act_batch(a),{'batch-write'})
         ttk.Label(parent,text='取消保留输入原文；已创建请求后使用原请求队列处置。生成完成不代表 QQ 已送达。',wraplength=700).pack(anchor='w',pady=6)
 
@@ -52,7 +61,7 @@ class BatchUI:
                     return  # A policy write completed after this read started.
             self.batch_policies=policies
             for policy in policies.values():self.remember_companion_policy(policy)
-            self.batch_policy_text.set('；'.join(('窗口' if c=='desktop' else 'QQ')+'：'+(('最后一条后五秒，无时间上限' if p.get('buffer_policy',{}).get('schema_version')==2 else '旧策略：五秒静默／十五秒上限') if p['mode']=='natural_batch' else '逐条回复') for c,p in policies.items()))
+            self.batch_policy_text.set(' · '.join(('窗口' if c=='desktop' else 'QQ')+' '+buffer_label(p) for c,p in policies.items()))
             descriptions=[]
             for channel,policy in policies.items():
                 label='窗口' if channel=='desktop' else 'QQ'
@@ -150,12 +159,18 @@ class BatchUI:
         if not b or b['persona_id']!=pid:return
         if b['turn_id']:
             self.notice.set('此批次已创建请求，请使用请求队列中的重试或排队取消。');return
+        if action=='confirm' and b['status']!='awaiting_confirmation':
+            self.notice.set('请选择等待确认的批次。');return
+        if action in ('resume','seal') and b['status']=='awaiting_confirmation':
+            self.notice.set('请点击「确认发送本轮」。');return
         if action=='cancel' and not messagebox.askyesno('取消批次','保留原文并取消此次回复，不进入记忆整理？'):return
         if action=='resume' and not messagebox.askyesno('继续中断输入','将按原成员和原设定封存，使用当前模型创建一次请求；可能计费。继续？'):return
         key=(b['id'],action,b['revision']);op=self.batch_intents.setdefault(key,identifier())
         def done(_):
             if epoch==self.view_epoch and pid==self.persona_id:self.refresh_batches()
-        self.run_task('处理输入批次',{'batch-write'},lambda _:self.client.call('POST',f"/v2/batches/{b['id']}/{action}",{'expected_revision':b['revision'],'operation_id':op,'persona_id':pid}),done)
+        args={'expected_revision':b['revision'],'operation_id':op,'persona_id':pid}
+        if action=='confirm':args['session_id']=b['session_id']
+        self.run_task('处理输入批次',{'batch-write'},lambda _:self.client.call('POST',f"/v2/batches/{b['id']}/{action}",args),done)
 
     def poll_batches(self):
         if self.closed:return

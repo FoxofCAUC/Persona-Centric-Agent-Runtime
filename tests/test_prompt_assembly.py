@@ -8,16 +8,16 @@ from unittest.mock import patch
 from persona_runtime.archive import encoded, fingerprint
 from persona_runtime.prompt_assembly import (PromptBlock, assemble, bounded, fit_manifest,
                                             byte_size, DIAGNOSTIC_BYTES, MANIFEST_BYTES)
-from tests.prompt_baseline_fixture import capture_all
+from tests.prompt_baseline_fixture import capture, capture_all
+from tests.companion_persona_fixture import legacy_generic_persona
 from tests import test_m762 as fixture
 
 
 class AssemblyTests(unittest.TestCase):
     def test_budget_prunes_examples_history_memory_and_summary(self):
-        from tests.prompt_baseline_fixture import capture
         from persona_runtime import context_m4
         for summary in (False,True):
-            result=capture({'limit':1220,'summary':summary},builder=context_m4.build_context)
+            result=capture({'limit':1190,'summary':summary},builder=context_m4.build_context)
             self.assertNotIn('error_code',result)
             details=result['details'];removed={r['kind'] for r in details['removed']}
             self.assertTrue({'history','memory'}.issubset(removed))
@@ -27,13 +27,39 @@ class AssemblyTests(unittest.TestCase):
     def test_frozen_old_requests_parameters_details_and_errors(self):
         saved=json.loads((Path(__file__).parent/'fixtures/prompt-baseline-r0.json').read_text(encoding='utf-8'))
         self.assertEqual(fingerprint(saved['scenarios']),saved['scenarios_hash'])
-        actual=capture_all()
+        legacy=saved['scenarios']['context_full']['messages'][0]['content']
+        header=next(line for line in legacy.splitlines() if line.startswith('角色创作者设定（'))
+        with patch('persona_runtime.character_context.HEADER','\n'+header+'\n'), \
+                patch('tests.prompt_baseline_fixture.generic_persona',side_effect=legacy_generic_persona), \
+                patch('persona_runtime.context_m4.model_persona_data',side_effect=lambda data: data):
+            actual=capture_all()
         self.assertEqual(set(actual),set(saved['scenarios']))
         for key,value in actual.items():
             with self.subTest(scenario=key):
-                self.assertEqual(value,saved['scenarios'][key])
+                expected=saved['scenarios'][key]
+                if key=='relationship-blocked':
+                    notice='\n关系说明：关系来源已被屏蔽，当前关系设定待用户复核，不引用旧说明。'
+                    for messages in (expected['messages'],expected['provider_payload']['messages']):
+                        messages[0]['content']=messages[0]['content'].replace(notice,'')
+                    expected['input_snapshot_hash']=fingerprint(expected['messages'])
+                    expected['details']['input_characters']-=len(notice)
+                if 'details' in expected:
+                    for field in ('automatic_memory_disputes','memory_time_bindings','pending_conflicts'):
+                        if field not in expected['details']:
+                            value['details'].pop(field,None)
+                self.assertEqual(value,expected)
                 self.assertEqual(json.dumps(value,ensure_ascii=False).encode('utf-8'),
-                                 json.dumps(saved['scenarios'][key],ensure_ascii=False).encode('utf-8'))
+                                 json.dumps(expected,ensure_ascii=False).encode('utf-8'))
+
+    def test_current_character_input_has_no_missing_evidence_explanation_rule(self):
+        with patch('tests.prompt_baseline_fixture.generic_persona',side_effect=legacy_generic_persona):
+            result=capture({'mode':'context_full'})
+        body=result['messages'][0]['content']
+        self.assertIn('角色创作者设定（',body)
+        self.assertNotIn('只能说无法确认',body)
+        self.assertNotIn('应说明设定更新',body)
+        self.assertNotIn('未设定不得编造',body)
+        self.assertNotIn('区分已知事实与不确定信息',body)
 
     def test_pure_assembly_offsets_whitespace_unicode_and_no_body_in_diagnostic(self):
         blocks=[PromptBlock('a','  人工秘密😀\n','fixture','v1'),PromptBlock('b','\n\r\n尾部  ','fixture','v1')]

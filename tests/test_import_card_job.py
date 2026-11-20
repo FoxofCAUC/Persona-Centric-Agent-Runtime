@@ -220,6 +220,25 @@ class CardJobTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.jobs.material(self.ident,self.rev,self.pid,stopped["revision"]),stopped["cards"])
         self.assertEqual(self.double.sent, [])
 
+    async def test_cancel_while_waiting_for_user_quota_never_sends(self):
+        from persona_runtime import call_limits
+        from persona_runtime.storage import Store
+        store=Store(self.paths);store.initialize()
+        self.config.update({'call_limits':{'enabled':True,'hourly':1,'daily':0}})
+        with store.connection(write=True) as db:call_limits.take(db,self.config,'932','import')
+        self.approve();self.jobs.start(self.ident,self.rev,self.pid,True)
+        async with asyncio.timeout(5):
+            while True:
+                with store.connection() as db:waits=call_limits.pending(db)
+                if waits:break
+                await asyncio.sleep(.05)
+        self.assertIn(self.ident,self.jobs.tasks)
+        result=await self.jobs.cancel(self.ident)
+        call_limits.decide(store,[waits[0]['id']],True)
+        self.assertEqual(result['state'],'unsent')
+        self.assertFalse(self.double.sent)
+        with store.connection() as db:self.assertFalse(call_limits.pending(db))
+
     async def test_startup_recovers_abandoned_local_reservation_without_repeating_dispatch(self):
         from persona_runtime.import_analysis import ImportAnalysis
         self.approve()

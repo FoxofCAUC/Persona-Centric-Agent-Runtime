@@ -231,15 +231,19 @@ def merge_snapshot(db, data, *, imported_persona=None):
             'review_required': bool(imported_persona), 'permissions_imported': False, 'execution_restored': False}
 
 
-def backup_manifest(path):
+def backup_dependencies(db):
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='knowledge_control'").fetchone():
+        return []
+    registry=read(db,'registry',REGISTRY)['data']
+    return [{'sha256':key,'data_revision':row['manifest'].get('data_revision')}
+            for key,row in sorted(registry['packages'].items())]
+
+
+def backup_manifest(path,*,include_empty=False):
     """The large base package is represented by immutable references."""
-    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as db:
-        db.row_factory = sqlite3.Row
-        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='knowledge_control'").fetchone():
-            return
-        registry = read(db, 'registry', REGISTRY)['data']
-        packages = [{'sha256': key, 'data_revision': row['manifest'].get('data_revision')}
-                    for key, row in registry['packages'].items()]
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro&immutable=1', uri=True)) as db:
+        if not include_empty and not db.execute("SELECT 1 FROM sqlite_master WHERE name='knowledge_control'").fetchone():return
+        packages=backup_dependencies(db)
     with path.open('rb') as stream:
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
     atomic_json(path.with_suffix(path.suffix + '.knowledge.json'),

@@ -1,4 +1,5 @@
 """Durable, one-request composition of two private role-card drafts."""
+from .call_limits import resume_on_limit, workflow
 import asyncio
 import json
 from contextlib import nullcontext
@@ -320,15 +321,22 @@ class CardJobs:
             require(self._approved(packet,sending=True), "本次成卡请求尚未批准。")
             require(_source_hash(src,json.loads(src["draft"]),frozen["stats"]) == packet["source_sha256"],
                     "两份画像草稿发生变化。")
+            from .call_limits import external_gate
+            external_gate(self,'import','card/'+call_id)
             changed = db.execute("UPDATE calls SET state='sending' WHERE id=? AND state='reserved' AND raw IS NULL",
                                  (job["call_id"],)).rowcount
             return (job["call_id"],packet,model) if changed else None
 
+    @resume_on_limit
+    async def _reserve_call(self,ident,call_id):
+        return self._reserve(ident,call_id)
+
+    @workflow
     async def _run(self, ident, action, call_id):
         claimed = None
         try:
             if action == "send":
-                claimed = self._reserve(ident,call_id)
+                claimed = await self._reserve_call(ident,call_id)
                 if not claimed:
                     return
                 key,packet,model = claimed

@@ -63,6 +63,12 @@ class Outlet(unittest.IsolatedAsyncioTestCase):
 
     async def test_notice_expression_ack_precedes_search_and_only_actual_body_flows_back(self):
         turn,uid=await self.start()
+        async with asyncio.timeout(5):
+            while self.org.running or self.chat.locks[self.pid].locked():
+                await asyncio.sleep(.025)
+        with self.store.connection() as db:
+            self.assertIsNone(db.execute("SELECT task_id FROM organization_execution WHERE id='singleton'").fetchone()[0])
+            self.assertEqual(self.outlet.unit(db,uid)["phase"],"search_notice")
         self.assertFalse(self.provider.calls);self.assertIsNone(self.chat.get(turn['id'])['search_notice'])
         payload=json.dumps(self.gate.calls[0],ensure_ascii=False)
         self.assertEqual(len(self.gate.calls[0]),2)

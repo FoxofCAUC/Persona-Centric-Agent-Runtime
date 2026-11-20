@@ -153,6 +153,7 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(report['logout_reason'], 'external_session_connection_only')
 
     def test_health_requires_fresh_current_sl_proof(self):
+        self.controller.set_desired('napcat',True)
         identity = {'ProcessId': 1234, 'Created': 'current', 'ExecutablePath': 'python.exe'}
         proof = {'at': time.time(), 'pid': 1234, 'instance_id': self.cfg['instance_id'],
                  'verified': True, 'online': True, 'connected': True, 'backend': 'snowluma',

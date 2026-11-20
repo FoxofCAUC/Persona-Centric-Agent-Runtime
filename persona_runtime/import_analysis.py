@@ -1,4 +1,5 @@
 """Receipt-backed analysis of an explicitly confirmed, redacted import view."""
+from .call_limits import resume_on_limit, external_gate, workflow
 import asyncio
 import json
 from collections import defaultdict
@@ -105,6 +106,7 @@ class ImportAnalysis:
     async def drain(self):
         await asyncio.gather(*(self.cancel(i) for i in tuple(self.tasks)))
 
+    @resume_on_limit
     async def call(self, ident, role, material, system, model, checksum, *, cached_only=False):
         require(self.library.contract("analysis")[1]==checksum, "提炼模板授权已变化。")
         wire=make_wire(model,role,material,system)
@@ -121,6 +123,7 @@ class ImportAnalysis:
                 raise RuntimeErrorBase("unknown")
             if not old or old["state"]=="unsent":
                 require(not approval.get("dispatch_closed",False),"本次调用范围已结束。")
+                external_gate(self,'import','import/'+ident)
                 db.execute("INSERT OR REPLACE INTO calls VALUES(?,?,'sending',NULL,NULL,NULL,?)",(key,ident,timestamp()))
         if not old or old["state"]=="unsent":
             def save(raw, *, http_status, diagnostics):
@@ -147,6 +150,7 @@ class ImportAnalysis:
         require(choice.get("finish_reason")=="stop", "提炼回执未完整结束。")
         return json.loads(choice["message"]["content"])
 
+    @workflow
     async def run(self, ident, revision, contract, checksum, model, *, cached_only=False):
         state = "failed"
         try:

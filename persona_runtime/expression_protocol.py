@@ -3,6 +3,7 @@ import json
 import re
 
 from persona_runtime.expression_contract import ProtectedSpan
+from .profile import model_persona_data
 from .vendor.maibot_expression_components import (
     _extract_trailing_comma, _is_no_split_marker, _map_sentences_to_original,
     _strip_whitespace, build_expression_habits_block, calculate_typing_time,
@@ -21,7 +22,7 @@ REPLYER_TEMPLATE = '''{identity}
 {replyer_output_instruction}'''
 
 OUTPUT_INSTRUCTION = '''把主稿里要说的内容接到眼前的私聊里，用人物此刻的语气表达。
-保留当前任务、必要条件与否定、明确承诺、资料已取得或未取得的状态。保护片段逐字保留。
+保留当前任务、必要条件与否定、明确承诺。保护片段逐字保留。
 已经说过的内容是交流前提，本次接着说；表达习惯只提供说法参考，其中没有新增的人物经历或用户事实。
 输出一个JSON对象，字段为body、segments、selected_expression_ids。body保存完整实际发言，分析和编辑说明留在正文之外。
 segments为从body原文按话意分出的字符串数组；需要整块阅读时填"no_split"。每段只能用body已有文字，顺序和全部内容保持。
@@ -48,7 +49,7 @@ def offered_candidates(material, fixtures, *, with_assets):
 
 
 def build_messages(material, fixtures, *, with_assets=True):
-    role = material['role_projection']
+    role = model_persona_data(material['role_projection'])
     projection = {key: role[key] for key in ('name', 'core_traits', 'expression_style', 'style', 'values_and_boundaries') if key in role}
     candidates = offered_candidates(material, fixtures, with_assets=with_assets)
     style = build_expression_habits_block(candidates)

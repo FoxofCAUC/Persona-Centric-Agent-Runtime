@@ -88,6 +88,20 @@ class Integration(unittest.IsolatedAsyncioTestCase):
             packet = db.execute('SELECT value FROM knowledge_control WHERE key=?', ('knowledge.native.receipt.' + rows[0][0],)).fetchone()
             self.assertIsNotNone(packet)
 
+    async def test_explicit_composer_search_is_a_scoped_input_to_router(self):
+        from persona_runtime.knowledge_native import public_task
+        self.enable()
+        turn=await self.ask('810 811',public={'question':'811','request_search':True})
+        self.assertEqual(turn['status'],'completed')
+        self.assertTrue(self.decisions[0][1]['state']['explicit_public_query_requested'])
+        self.assertEqual(len(self.provider.calls),1)
+        self.assertIn('811',self.provider.calls[0][1][-1]['content'])
+        self.assertNotIn('810',self.provider.calls[0][1][-1]['content'])
+        self.assertNotIn('request_search',json.dumps(self.provider.calls[0][1]))
+        with self.assertRaises(ValueError):public_task({'question':'811','request_search':1})
+        with self.assertRaises(ValueError):
+            await self.ask('812',public={'question':'811','request_search':True})
+
     async def test_none_and_cached_followup_do_not_request_more_tools(self):
         self.enable(); await self.ask(public={'question': '公开游戏攻略'})
         self.need_web = False

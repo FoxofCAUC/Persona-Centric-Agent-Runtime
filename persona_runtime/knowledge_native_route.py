@@ -24,12 +24,17 @@ def for_new_work(db, turn, stage):
     return ROUTE
 
 
-def flash_model(base):
+def flash_model(base, config=None):
     if base.get('name') != SPEECH_MODEL:
         raise RuntimeErrorBase('native_pro_speech_source_changed')
     # Native requests take only provider configuration. The speech profile belongs to the Pro turn.
-    model = {k:v for k,v in base.items() if not k.startswith('_')}
-    model['name'] = NATIVE_MODEL
+    from .provider_policy import is_deepseek_text_relay
+    settings = config.load() if config is not None and is_deepseek_text_relay(base) else {}
+    if settings.get('private_research_account') == 'native_web':
+        model = settings['native_web_model']
+    else:
+        model = {k:v for k,v in base.items() if not k.startswith('_')}
+        model['name'] = NATIVE_MODEL
     try:
         official_endpoint(model)
     except ValueError as error:
@@ -37,11 +42,11 @@ def flash_model(base):
     return model
 
 
-def model_for_task(db, persona_id, spec):
+def model_for_task(db, persona_id, spec, config=None):
     from .knowledge_native import RETRIEVAL_PROFILE
     root = db.execute('SELECT * FROM turns WHERE id=? AND persona_id=?',
                       (spec['root_turn_id'], persona_id)).fetchone()
     if (spec.get('native_model_route') != ROUTE or spec['input'].get('retrieval_profile') != RETRIEVAL_PROFILE
             or not root or for_new_work(db,dict(root),spec['stage']) != ROUTE):
         raise RuntimeErrorBase('native_model_route_changed')
-    return flash_model(json.loads(root['model_snapshot']))
+    return flash_model(json.loads(root['model_snapshot']),config)

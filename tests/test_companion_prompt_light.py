@@ -16,7 +16,7 @@ from experiments import companion_c2 as replay
 from experiments import companion_prompt_light as run
 from tests import test_companion_chat_contract as runtime_fixture
 from tests import test_companion_c2 as replay_fixture
-from tests.companion_persona_fixture import legacy_requests
+from tests.companion_persona_fixture import legacy_requests, without_retracted_identity_notice
 
 
 class Templates(unittest.TestCase):
@@ -152,7 +152,8 @@ class NormalRuntime(unittest.IsolatedAsyncioTestCase):
         for mode in ('minimal','minimal_structural','minimal_chat','minimal_persona','minimal_context_rules_off'):
             actual.update(await legacy_requests((mode,)))
         fixture=Path(__file__).parent/'fixtures/companion-pre-v6.json'
-        self.assertEqual(actual,json.loads(fixture.read_text(encoding='utf-8'))['requests'])
+        baseline=json.loads(fixture.read_text(encoding='utf-8'))['requests']
+        self.assertEqual(actual,without_retracted_identity_notice(baseline))
 
     async def test_snapshot_mismatch_rejected_before_model(self):
         self.enable('minimal_experience');turn=await self.turn('书店')

@@ -83,6 +83,8 @@ class DeepSeekNativeClient:
             error.diagnostics = {**diagnostic(), **(error.diagnostics or {})}
             raise
         except (aiohttp.ClientError, TimeoutError):
+            if not transport['request_headers_sent'] and not transport['response_headers_received']:
+                raise ModelError('provider_network_error',diagnostics=diagnostic()) from None
             try: parser.fail('provider_native_unknown')
             except ModelError as error:
                 error.diagnostics = {**diagnostic(), **error.diagnostics}

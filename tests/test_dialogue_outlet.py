@@ -2,9 +2,11 @@
 import asyncio
 import json
 import unittest
+from unittest.mock import patch
 
 from persona_runtime.models import RuntimeErrorBase, identifier
 from persona_runtime.expression_publication import ExpressionPublication
+from persona_runtime.knowledge_handoff import VERSION as SEARCH_HANDOFF
 from tests import test_m9r_native_retrieval as native
 from tests.test_dialogue_generation_stages import BASE, BUNDLE, BoundAssembly, Client
 
@@ -89,8 +91,10 @@ class DirectOutlet(unittest.IsolatedAsyncioTestCase):
         main = await self.wait_for_plan(turn, 'main')
         self.assertEqual(self.chat.get(turn['id'])['search_notice']['text'], notice_body)
         baseline = json.dumps(self.a.frames[-1][1], ensure_ascii=False)
-        self.assertIn(notice_body, baseline)
+        self.assertNotIn(notice_body, baseline)
         self.assertNotIn('ID-OUTPUT-1', baseline)
+        self.assertEqual(self.chat.get(turn["id"])["context"]["knowledge"]["translation"]["handoff_version"],
+                         SEARCH_HANDOFF)
         self.assertEqual(len(self.provider.calls), 1)
         main_body = self.present(turn, main)
         await asyncio.wait_for(self.chat.wait(), 10)
@@ -120,6 +124,35 @@ class DirectOutlet(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.client.wires), 1)
         self.assertFalse(self.provider.calls)
         self.check_legacy_zero()
+
+    async def test_native_publication_refines_oversize_plan_and_preserves_body(self):
+        self.need_web = False
+        body = "R" * 151
+        self.a.projection = lambda reply, material: {"display_body": body, "removed_spans": []}
+        turn = await self.chat.submit("desktop", "ID-U-3", identifier())
+        uid = await self.wait_for_plan(turn, "main")
+        self.assertEqual(self.present(turn, uid), body)
+        await self.chat.wait()
+        view = self.chat.get(turn["id"])
+        self.assertEqual(view["reply"], body)
+        plan = next(item for item in view["desktop_publications"] if item["phase"] == "main")
+        self.assertEqual(plan["bubble_limit"], 75)
+        self.assertEqual([len(part["text"]) for part in plan["visible"]], [75, 75, 1])
+
+    async def test_oversized_unoffered_legacy_fragment_cannot_receive_lease(self):
+        self.need_web = False
+        body = "R" * 76
+        self.a.projection = lambda reply, material: {"display_body": body, "removed_spans": []}
+        with patch("persona_runtime.expression_utterance_publication.limit_ranges",
+                   side_effect=lambda text, parts: parts):
+            turn = await self.chat.submit("desktop", "ID-U-4", identifier())
+            uid = await self.wait_for_plan(turn, "main")
+        args = (self.pid, turn["session_id"], uid)
+        plan = self.pub.plan(*args)
+        self.assertEqual(len(plan["items"]), 1)
+        offer = self.pub.offer(*args, plan["id"], plan["revision"], 0, "ID-DESKTOP")
+        self.assertEqual(offer["reason"], "reply_bubble_limit")
+        self.assertNotIn("lease_id", offer)
 
     async def test_notice_wrong_model_prevents_native_search(self):
         original = self.client.complete

@@ -298,6 +298,13 @@ class EvaluationAssistantStore:
 
 
 async def generate_one(client, model, store, package_id, slot, row):
+    from .call_limits import acquire,owner_store,finish
+    from .models import identifier
+    runtime=owner_store(store)
+    scope='job/'+identifier()
+    try:await acquire(runtime,scope,'evaluation')
+    finally:
+        with runtime.connection(write=True) as db:finish(db,scope)
     source_hash = fingerprint({key: row[key] for key in ('case_id','scenario','author_summary','left','right')})
     store.begin(package_id, row['case_id'], source_hash)
     raw = None;usage=None

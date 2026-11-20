@@ -41,7 +41,7 @@ class Rendering(unittest.TestCase):
         for technical in ('format_version','"kind"','"id"','unset','social.context_rules'):
             self.assertNotIn(technical,text)
         self.assertIn('允许表达不同意见。',text.split('你待人做事的分寸')[1])
-        self.assertIn(persona.UNCERTAINTY,text)
+        self.assertNotIn('回答保留不确定性',text)
         self.assertEqual(info['hard_uncertainty_fields'],['age.years'])
         self.assertFalse(any(p['kind']=='fact' for p in included))
         self.assertNotIn('人工海边小镇',json.dumps(info,ensure_ascii=False))
@@ -63,7 +63,7 @@ class Rendering(unittest.TestCase):
     def test_preference_does_not_add_hard_uncertainty_or_extra_material(self):
         selected=material('你喜欢什么')
         text,info,_=persona.render(generic_persona().to_dict(),selected['parts'])
-        self.assertNotIn(persona.UNCERTAINTY,text)
+        self.assertNotIn('回答保留不确定性',text)
         self.assertEqual(info['hard_uncertainty_fields'],[])
         self.assertEqual(len(info['selected_parts']),len(selected['parts']))
 

@@ -201,6 +201,20 @@ def inspect_history(screen, marker, existing, store):
     screen.wait("document.getElementById('history-reference').textContent.includes("+json.dumps(first)+")")
     before=len(marker.replies)
     send(screen,"7993")
+    screen.eval("document.querySelector('dialog').showModal();true")
+    assert speech_state(store,"7993",{"pending"})==0
+    screen.eval("const cover=document.createElement('div');cover.id='receipt-test-cover';"
+                "cover.style.cssText='position:fixed;inset:0;z-index:999999;background:white';document.body.append(cover);"
+                "document.querySelector('dialog').close();true")
+    time.sleep(2)
+    assert speech_state(store,"7993",{"pending"})==0
+    with store.connection() as db:
+        assert not db.execute("""SELECT 1 FROM expression_speech_items i
+            JOIN expression_speech_publications p ON p.id=i.publication_id
+            JOIN expression_speech_units u ON u.id=p.utterance_id JOIN turns t ON t.id=u.turn_id
+            JOIN events e ON e.id=t.user_event_id WHERE e.text='7993' AND (i.lease_id IS NOT NULL
+                OR EXISTS(SELECT 1 FROM expression_speech_receipts r WHERE r.fragment_id=i.id))""").fetchone()
+    screen.eval("document.querySelector('#receipt-test-cover').remove();true")
     screen.wait("[...document.querySelectorAll('#timeline .bubble.reply')].some(x=>x.textContent==='7991')")
     end=time.monotonic()+18
     while len(marker.replies)==before and time.monotonic()<end: time.sleep(.08)
@@ -235,6 +249,35 @@ def inspect_history(screen, marker, existing, store):
     screen.eval("document.getElementById('dialog-close').click();true")
 
 
+def check_delayed_acceptance(screen):
+    """Exercise the composer with an unknown receipt followed by a late local acknowledgement."""
+    screen.eval("""window.draftTest={calls:0,rows:[],submit:pywebview.api.live_submit,list:pywebview.api.live_submissions};
+        pywebview.api.live_submit=async(pid,sid,text,id,ref,revision)=>{
+          const row={id,session_id:sid,text,state:'unconfirmed',draft_revision:revision};
+          draftTest.rows.push(row);draftTest.calls++;return {...row};
+        };
+        pywebview.api.live_submissions=async()=>draftTest.rows.map(row=>({...row}));true""")
+    def enter(value):
+        screen.eval("message.value="+json.dumps(value)+";message.dispatchEvent(new Event('input',{bubbles:true}));true")
+    submit="document.querySelector('#composer').requestSubmit();true"
+    try:
+        enter("991180")
+        screen.eval(submit)
+        screen.wait("pcarLive.pendingDraft && message.value==='991180' && document.querySelector('#send').disabled")
+        screen.eval(submit)
+        assert screen.eval("draftTest.calls")==1
+        enter("991181")
+        screen.wait("!document.querySelector('#send').disabled")
+        screen.eval("draftTest.rows[0].state='accepted';true")
+        screen.wait("currentSession().outbox?.some(row=>row.state==='accepted') && message.value==='991181'")
+        screen.eval(submit)
+        screen.wait("pcarLive.pendingDraft && draftTest.calls===2")
+        screen.eval("draftTest.rows[1].state='accepted';true")
+        screen.wait("message.value==='' && !pcarLive.pendingDraft")
+    finally:
+        screen.eval("pywebview.api.live_submit=draftTest.submit;pywebview.api.live_submissions=draftTest.list;delete window.draftTest;true")
+
+
 def reopen_history(home,existing):
     """A fresh desktop process reads the history from the same local instance."""
     import webview
@@ -263,6 +306,8 @@ def reopen_history(home,existing):
             screen.wait("document.querySelector('#timeline').textContent.includes('7993')")
             timeline_click(screen,"历史来源与用途")
             screen.wait("document.querySelector('#dialog-body').textContent.includes('已撤回')")
+            screen.eval("document.getElementById('dialog-close').click();true")
+            check_delayed_acceptance(screen)
             assert marker.replies==[]
         except BaseException as exc:
             failures.append(exc)
@@ -289,7 +334,7 @@ def check_restart(home, existing):
     subprocess.run(args,cwd=home,check=True,timeout=75)
 
 
-def exercise(home, existing, baseline=None, *, history=False):
+def exercise(home, existing, baseline=None, *, history=False, import_quota=False):
     import webview
     paths = RuntimePaths(home)
     config = ConfigStore(paths)
@@ -349,10 +394,19 @@ def exercise(home, existing, baseline=None, *, history=False):
         return runner
     runner = asyncio.run_coroutine_threadsafe(serve(), loop).result(20)
     controls = DesktopControls(lambda _: None, lambda: {"label": "100"}, paths,
-                               lambda: SimpleNamespace(create_file_dialog=choose_file))
+                               lambda: SimpleNamespace(native=window.native,create_file_dialog=choose_file))
+    visible=controls.presentation_visible
+    visibility={}
+    def observed_visibility(x=None,y=None):
+        outcome=visible(x,y)
+        key=("window" if x is None else "point",outcome)
+        visibility[key]=visibility.get(key,0)+1
+        return outcome
+    controls.presentation_visible=observed_visibility
     markup = workbench_html().replace("<script>", "<script>window.errors=[];addEventListener('error',"
         "e=>window.errors.push(e.message))</script><script>", 1)
-    window = webview.create_window("PCAR 验收", html=markup, js_api=controls, width=960, height=760, hidden=not history, focus=False)
+    window = webview.create_window("PCAR 验收", html=markup, js_api=controls, width=960, height=760,
+                                   hidden=not history, focus=history, on_top=history)
     failures = []
     def flow():
         screen = Screen(window)
@@ -402,8 +456,18 @@ def exercise(home, existing, baseline=None, *, history=False):
                 screen.wait("document.getElementById('dialog-title').textContent==='聊天人设草稿'")
             screen.wait("document.getElementById('dialog-body').textContent.includes('8,192 tokens')")
             screen.check("允许官方 DeepSeek")
+            if import_quota:
+                config.update({'call_limits':{'enabled':True,'hourly':1,'daily':0}})
             screen.click("分析并自动填写两张角色卡")
+            if import_quota:
+                screen.wait("document.querySelector('#quota-dialog').open")
+                assert len(marker.roles)==1 and marker.compositions==0
+                screen.eval("document.querySelector('#quota-allow').click();true")
             screen.wait("document.getElementById('dialog-title').textContent.includes('核对角色卡 · A')")
+            if import_quota:
+                assert len(marker.roles)==2 and marker.compositions==1
+                assert not screen.eval("document.querySelector('#quota-dialog').open")
+                config.update({'call_limits':{'enabled':False,'hourly':1,'daily':0}})
             assert not screen.eval("document.querySelector('dialog').textContent.includes('还原这段历史')")
             if existing:
                 screen.wait("Boolean(document.querySelector('dialog.import-conflict-dialog[open]'))")
@@ -514,6 +578,9 @@ def exercise(home, existing, baseline=None, *, history=False):
             assert not screen.eval("window.errors")
 
         except BaseException as exc:
+            print("Presentation checks",visibility,screen.eval(
+                "JSON.stringify({offline:pcarLive.offline,selecting:pcarLive.selecting,status:document.querySelector('#chat-status span').textContent,"
+                "plans:currentSession()?.turns.flatMap(t=>t.desktop_publications||[]).map(p=>[p.state,p.items.map(i=>i.state)])})"),flush=True)
             with store.connection() as db:
                 report=[dict(row) for row in db.execute("""SELECT t.status,t.error_code,p.state publication,p.reason,
                     coalesce(json_extract(t.origin_json,'$.history_presentation'),0) history_presentation
@@ -542,9 +609,9 @@ def exercise(home, existing, baseline=None, *, history=False):
         check_restart(home,existing)
     print(json.dumps({"webview": "edgechromium", "schema": 33, "reopened": history, "case": "existing" if existing else "empty",
           "roles": marker.roles, "compositions": marker.compositions, "created": 2, "history": history, "chat": bool(marker.replies),
-          "exact_reference":history,"withdrawal_before_offer":history,"legacy_adopted":bool(history and existing),
+          "exact_reference":history,"withdrawal_before_offer":history,"delayed_draft_receipt":history,"legacy_adopted":bool(history and existing),
           "template":prompt_bundle_status(library)["source"], "conflict_resolved":existing, "direct_save":not existing,
-          "old_reader": baseline is not None and not history, "provider_calls": 0}), flush=True)
+          "old_reader": baseline is not None and not history,"single_import_grant":import_quota, "provider_calls": 0}), flush=True)
 
 
 def check_baseline(home, baseline, existing):
@@ -575,6 +642,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--existing", action="store_true")
     parser.add_argument("--with-history", action="store_true")
+    parser.add_argument("--import-quota",action="store_true")
     parser.add_argument("--reopen-home",type=Path)
     parser.add_argument("--temp-root", type=Path, required=True)
     parser.add_argument("--baseline", type=Path)
@@ -584,4 +652,4 @@ if __name__ == "__main__":
         reopen_history(args.reopen_home,args.existing)
     else:
         with tempfile.TemporaryDirectory(dir=args.temp_root, prefix="workspace-") as directory:
-            exercise(Path(directory), args.existing, args.baseline, history=args.with_history)
+            exercise(Path(directory), args.existing, args.baseline, history=args.with_history,import_quota=args.import_quota)

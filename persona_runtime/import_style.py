@@ -2,10 +2,9 @@
 import json
 import math
 import re
-from functools import lru_cache
 
 from .archive import fingerprint
-from .character_embedding import CharacterEmbeddingProvider, SemanticFailure
+from .character_embedding import SemanticFailure, provider_for
 from .import_library import ImportLibrary, encode, require
 from .scene_policy import read, save
 
@@ -42,13 +41,6 @@ def intent(text):
 
 def negative(text):
     return bool(re.search(r"(?:不想|不喜欢|不要|没有|不行|讨厌|不能|没法|不是)", text))
-
-
-@lru_cache(maxsize=4)
-def provider_for(paths):
-    from .installation import SOURCE_ROOT, read_json
-    identity = read_json(SOURCE_ROOT/"model-assets.json")["character_embedding"]["fingerprint"]
-    return CharacterEmbeddingProvider(paths,paths.home/"models/character-embedding"/identity)
 
 
 def prepare_index(library, version, samples, provider):

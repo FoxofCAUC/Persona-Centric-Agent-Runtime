@@ -141,6 +141,7 @@ def _sanitize_database(path):
         # Pending work has no new-machine execution authority. Completed and
         # unknown outcomes and their usage stay untouched.
         if 'knowledge_control' in tables:
+            db.execute("DELETE FROM knowledge_control WHERE key GLOB 'desktop.recovery.*' OR key GLOB 'desktop.wait.*' OR key='desktop.submission.continuity'")
             for entry in db.execute("SELECT key,value FROM knowledge_control WHERE key GLOB 'persona.import_history.*'").fetchall():
                 grant=json.loads(entry['value'])
                 if grant.get('version')!=2:
@@ -173,6 +174,8 @@ def _sanitize_database(path):
                     if unknown:db.execute("UPDATE organization_tasks SET status='blocked_unknown' WHERE id=?",(ident,))
                 db.execute('UPDATE organization_contracts SET data_json=? WHERE task_id=?',(json.dumps(value,ensure_ascii=False),ident))
         if 'organization_execution' in tables:db.execute('UPDATE organization_execution SET task_id=NULL,owner=NULL,lease_until=0')
+        if 'organization_foreground_execution' in tables:db.execute('UPDATE organization_foreground_execution SET task_id=NULL,owner=NULL,lease_until=0')
+        if 'model_call_waits' in tables:db.execute('DELETE FROM model_call_waits')
         for table in ('quota_reservations','organization_reservations'):
             if table in tables:db.execute("UPDATE "+table+" SET state='released' WHERE state='active'")
         if 'deliveries' in tables:db.execute("UPDATE deliveries SET state='uncertain' WHERE state='sending'")

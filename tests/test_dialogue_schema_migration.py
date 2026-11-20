@@ -19,7 +19,7 @@ from persona_runtime.models import RuntimeErrorBase, generic_persona, identifier
 from persona_runtime.paths import RuntimePaths
 from persona_runtime.recall_rollback import prepare_snapshot
 from persona_runtime.service import RuntimeService
-from persona_runtime.storage import Store
+from persona_runtime.storage import Store, SCHEMA_VERSION
 
 
 class DialogueMigration(unittest.TestCase):
@@ -156,7 +156,7 @@ asyncio.run(run())
         self.assert_paused(store)
         self.assertTrue(list((compat.home/'backups').glob('before-dialogue-generation-*.sqlite3')))
         with store.connection() as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 33)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
             self.assertEqual(db.execute('SELECT count(*) FROM events WHERE id IN (?,?)',events).fetchone()[0], 2)
             self.assertEqual(db.execute('SELECT count(*) FROM dialogue_generation_turns').fetchone()[0], 1)
             self.assertEqual(db.execute('SELECT status FROM turns WHERE user_event_id=? AND reply_event_id=?',
@@ -180,7 +180,7 @@ asyncio.run(run())
                                                 events).fetchone()[0], 'completed')
                     self.assertEqual(db.execute('SELECT count(*) FROM dialogue_generation_turns').fetchone()[0], 0)
                     self.assertIsNone(db.execute('PRAGMA foreign_key_check').fetchone())
-                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 33)
+                    self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
 
     def test_selected_corpus_only_and_rollback(self):
         from persona_runtime.corpus_dataset import DatasetCorpusStore

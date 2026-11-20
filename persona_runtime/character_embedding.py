@@ -1,5 +1,6 @@
 """Optional local character embeddings. No network or authoritative writes."""
 from contextlib import contextmanager
+from functools import lru_cache
 import hashlib
 import importlib.metadata
 import json
@@ -16,6 +17,13 @@ ENCODING = 'plain-no-prefix-l2-f32-v1'
 CHUNKING = 'offset-384-overlap32-v1'
 _gate = threading.Lock()
 _loaded = None
+
+
+@lru_cache(maxsize=4)
+def provider_for(paths):
+    from .installation import SOURCE_ROOT, read_json
+    identity=read_json(SOURCE_ROOT/'model-assets.json')['character_embedding']['fingerprint']
+    return CharacterEmbeddingProvider(paths,paths.home/'models/character-embedding'/identity)
 
 
 class SemanticFailure(RuntimeErrorBase):
