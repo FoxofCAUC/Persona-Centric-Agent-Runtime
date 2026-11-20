@@ -1071,7 +1071,7 @@ M11 高阶主动节律、可选向量/外部记忆框架收益实验、M12 多�
 
 ## 附录 A：研究参考
 
-- [PCAR 公共仓库](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime)
+- [PCAR 公共仓库](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime)
 - [Letta Code](https://github.com/letta-ai/letta-code)
 - [LangGraph](https://github.com/langchain-ai/langgraph)
 - [Temporal Python SDK](https://github.com/temporalio/sdk-python)

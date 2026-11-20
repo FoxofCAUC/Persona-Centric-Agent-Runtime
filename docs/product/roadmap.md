@@ -10,7 +10,7 @@ PCAR 的远期目标是一个以人格为中心的运行环境：人物有持续
 
 ## 当前基础：人物与经历有地方保存
 
-[v0.2 公开版](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.2)提供 Windows 工作台、人物与关系版本、会话历史、长期记忆、召回、按需联网及备份迁移。
+[v0.2 公开版](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.2)提供 Windows 工作台、人物与关系版本、会话历史、长期记忆、召回、按需联网及备份迁移。
 
 自动记忆按角色开启，联网和整理各有配置条件；后台随工作台运行，QQ 接入暂停。通过 Agent 准备环境并配置模型服务后，按[用户入门](../user/getting-started.md)开始体验。
 

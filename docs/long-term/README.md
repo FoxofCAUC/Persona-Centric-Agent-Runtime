@@ -1,6 +1,6 @@
 # G-AUTO 之后：持续人格、虚拟生活与受控成长研发总规划
 
-2026-11-16 形成初版，2026-11-19 纳入 LT-13 聊天记录导入与人设生成。初版核对基线为 [`b215be6`](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/commit/b215be65855afc59374a4399edeb312fbc5ca226)，当时的开发候选为 `0.2.0rc3`／结构 `28`，正式角色为结构 `27`。
+2026-11-16 形成初版，2026-11-19 纳入 LT-13 聊天记录导入与人设生成。初版核对基线为 [`b215be6`](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/commit/b215be65855afc59374a4399edeb312fbc5ca226)，当时的开发候选为 `0.2.0rc3`／结构 `28`，正式角色为结构 `27`。
 
 本文给出远期目标、开发依赖和验收要求。v0.2 已发布，当前研发从工作台重构接续。[STATUS](../STATUS.md)
 

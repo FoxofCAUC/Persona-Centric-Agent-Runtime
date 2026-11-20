@@ -38,7 +38,7 @@
 | 首发版本 | v0.1 已发布，采用 Agent 辅助部署 | 留有稳定交付基线；一键安装仍是独立目标 |
 | 尚未完成 | G-AUTO 联合门、后续情绪和反思、导演与受控演化、多模态 | 新 API 不自动完成这些产品能力 |
 
-依据：[当前状态](STATUS.md)、[跨机迁移结项](PCAR-解耦与跨机迁移结项.md)、[v0.1 Release](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.1)。旧记录中的二机 E4/E5 和正式迁移待办已由最新结项覆盖，不再安排重复验收。
+依据：[当前状态](STATUS.md)、[跨机迁移结项](PCAR-解耦与跨机迁移结项.md)、[v0.1 Release](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.1)。旧记录中的二机 E4/E5 和正式迁移待办已由最新结项覆盖，不再安排重复验收。
 
 ### 1.2 现有 M9 已经使用 DeepSeek 搜索
 

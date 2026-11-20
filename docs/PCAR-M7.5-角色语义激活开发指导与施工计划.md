@@ -2,7 +2,7 @@
 
 > **文档类型：** 专项施工指导 / 阶段合同草案（供 Codex 实施时遵循）  
 > **规划版本：** M7.5 Plan v1.0（2026-10-29）  
-> **仓库：** [FoxofCAUC/Persona-Centric-Agent-Runtime](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime)  
+> **仓库：** [FoxMoreland/Persona-Centric-Agent-Runtime](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime)  
 > **审查参考基线：** `main@9c49848bb32c04c0acf17934a0087e846aabb2b0`、Runtime `0.7.3.dev1`、主库结构 `13`、导出结构 `10`、AstrBot Bridge `0.6.0`。**这些是编写时的参考值，不是 M7.5 开工时必须使用的版本号。**  
 > **拟定施工位置：** **M7.4 规定范围完成并完成所需验收后 → M7.5.1 → M7.5.2 → M7.5.3 → M7.5.4 联合验收 → M8.A**。  
 > **状态：** 本文件仅形成开发方案；**未实施、未迁移、未调用真实模型、未修改仓库或远端规划。** 实施时先核对 `AGENTS.md`、最新 `STATUS.md`、`HANDOFF.md` 与 M7.4 实际结论；如果后续已修改里程碑，以最新授权为准，不机械套用旧基线。

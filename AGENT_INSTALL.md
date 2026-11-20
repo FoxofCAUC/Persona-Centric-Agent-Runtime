@@ -1,6 +1,6 @@
 # PCAR v0.2 Windows 工作台部署手册
 
-本手册适用于 **v0.2** 桌面包，程序版本 **0.2.0**，业务数据库结构 **33**。桌面包自带公开的本地角色检索模型。Agent 协助准备 Python、依赖和资料位置，用户配置自己的模型服务。[第一次使用](docs/user/getting-started.md) · [发布页](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.2)
+本手册适用于 **v0.2** 桌面包，程序版本 **0.2.0**，业务数据库结构 **33**。桌面包自带公开的本地角色检索模型。Agent 协助准备 Python、依赖和资料位置，用户配置自己的模型服务。[第一次使用](docs/user/getting-started.md) · [发布页](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.2)
 
 带「启动PCAR-新版.bat」的双人成卡工作台包可直接使用内置的发布版提示词。新实例从新版入口首次启动会准备 WebView2 界面依赖。旧工作台用户退出原窗口后选择原数据目录，新版入口会补齐缺少的界面依赖并沿用原设置。[导入提示词和聊天记录](docs/user/双人聊天生成角色卡.md)
 
@@ -52,7 +52,7 @@ Set-Location -LiteralPath $Program
 
 ## 换机或导入迁移包
 
-使用 v0.2 从已升级的原实例导出结构 33 的业务包，再导入空的目标实例。若手里只有 v0.1 导出的结构 27 包，先用 [v0.1 部署手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.1/AGENT_INSTALL.md) 在独立空目录恢复，再用上节的升级流程升至结构 33。
+使用 v0.2 从已升级的原实例导出结构 33 的业务包，再导入空的目标实例。若手里只有 v0.1 导出的结构 27 包，先用 [v0.1 部署手册](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/blob/v0.1/AGENT_INSTALL.md) 在独立空目录恢复，再用上节的升级流程升至结构 33。
 
 ```powershell
 .\scripts\Manage-Migration.ps1 -RuntimeHome $OldData -Action Export

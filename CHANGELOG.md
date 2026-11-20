@@ -6,7 +6,7 @@
 
 ## v0.2（2026-11-19）
 
-本次发布汇总 [v0.1 之后的变更](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/compare/v0.1...v0.2)，程序版本 0.2.0，业务数据库结构 33。
+本次发布汇总 [v0.1 之后的变更](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/compare/v0.1...v0.2)，程序版本 0.2.0，业务数据库结构 33。
 
 - **联网**由 Jev 判断是否搜索。人物先开口，再由 DeepSeek Flash 使用原生深度搜索。后续可复用相关资料，同时保留结果来源、用量和首次回执。
 - **记忆与召回**新增按角色启用的版本化召回、来源追踪、撤回和回放能力。增量索引支持跨断开的来源片段补齐。
@@ -14,7 +14,7 @@
 - **逐条呈现和恢复**保存查前发言与主回复的呈现回执。中断和重开接续已确认的正文，保留未知状态及版本回退入口。
 - **部署与治理**支持 v0.1 原机升级和结构 33 跨机迁移。同步更新 AGPL 许可和上游来源、社区首页、入门及远期路线。
 
-[下载安装](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.2) · [升级与回退](AGENT_INSTALL.md) · [场景发言接入](docs/expression/E.N6-场景发言接入与回退.md)
+[下载安装](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.2) · [升级与回退](AGENT_INSTALL.md) · [场景发言接入](docs/expression/E.N6-场景发言接入与回退.md)
 
 以下历史条目保留原交付时点。
 

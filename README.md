@@ -68,7 +68,7 @@ PCAR（Persona-Centric Agent Runtime）正在建设一个以人格为中心的�
 
 以下步骤适用于 **v0.2 公开桌面版**。要体验外部私聊历史接续，请使用上文的新版工作台候选入口。
 
-1. 在 [v0.2 发行页](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.2)下载 `PCAR-v0.2-Windows-x64-desktop.zip` 和校验文件。
+1. 在 [v0.2 发行页](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.2)下载 `PCAR-v0.2-Windows-x64-desktop.zip` 和校验文件。
 2. 解压为独立工作区，让 Codex、DSH 等 Agent 阅读包内 `AGENTS.md` 与 `AGENT_INSTALL.md`，完成环境和实例配置。
 3. 通过 `启动PCAR.bat` 打开工作台，选择角色并配置官方 DeepSeek 模型，在“聊天”中开始交流。
 
@@ -82,6 +82,6 @@ PCAR（Persona-Centric Agent Runtime）正在建设一个以人格为中心的�
 
 你可以指出一段对话哪里不像这个人物，提供一个记忆找回场景，改进使用文档或参与开发；也可以提出一个虚拟活动、一种认知变化，以及验证它的方法。当前任务与远期研究各有入口。
 
-[参与共建](CONTRIBUTING.md) · [反馈问题或建议](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/issues) · [文档导航](docs/index.md)
+[参与共建](CONTRIBUTING.md) · [反馈问题或建议](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/issues) · [文档导航](docs/index.md)
 
-项目由 [FoxofCAUC](https://github.com/FoxofCAUC)维护。源码采用 [AGPL-3.0-only](LICENSE)；鲸鱼娘插画另按 [CC BY-NC-SA 4.0 与相关署名条件](assets/readme/ATTRIBUTION.md)使用。[代码来源](docs/REUSE.md)与[模型许可](docs/licenses/THIRD-PARTY-MODELS.md)保留各自记录。
+项目由 [FoxMoreland](https://github.com/FoxMoreland)维护。源码采用 [AGPL-3.0-only](LICENSE)；鲸鱼娘插画另按 [CC BY-NC-SA 4.0 与相关署名条件](assets/readme/ATTRIBUTION.md)使用。[代码来源](docs/REUSE.md)与[模型许可](docs/licenses/THIRD-PARTY-MODELS.md)保留各自记录。

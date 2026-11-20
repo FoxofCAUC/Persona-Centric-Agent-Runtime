@@ -1,6 +1,6 @@
 # 第一次使用 PCAR
 
-本指南适用于 **v0.2 公开版（程序 0.2.0、数据库结构 33）**，核对日期为 2026-11-19。它带你完成下载、准备环境和第一次对话。完整技术步骤见[固定版本部署手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/AGENT_INSTALL.md)。
+本指南适用于 **v0.2 公开版（程序 0.2.0、数据库结构 33）**，核对日期为 2026-11-19。它带你完成下载、准备环境和第一次对话。完整技术步骤见[固定版本部署手册](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/blob/v0.2/AGENT_INSTALL.md)。
 
 从当前仓库或候选包使用新版 Windows 工作台时，可以[从私聊记录创建角色](双人聊天生成角色卡.md)或[接续历史聊天](历史聊天接续.md)。
 
@@ -20,10 +20,10 @@ Agent 会准备 Python 3.12 x64（含 Tkinter）、uv 和依赖。桌面包已�
 
 ## 下载桌面包
 
-打开 [v0.2 发行页](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/tag/v0.2)，下载：
+打开 [v0.2 发行页](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/tag/v0.2)，下载：
 
-- [PCAR-v0.2-Windows-x64-desktop.zip](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/download/v0.2/PCAR-v0.2-Windows-x64-desktop.zip)
-- [SHA256SUMS.txt](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/releases/download/v0.2/SHA256SUMS.txt)
+- [PCAR-v0.2-Windows-x64-desktop.zip](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/download/v0.2/PCAR-v0.2-Windows-x64-desktop.zip)
+- [SHA256SUMS.txt](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/releases/download/v0.2/SHA256SUMS.txt)
 
 让 Agent 核对文件校验值，再解压到独立程序目录。GitHub 自动生成的 Source code 压缩包缺少桌面包中的模型和演练资源，请选择上述桌面 ZIP。
 
@@ -39,7 +39,7 @@ Agent 会准备 Python 3.12 x64（含 Tkinter）、uv 和依赖。桌面包已�
 - **换电脑或换位置：** 将自己的完整迁移包导入空目标，保留原实例备份。
 - **已有可用实例：** 登记原数据位置，保留原数据和环境。
 
-已有工作台先正常退出。迁移时先核对原资料，再启用目标；不要用新建流程覆盖旧数据，也不要向正式实例导入包内人工演练数据。详细步骤见 [v0.2 部署手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/AGENT_INSTALL.md)。
+已有工作台先正常退出。迁移时先核对原资料，再启用目标；不要用新建流程覆盖旧数据，也不要向正式实例导入包内人工演练数据。详细步骤见 [v0.2 部署手册](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/blob/v0.2/AGENT_INSTALL.md)。
 
 已有 v0.1 本机数据的用户先让 Agent 正常关闭旧工作台、备份旧库和配置，再用新程序登记原数据目录。v0.2 会把业务库从结构 27 升到 33。手里只有 v0.1 导出的迁移包时，先用 v0.1 恢复到空目录，再升级。
 
@@ -57,9 +57,9 @@ Agent 会准备 Python 3.12 x64（含 Tkinter）、uv 和依赖。桌面包已�
 
 ## 再按需要开启其他能力
 
-**自动记忆。** 新建、原生导入和复制的角色默认关闭自动记忆。配置整理模型、确认资料使用范围后，按角色开启；工作台运行期间会自动提取、复核和整理后续交流中的重要信息。操作参考 [v0.2 自动记忆手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/docs/acceptance/M8.D-自动记忆验收手册.md)。
+**自动记忆。** 新建、原生导入和复制的角色默认关闭自动记忆。配置整理模型、确认资料使用范围后，按角色开启；工作台运行期间会自动提取、复核和整理后续交流中的重要信息。操作参考 [v0.2 自动记忆手册](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/blob/v0.2/docs/acceptance/M8.D-自动记忆验收手册.md)。
 
-**联网查资料。** 在“联网与资料”页为当前角色开启按需检索。Jev 使用自己的凭据判断是否需要上网。人物先在对话中接话，发言显示后 DeepSeek Flash 开始原生深度检索。私有人物使用获准的公开问题。参见[v0.2 部署手册](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/blob/v0.2/AGENT_INSTALL.md)。
+**联网查资料。** 在“联网与资料”页为当前角色开启按需检索。Jev 使用自己的凭据判断是否需要上网。人物先在对话中接话，发言显示后 DeepSeek Flash 开始原生深度检索。私有人物使用获准的公开问题。参见[v0.2 部署手册](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/blob/v0.2/AGENT_INSTALL.md)。
 
 **场景发言。** 为需要启用的角色准备获审场景材料，登记 v8 Pro 与 Jev 1.14 的用途授权。新安装默认关闭。[场景发言接入与回退](../expression/E.N6-场景发言接入与回退.md)
 
@@ -77,6 +77,6 @@ Agent 会准备 Python 3.12 x64（含 Tkinter）、uv 和依赖。桌面包已�
 | 记忆或联网没有运行 | 对应配置、当前角色的开关与资料授权是否齐全 |
 | 换机后不能调用 | 迁移目标是否重新配置凭据并完成启用 |
 
-仍有问题时，在 [Issues](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/issues)注明 v0.2、出错步骤和可公开的错误信息。附图前移除密钥、私人内容与本机身份信息。
+仍有问题时，在 [Issues](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/issues)注明 v0.2、出错步骤和可公开的错误信息。附图前移除密钥、私人内容与本机身份信息。
 
 [返回首页](../../README.md) · [文档导航](../index.md)

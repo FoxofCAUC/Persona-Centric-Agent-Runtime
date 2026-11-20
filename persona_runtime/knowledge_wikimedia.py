@@ -84,7 +84,7 @@ async def execute(stage,args,timeout):
         nonlocal sent
         sent=False
         parameters=parameters|{'format':'json','formatversion':2}
-        async with client.get(ENDPOINT,params=parameters,headers={'Accept':'application/json','User-Agent':'PCAR/0.9 public-knowledge-reader (https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime)'},proxy=system_proxy(),allow_redirects=False) as response:
+        async with client.get(ENDPOINT,params=parameters,headers={'Accept':'application/json','User-Agent':'PCAR/0.9 public-knowledge-reader (https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime)'},proxy=system_proxy(),allow_redirects=False) as response:
             raw=bytearray()
             async for part in response.content.iter_chunked(65536):
                 raw.extend(part)

@@ -59,7 +59,7 @@ class WikimediaFetcher:
         if not source.get('interactive', False):
             parameters['maxlag'] = 5
         headers = {'User-Agent': 'PCAR/0.9 public-knowledge-reader '
-            '(https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime)', 'Accept': 'application/json'}
+            '(https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime)', 'Accept': 'application/json'}
         try:
             from .network_proxy import outbound_proxy
             timeout=source.get('timeout',10);proxy=outbound_proxy(source['endpoint'])

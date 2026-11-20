@@ -24,7 +24,7 @@
 
 ## 与本次M9.A收尾的关系
 
-配套基线为远端main上的[桌面接入与工作台收尾提交49b6380](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/commit/49b638046b02b9dc5aa58a8cbc9207a60a1fe36e)及[QQ接口暂停政策提交14150dc](https://github.com/FoxofCAUC/Persona-Centric-Agent-Runtime/commit/14150dc1f17120d0d33f056cc7ec6ff0abdc07d4)。实际交付证据见[工作台收尾与QQ中止记录](../M9.A-工作台验收收尾与QQ中止记录.md)。
+配套基线为远端main上的[桌面接入与工作台收尾提交49b6380](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/commit/49b638046b02b9dc5aa58a8cbc9207a60a1fe36e)及[QQ接口暂停政策提交14150dc](https://github.com/FoxMoreland/Persona-Centric-Agent-Runtime/commit/14150dc1f17120d0d33f056cc7ec6ff0abdc07d4)。实际交付证据见[工作台收尾与QQ中止记录](../M9.A-工作台验收收尾与QQ中止记录.md)。
 
 四册正文曾只读核对README、STATUS与认知召回开发指导，未独立审计全仓或复跑既有验收。本次入库核对文件结构、哈希、链接、状态与政策一致性，不新增工程或真实模型验收结论。
 
