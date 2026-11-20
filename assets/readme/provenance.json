@@ -6,7 +6,7 @@
       "file": "continuity-concept.png",
       "bytes": 85772,
       "sha256": "c8c5622ce30b19b166934bf7c2e5782dca5955087d3b0bce63a304500abfa6a0",
-      "active_homepage": false
+      "active_homepage": true
     },
     {
       "file": "continuity-concept.svg",
@@ -24,7 +24,7 @@
       "file": "daily-life-vision.webp",
       "bytes": 2018626,
       "sha256": "4e25b9c14c46b65b12f60c27866f50dd3fc85b0d1fa44dcc6ce77e5e8565e5a1",
-      "active_homepage": false
+      "active_homepage": true
     },
     {
       "file": "desktop-main.png",
@@ -60,7 +60,7 @@
       "file": "superfish-vision.webp",
       "bytes": 1656606,
       "sha256": "e91026eb1c625215cb215aed61399fcd9d8a8e7c8868c33e20c3954cfc86ea8d",
-      "active_homepage": false
+      "active_homepage": true
     }
   ],
   "generated_asset": {
@@ -77,7 +77,7 @@
     "kind": "Unedited real Windows workbench capture; preloaded artificial UI data; zero model calls",
     "active_promotion": false
   },
-  "presentation": "Text-only README. Previous images are retained as historical assets.",
+  "presentation": "No real workbench screenshots. Character illustrations and concept diagram only.",
   "daily_life_asset": {
     "file": "daily-life-vision.webp",
     "source_png": "daily-life-vision.png",
