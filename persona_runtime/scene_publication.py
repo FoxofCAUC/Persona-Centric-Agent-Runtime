@@ -46,8 +46,10 @@ class ScenePublication:
     @staticmethod
     def desktop_plans(db, turn):
         plans = []
-        for row in db.execute("""SELECT u.id utterance_id,u.phase,p.id publication_id,p.revision,p.state
+        for row in db.execute("""SELECT u.id utterance_id,u.phase,p.id publication_id,p.revision,p.state,
+                    json_extract(v.plan_json,'$.bubble_limit') bubble_limit
                 FROM expression_speech_units u JOIN expression_speech_publications p ON p.utterance_id=u.id
+                JOIN expression_speech_versions v ON v.publication_id=p.id AND v.revision=p.revision
                 WHERE u.turn_id=? ORDER BY u.rowid""", (turn['id'],)):
             items = db.execute("""SELECT ordinal,state,delay_ms FROM expression_speech_items
                 WHERE publication_id=? AND revision=? ORDER BY ordinal""",(row["publication_id"],row["revision"]))

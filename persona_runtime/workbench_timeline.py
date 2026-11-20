@@ -18,6 +18,7 @@ SAFE_ERRORS = {
     "desktop_settlement_pending","desktop_receipt_requires_review","desktop_source_withdrawn",
     "desktop_instance_changed","model_not_configured","cancelled_by_user","provider_timeout",
     "knowledge_repeated_notice",
+    "reply_bubble_limit","reply_bubble_detail_required","reply_decision_required",
     "provider_network_error","provider_effect_unknown","provider_retries_exhausted","knowledge_evidence_changed",
 }
 NATIVE = "persona_id=? AND session_id=? AND channel='desktop' AND source_key NOT GLOB 'imported.*'"
@@ -110,6 +111,7 @@ def latest_status(store,db,pid,sid):
 
 def turn_card(db,row):
     from .turn_input import load_turn_input
+    from .bubble_limits import display_bubbles
     from .scene_publication import ScenePublication
     from .knowledge_search_notice import read as read_notice
     from .knowledge_service import turn_usable
@@ -134,8 +136,17 @@ def turn_card(db,row):
                 batch=db.execute("SELECT id FROM reply_batches WHERE turn_id=? ORDER BY created_at DESC LIMIT 1",(tid,)).fetchone()
                 segments=[dict(r) for r in db.execute("SELECT * FROM reply_segments WHERE batch_id=? ORDER BY segment_index",(batch[0],))] if batch else []
                 displayed=[r[0] for r in db.execute("SELECT text FROM reply_display_messages WHERE batch_id=? ORDER BY display_index",(batch[0],))] if batch else []
-                card["reply"]=event[0]
-                card["display_reply"]="\n\n".join(displayed) if displayed else batch_view(event[0],segments,historical=True)[0]
+                visible = "\n\n".join(displayed) if displayed else batch_view(event[0],segments,historical=True)[0]
+                context = db.execute("SELECT details_json FROM context_uses WHERE turn_id=? ORDER BY rowid DESC LIMIT 1",(tid,)).fetchone()
+                presentation = (json.loads(context[0]).get("presentation") or {}) if context else {}
+                try:
+                    bubbles = display_bubbles(visible, presentation)
+                except RuntimeErrorBase as error:
+                    card.update(error_code=public_error(str(error)), reply_event_id=None)
+                else:
+                    card.update(reply=event[0], display_reply=visible)
+                    if bubbles is not None:
+                        card["display_bubbles"] = bubbles
         else:
             card.update(error_code="knowledge_evidence_changed",desktop_publications=[],reply_event_id=None)
     card["feedback_available"]=bool(db.execute("""SELECT 1 FROM context_uses WHERE turn_id=?

@@ -126,10 +126,14 @@ def display(notice, persona_id, session_id, turn_id, notice_id, *, acknowledge=F
         if acknowledge:
             return notice.publish(db,dict(task),payload,receipt['response_text'],json.loads(receipt['diagnostic_json']),presented=notice_id)
         notice.validated_recall(db,turn,task['id'])
+        text = notice.display_body(db, turn, receipt['response_text'])
+        from .bubble_limits import DETAIL_REQUIRED, MAX_BUBBLE_CHARS
+        if len(text) > MAX_BUBBLE_CHARS:
+            raise RuntimeErrorBase(DETAIL_REQUIRED)
         if presentation_id is not None and not owner:
             pending['presenter']=presentation_id
             db.execute('UPDATE knowledge_control SET value=? WHERE key=?',(json.dumps(pending),PREFIX+turn_id))
-        return {'notice_id':notice_id,'turn_id':turn_id,'text':notice.display_body(db,turn,receipt['response_text'])}
+        return {'notice_id':notice_id,'turn_id':turn_id,'text':text}
 
 
 def authorize_search(db,store,turn):

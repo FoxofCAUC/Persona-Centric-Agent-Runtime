@@ -539,6 +539,15 @@ class ChatEngine:
             if not turn_usable(conn, turn_id):
                 value.update(status='failed',error_code='knowledge_evidence_changed',reply=None,
                              display_reply=None,reply_batch=None,display_messages=[])
+        if value["channel"] == "desktop" and value["display_reply"] is not None:
+            from .bubble_limits import display_bubbles
+            try:
+                bubbles = display_bubbles(value["display_reply"], (value["context"] or {}).get("presentation") or {})
+            except RuntimeErrorBase as error:
+                value.update(status="failed", error_code=str(error), reply=None, display_reply=None, display_messages=[])
+            else:
+                if bubbles is not None:
+                    value["display_bubbles"] = bubbles
         from .scene_publication import ScenePublication
         speech=ScenePublication.view(conn,turn_id)
         if speech is not None:value['scene_speech']=speech
@@ -1031,13 +1040,17 @@ class ChatEngine:
         reply=reply_batch.text
         from dataclasses import asdict
         from .presentation import batch_view
-        _, presentation=batch_view(reply,[asdict(s) for s in reply_batch.segments])
+        visible_text, presentation=batch_view(reply,[asdict(s) for s in reply_batch.segments])
         from .chat_display import enabled, plan as display_plan, persist as persist_display
         display_messages=display_plan([asdict(s) for s in reply_batch.segments],turn.get('expression_snapshot')) if enabled(turn.get('expression_snapshot'),reply_batch.mode) else []
         if display_messages:
             presentation['display_version']=display_messages[0]['transform_version']
             presentation['display_count']=len(display_messages)
             presentation['planned_wait_ms']=sum(m['wait_ms'] for m in display_messages)
+            visible_text = '\n\n'.join(item['text'] for item in display_messages)
+        if turn["channel"] == "desktop":
+            from .bubble_limits import save_display_boundaries
+            save_display_boundaries(visible_text, presentation)
         with self.store.connection(write=True) as conn:
             current = conn.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
             if current["status"] != "running" or current["cancelled_at"] or current["execution_revision"] != turn["execution_revision"]:

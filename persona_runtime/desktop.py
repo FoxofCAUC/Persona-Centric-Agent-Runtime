@@ -972,8 +972,13 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
             else:
                 self.transcript.insert("end", "你：" + (turn["text"] or "") + "\n")
             spoken=turn.get('search_notice')
+            notice_plan=next((p for p in turn.get('desktop_publications',())
+                              if p['phase']=='search_notice' and p.get('bubble_limit')), None)
             pending=getattr(self,'pending_notice_view',None)
-            if spoken:
+            if notice_plan:
+                for part in notice_plan['visible']:
+                    self.transcript.insert('end','人格：'+part['text']+'\n\n')
+            elif spoken:
                 self.transcript.insert('end','人格：'+spoken['text']+'\n\n')
             elif (pending and (self.persona_id,self.session_id,turn['id'])==
                     (pending['persona_id'],pending['session_id'],pending['turn_id']) and turn['status']=='queued' and not turn.get('cancelled_at')):
@@ -985,6 +990,9 @@ class Workbench(KnowledgeUI, RuntimeUI, SelectorUI, SessionUI, ContextUI, Archiv
                 displayed=turn.get('display_messages')
                 if scene_speech:
                     pass
+                elif turn.get('display_bubbles'):
+                    for part in turn['display_bubbles']:
+                        self.transcript.insert('end', '人格：'+part+'\n\n')
                 elif displayed:
                     for message in displayed:self.transcript.insert("end", "人格："+message['text']+"\n\n")
                     findings=[str(i) for i,m in enumerate(displayed,1) if m.get('diagnostics',{}).get('quality_findings')]

@@ -1548,12 +1548,17 @@ window.pcarLive = (() => {
     const group=document.createElement("div");group.style.display="contents";
     const show=(role,text,id)=>stamp(makeBubble(group,role,text),"native",id,t.position);
     for(const m of t.input_members||[])if(m.text)show("user",m.text,m.id);
-    if(t.search_notice)show("persona",t.search_notice.text,t.search_notice.event_id);
     const plans=t.desktop_publications||[];
-    if(!t.search_notice)for(const plan of plans.filter(v=>v.phase==="search_notice"))for(const m of plan.visible)show("persona",m.text,m.id);
+    const notices=plans.filter(v=>v.phase==="search_notice");
+    if(t.search_notice&&!notices.some(v=>v.bubble_limit))show("persona",t.search_notice.text,t.search_notice.event_id);
+    else for(const plan of notices)for(const m of plan.visible)show("persona",m.text,m.id);
     const main=plans.find(v=>v.phase==="main");
     if(main){for(const m of main.visible)show("persona",m.text,m.id);}
-    else if(t.status==="completed" && t.reply)show("persona",t.display_reply||t.reply,t.reply_event_id);
+    else if(t.status==="completed" && t.reply){
+      const parts=t.display_bubbles||[t.display_reply||t.reply];
+      show("persona",parts[0],t.reply_event_id);
+      for(const part of parts.slice(1))makeBubble(group,"persona",part);
+    }
     if(t.feedback_available)button(group,"这条不像",()=>feedback(currentPerson().id,t.id));
     if(t.has_retrieved_notes)button(group,"查看本轮检索资料",async()=>{
       const pid=currentPerson().id,sid=currentSession().id;
@@ -1571,6 +1576,9 @@ window.pcarLive = (() => {
         desktop_connection_changed:"等待期间模型连接已更换，本轮已停止，原消息仍可查看。",
         desktop_reply_superseded:"已接收新消息，上一轮发言已结束。",
         knowledge_repeated_notice:"资料已查回，本轮回复重复了查前提示。可以打开检索资料。",
+        reply_bubble_limit:"本轮发言因气泡超限已停止。",
+        reply_bubble_detail_required:"本轮含有无法在气泡内完整显示的内容。",
+        reply_decision_required:"本轮尚未取得可用的接话决策。",
         scene_superseded:"已接收新消息，上一轮发言已结束。",
         search_notice_superseded:"已接收新消息，上一轮查找已停止。",
         desktop_presentation_unknown:"这段发言的显示结果待核对，可以继续聊天。",

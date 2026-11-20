@@ -3,6 +3,7 @@ import json
 from contextlib import ExitStack
 
 from .archive import fingerprint
+from .bubble_limits import LIMIT_VIOLATION, MAX_BUBBLE_CHARS, limit_ranges
 from .expression_assets import ExpressionAssetError,text
 from .expression_contract import text_hash
 from .expression_utterance import encoded
@@ -72,17 +73,20 @@ class SpeechPublication:
             if old['state'] in ('closed','complete') or db.execute('SELECT 1 FROM expression_speech_items WHERE publication_id=? AND lease_id IS NOT NULL',(old['id'],)).fetchone():
                 raise ExpressionAssetError('speech_publication_already_started')
         self.outlet.validate(db,unit)
-        # 从原文连续切片，失败时整块呈现，禁止重新生成正文或拼接其他稿件。
+        # 校验原文切片，缺失或错误的计划按原文重新分片。
         cursor=0;pieces=[]
         from .expression_sources import protected
         spans=protected(body)
         try:
             for s in segments:
+                if type(s['start']) is not int or type(s['end']) is not int:
+                    raise ValueError()
                 if s['start']!=cursor or s['end']<=cursor or s['end']>len(body):raise ValueError()
                 if any(p['start']<s['end']<p['end'] for p in spans):raise ValueError()
                 pieces.append(s);cursor=s['end']
             if cursor!=len(body):raise ValueError()
         except (ValueError,KeyError,TypeError):pieces=[{'start':0,'end':len(body),'kind':'chat','required':True,'delay_ms':0}]
+        pieces = limit_ranges(body, pieces)
         pid=old['id'] if old else identifier();revision=old['revision']+1 if old else 1
         if old:
             db.execute("UPDATE expression_speech_items SET state='cancelled' WHERE publication_id=? AND state='pending'",(pid,))
@@ -92,7 +96,8 @@ class SpeechPublication:
             (pid,unit['id'],revision,kind,body,text_hash(body),'pending',reason,None,timestamp()))
         from .progress import record
         record(db,unit['turn_id'],'desktop_publication_changed')
-        plan={'utterance_id':unit['id'],'body_hash':text_hash(body),'bubbles':pieces}
+        plan={'utterance_id':unit['id'],'body_hash':text_hash(body),'bubbles':pieces,
+              'bubble_limit':MAX_BUBBLE_CHARS}
         db.execute('INSERT INTO expression_speech_versions VALUES(?,?,?)',(pid,revision,encoded(plan)))
         for i,s in enumerate(pieces):
             part=body[s['start']:s['end']]
@@ -159,6 +164,9 @@ class SpeechPublication:
             item=db.execute('SELECT * FROM expression_speech_items WHERE publication_id=? AND revision=? AND ordinal=?',(publication_id,revision,ordinal)).fetchone()
             if not item:raise ExpressionAssetError('speech_fragment_missing')
             if item['state']!='pending':return {'id':item['id'],'state':item['state'],'new_offer':False}
+            if len(item['text']) > MAX_BUBBLE_CHARS:
+                self._stop(db, unit, pub, LIMIT_VIOLATION)
+                return {'state':'stopped','reason':LIMIT_VIOLATION,'new_offer':False}
             if db.execute("SELECT 1 FROM expression_speech_items WHERE publication_id=? AND revision=? AND ordinal<? AND state!='presented'",(publication_id,revision,ordinal)).fetchone():
                 raise ExpressionAssetError('speech_presentation_order_gap')
             lease=identifier()

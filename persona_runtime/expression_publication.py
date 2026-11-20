@@ -3,6 +3,7 @@ from dataclasses import asdict
 import json
 
 from .archive import fingerprint, turn_scope
+from .bubble_limits import BubbleLimitError, LIMIT_VIOLATION, MAX_BUBBLE_CHARS, limit_ranges
 from .expression_assets import ExpressionAssetError, text
 from .expression_contract import (InteractionRef, CallReceipt, MainDraftReceipt, ExpressionArtifact,
     ProtectedSpan, BubbleRange, PresentationPlan, validate_plan, text_hash)
@@ -47,7 +48,13 @@ class ExpressionPublication:
         plan=make(segments)
         try:validate_plan(producer,plan)
         except ValueError:
-            plan=make([{'start':0,'end':len(body),'kind':'technical' if spans else 'chat','required':True,'delay_ms':0}]);validate_plan(producer,plan)
+            segments = [{'start':0,'end':len(body),'kind':'technical' if spans else 'chat','required':True,'delay_ms':0}]
+            plan = make(segments)
+            validate_plan(producer, plan)
+        limited = limit_ranges(body, segments)
+        if limited is not segments:
+            plan = make(limited)
+            validate_plan(producer, plan)
         if current:
             db.execute('UPDATE expression_publications SET revision=?,producer_kind=?,producer_id=?,state=\'pending\',reason=? WHERE id=?',(revision,kind,producer_id,reason,pub_id))
         else:
@@ -74,7 +81,7 @@ class ExpressionPublication:
                 result=self._publish(db,turn,draft,'draft',draft['id'],draft['body'],
                          [{'start':0,'end':len(draft['body']),'kind':'chat','required':True,'delay_ms':0}],reason,replace_unoffered=True)
                 return {'state':result['state'],'publication_id':result['id'],'fallback':True,'reason':reason}
-        except ExpressionAssetError as error:
+        except (ExpressionAssetError, BubbleLimitError) as error:
             with self.store.connection(write=True) as db:
                 if not db.execute('SELECT 1 FROM expression_publications WHERE turn_id=?',(turn_id,)).fetchone():
                     db.execute('UPDATE expression_runtime_turns SET closed_at=? WHERE turn_id=?',(timestamp(),turn_id))
@@ -129,6 +136,9 @@ class ExpressionPublication:
             item=db.execute('SELECT * FROM expression_presentation_items WHERE publication_id=? AND revision=? AND ordinal=?',(publication_id,revision,ordinal)).fetchone()
             if not item:raise ExpressionAssetError('expression_utterance_missing')
             if item['state']!='pending':return {'id':item['id'],'state':item['state'],'new_offer':False}
+            if len(item['text']) > MAX_BUBBLE_CHARS:
+                self._cancel_pending(db, pub, LIMIT_VIOLATION)
+                return {'state':'stopped','reason':LIMIT_VIOLATION,'new_offer':False}
             if db.execute("SELECT 1 FROM expression_presentation_items WHERE publication_id=? AND revision=? AND ordinal<? AND state NOT IN ('presented','cancelled','not_presented')",(publication_id,revision,ordinal)).fetchone():
                 raise ExpressionAssetError('expression_presentation_order_gap')
             lease=identifier()
